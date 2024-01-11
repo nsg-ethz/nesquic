@@ -1,11 +1,12 @@
 #!/bin/bash
-# set -x
 
 BANDWIDTH="20mbit"
 IFACE="lo"
 NETNS="qbench"
 CLIENT="iuts/quinn/target/debug/examples/client"
 SERVER="iuts/quinn/target/debug/examples/server"
+
+set -e
 
 nsexec() {
     sudo ip netns exec ${NETNS} $@
@@ -23,13 +24,11 @@ nsexec ip link set dev ${IFACE} up
 nsexec tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 1000ms
 
 echo Compile IUT
-cd iuts/quinn
-cargo build --example server --example client
-cd ../..
+cargo build --bin server --bin client
 
 echo Start server in background
-nsexec ${SERVER} iuts/quinn &> /dev/null &
+nsexec ${SERVER} --cert res/cert.der --key res/key.der iuts/quinn &> /dev/null &
 
 echo Start client
-nsexec perf record ${CLIENT} https://localhost:4433/README.md &> /dev/null
+nsexec perf record ${CLIENT} --ca res/cert.der https://localhost:4433/README.md &> /dev/null
 kill %1
