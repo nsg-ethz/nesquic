@@ -1,0 +1,21 @@
+[package]
+name = "quinn-iut"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.79"
+clap = { version = "4.4.14", features = ["derive"] }
+log = "0.4.20"
+quinn = { version = "0.10.2", features = ["rustls"] }
+rustls = "0.21.0"
+tokio = { version = "1.35.1", features = ["macros", "full"] }
+url = "2.5.0"
+
+[[bin]]
+name = "server"
+
+[[bin]]
+name = "client"
