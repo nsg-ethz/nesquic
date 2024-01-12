@@ -18,6 +18,8 @@ use log::{error, info};
 #[derive(Parser, Debug)]
 #[clap(name = "server")]
 struct Args {
+    // #[clap(long = "notls")]
+    // disable_encryption: bool,
     /// TLS private key in PEM format
     #[clap(short = 'k', long = "key", requires = "cert")]
     key: PathBuf,
@@ -32,7 +34,7 @@ struct Args {
 pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
 struct Blob {
-    size: u32,
+    bit_size: u32,
     cursor: u32
 }
 
@@ -41,8 +43,8 @@ impl Iterator for Blob {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor < self.size {
-            self.cursor += 1;
+        if self.cursor < self.bit_size {
+            self.cursor += 8;
             Some(0)
         }   
         else {
@@ -170,7 +172,7 @@ fn parse_bit_size(value: &str) -> Result<u32> {
     let bit_prefix = value
         .chars()
         .rev()
-        .nth(4)
+        .nth(3)
         .unwrap();
     if bit_prefix.to_digit(10) == None {
         let mult = match bit_prefix {
@@ -202,7 +204,7 @@ fn process_get(x: &[u8]) -> Result<Blob> {
     let bsize = parse_bit_size(path)?;
 
     Ok(Blob {
-        size: bsize / 8,
+        bit_size: bsize,
         cursor: 0
     })
 }
