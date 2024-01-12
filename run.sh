@@ -3,8 +3,8 @@
 BANDWIDTH="20mbit"
 IFACE="lo"
 NETNS="qbench"
-CLIENT="iuts/quinn/target/debug/examples/client"
-SERVER="iuts/quinn/target/debug/examples/server"
+CLIENT_BIN="target/debug/client"
+SERVER_BIN="target/debug/server"
 
 set -e
 
@@ -27,8 +27,8 @@ echo Compile IUT
 cargo build --bin server --bin client
 
 echo Start server in background
-nsexec ${SERVER} --cert res/cert.der --key res/key.der iuts/quinn &> /dev/null &
+nsexec ${SERVER_BIN} --cert res/cert.der --key res/key.der iuts/quinn &
 
 echo Start client
-nsexec perf record ${CLIENT} --ca res/cert.der https://localhost:4433/README.md &> /dev/null
+nsexec ${CLIENT_BIN} --cert res/cert.der https://localhost:4433/20Mbit &> /dev/null
 kill %1

@@ -5,20 +5,19 @@
 use std::{
     ascii, fs,
     net::SocketAddr,
-    path::{self, Path, PathBuf},
+    path::PathBuf,
     str,
     sync::Arc,
 };
 
 use anyhow::{anyhow, bail, Context, Result};
+use bytes::Bytes;
 use clap::Parser;
 use log::{error, info};
 
 #[derive(Parser, Debug)]
 #[clap(name = "server")]
 struct Args {
-    /// directory to serve files from
-    root: PathBuf,
     /// TLS private key in PEM format
     #[clap(short = 'k', long = "key", requires = "cert")]
     key: PathBuf,
@@ -31,6 +30,27 @@ struct Args {
 }
 
 pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
+
+struct Blob {
+    size: u32,
+    cursor: u32
+}
+
+impl Iterator for Blob {
+
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor < self.size {
+            self.cursor += 1;
+            Some(0)
+        }   
+        else {
+            None
+        }
+    }
+
+}
 
 fn main() {
     let args = Args::parse();
@@ -63,17 +83,12 @@ async fn run(args: Args) -> Result<()> {
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
-    let root = Arc::<Path>::from(args.root.clone());
-    if !root.exists() {
-        bail!("root path does not exist");
-    }
-
     let endpoint = quinn::Endpoint::server(server_config, args.listen)?;
     eprintln!("listening on {}", endpoint.local_addr()?);
 
     while let Some(conn) = endpoint.accept().await {
         info!("connection incoming");
-        let fut = handle_connection(root.clone(), conn);
+        let fut = handle_connection(conn);
         tokio::spawn(async move {
             if let Err(e) = fut.await {
                 error!("connection failed: {reason}", reason = e.to_string())
@@ -84,7 +99,7 @@ async fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
-async fn handle_connection(root: Arc<Path>, conn: quinn::Connecting) -> Result<()> {
+async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
     let connection = conn.await?;
     async {
         info!("established");
@@ -102,7 +117,7 @@ async fn handle_connection(root: Arc<Path>, conn: quinn::Connecting) -> Result<(
                 }
                 Ok(s) => s,
             };
-            let fut = handle_request(root.clone(), stream);
+            let fut = handle_request(stream);
             tokio::spawn(
                 async move {
                     if let Err(e) = fut.await {
@@ -117,7 +132,6 @@ async fn handle_connection(root: Arc<Path>, conn: quinn::Connecting) -> Result<(
 }
 
 async fn handle_request(
-    root: Arc<Path>,
     (mut send, mut recv): (quinn::SendStream, quinn::RecvStream),
 ) -> Result<()> {
     let req = recv
@@ -129,24 +143,53 @@ async fn handle_request(
         let part = ascii::escape_default(x).collect::<Vec<_>>();
         escaped.push_str(str::from_utf8(&part).unwrap());
     }
+    
     // Execute the request
-    let resp = process_get(&root, &req).unwrap_or_else(|e| {
-        error!("failed: {}", e);
-        format!("failed to process request: {e}\n").into_bytes()
-    });
+    let blob = process_get(&req)
+        .map_err(|e| anyhow!("failed handling request: {}", e))?;
+
     // Write the response
-    send.write_all(&resp)
+    send.write_chunk(Bytes::from_iter(blob))
         .await
         .map_err(|e| anyhow!("failed to send response: {}", e))?;
+
     // Gracefully terminate the stream
     send.finish()
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
+    
     info!("complete");
     Ok(())
 }
 
-fn process_get(root: &Path, x: &[u8]) -> Result<Vec<u8>> {
+fn parse_bit_size(value: &str) -> Result<u32> {
+    if value.len() < 5 || !value.starts_with("/") || !value.ends_with("bit") {
+        bail!("malformed blob size");
+    }
+
+    let bit_prefix = value
+        .chars()
+        .rev()
+        .nth(4)
+        .unwrap();
+    if bit_prefix.to_digit(10) == None {
+        let mult = match bit_prefix {
+            'G' => 1024 * 1024 * 1024,
+            'M' => 1024 * 1024,
+            'K' => 1024,
+            _ => bail!("unknown unit prefix")
+        };
+
+        let size = value[1..value.len()-4].parse::<u32>()?;
+        Ok(mult * size)
+    }
+    else {
+        let size = value[1..value.len()-4].parse::<u32>()?;
+        Ok(size)
+    }
+} 
+
+fn process_get(x: &[u8]) -> Result<Blob> {
     if x.len() < 4 || &x[0..4] != b"GET " {
         bail!("missing GET");
     }
@@ -156,25 +199,10 @@ fn process_get(root: &Path, x: &[u8]) -> Result<Vec<u8>> {
     let x = &x[4..x.len() - 2];
     let end = x.iter().position(|&c| c == b' ').unwrap_or(x.len());
     let path = str::from_utf8(&x[..end]).context("path is malformed UTF-8")?;
-    let path = Path::new(&path);
-    let mut real_path = PathBuf::from(root);
-    let mut components = path.components();
-    match components.next() {
-        Some(path::Component::RootDir) => {}
-        _ => {
-            bail!("path must be absolute");
-        }
-    }
-    for c in components {
-        match c {
-            path::Component::Normal(x) => {
-                real_path.push(x);
-            }
-            x => {
-                bail!("illegal component in path: {:?}", x);
-            }
-        }
-    }
-    let data = fs::read(&real_path).context("failed reading file")?;
-    Ok(data)
+    let bsize = parse_bit_size(path)?;
+
+    Ok(Blob {
+        size: bsize / 8,
+        cursor: 0
+    })
 }

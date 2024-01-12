@@ -16,8 +16,8 @@ use url::Url;
 struct Args {
     url: Url,
 
-    #[clap(long="ca")]
-    ca: PathBuf,
+    #[clap(short = 'c', long = "cert")]
+    cert: PathBuf,
 }
 
 pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
@@ -30,7 +30,7 @@ async fn run(args: Args) -> Result<()> {
         .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
 
     let mut roots = rustls::RootCertStore::empty();
-    let cert = rustls::Certificate(fs::read(args.ca)?);
+    let cert = rustls::Certificate(fs::read(args.cert)?);
     roots.add(&cert)?;
 
     let mut client_crypto = rustls::ClientConfig::builder()
