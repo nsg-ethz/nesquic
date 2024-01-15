@@ -34,8 +34,8 @@ struct Args {
 pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
 struct Blob {
-    bit_size: u32,
-    cursor: u32
+    bit_size: u64,
+    cursor: u64
 }
 
 impl Iterator for Blob {
@@ -164,7 +164,7 @@ async fn handle_request(
     Ok(())
 }
 
-fn parse_bit_size(value: &str) -> Result<u32> {
+fn parse_bit_size(value: &str) -> Result<u64> {
     if value.len() < 5 || !value.starts_with("/") || !value.ends_with("bit") {
         bail!("malformed blob size");
     }
@@ -175,18 +175,18 @@ fn parse_bit_size(value: &str) -> Result<u32> {
         .nth(3)
         .unwrap();
     if bit_prefix.to_digit(10) == None {
-        let mult = match bit_prefix {
+        let mult: u64 = match bit_prefix {
             'G' => 1024 * 1024 * 1024,
             'M' => 1024 * 1024,
             'K' => 1024,
             _ => bail!("unknown unit prefix")
         };
 
-        let size = value[1..value.len()-4].parse::<u32>()?;
+        let size = value[1..value.len()-4].parse::<u64>()?;
         Ok(mult * size)
     }
     else {
-        let size = value[1..value.len()-4].parse::<u32>()?;
+        let size = value[1..value.len()-3].parse::<u64>()?;
         Ok(size)
     }
 } 

@@ -1,5 +1,4 @@
 use std::{fs,
-          io::{self, Write},
           net::ToSocketAddrs,
           path::PathBuf,
           sync::Arc,
@@ -76,15 +75,16 @@ async fn run(args: Args) -> Result<()> {
         .read_to_end(usize::max_value())
         .await
         .map_err(|e| anyhow!("failed to read response: {}", e))?;
+
     let duration = response_start.elapsed();
     eprintln!(
         "response received in {:?} - {} KiB/s",
         duration,
         resp.len() as f32 / (duration_secs(&duration) * 1024.0)
     );
-    io::stdout().write_all(&resp).unwrap();
-    io::stdout().flush().unwrap();
+
     conn.close(0u32.into(), b"done");
+    println!("Waiting for server...");
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;

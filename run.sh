@@ -3,8 +3,8 @@
 BANDWIDTH="20mbit"
 IFACE="lo"
 NETNS="qbench"
-CLIENT_BIN="target/debug/client"
-SERVER_BIN="target/debug/server"
+CLIENT_BIN="target/release/client"
+SERVER_BIN="target/release/server"
 
 set -e
 
@@ -21,14 +21,16 @@ trap cleanup EXIT
 echo Create testing network
 sudo ip netns add ${NETNS}
 nsexec ip link set dev ${IFACE} up
-nsexec tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 1000ms
+# nsexec tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 1000ms
 
 echo Compile IUT
-cargo build --bin server --bin client
+cargo build --release --bin server --bin client
 
 echo Start server in background
-nsexec ${SERVER_BIN} --cert res/cert.der --key res/key.der iuts/quinn &
+nsexec ${SERVER_BIN} --cert res/cert.der --key res/key.der &> /dev/null &
 
 echo Start client
-nsexec ${CLIENT_BIN} --cert res/cert.der https://localhost:4433/20Mbit &> /dev/null
+nsexec perf record ${CLIENT_BIN} --cert res/cert.der https://localhost:4433/20Gbit
 kill %1
+
+sudo chown $USER perf.data
