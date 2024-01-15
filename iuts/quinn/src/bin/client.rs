@@ -9,6 +9,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 // use log::{info, error};
 use url::Url;
+use log::{error, info};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -52,12 +53,12 @@ async fn run(args: Args) -> Result<()> {
         .host_str()
         .ok_or_else(|| anyhow!("no hostname specified"))?;
 
-    eprintln!("connecting to {host} at {remote}");
+    info!("connecting to {host} at {remote}");
     let conn = endpoint
         .connect(remote, host)?
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
-    eprintln!("connected at {:?}", start.elapsed());
+    info!("connected at {:?}", start.elapsed());
     let (mut send, mut recv) = conn
         .open_bi()
         .await
@@ -70,21 +71,21 @@ async fn run(args: Args) -> Result<()> {
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
     let response_start = Instant::now();
-    eprintln!("request sent at {:?}", response_start - start);
+    info!("request sent at {:?}", response_start - start);
     let resp = recv
         .read_to_end(usize::max_value())
         .await
         .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
     let duration = response_start.elapsed();
-    eprintln!(
+    info!(
         "response received in {:?} - {} KiB/s",
         duration,
         resp.len() as f32 / (duration_secs(&duration) * 1024.0)
     );
 
     conn.close(0u32.into(), b"done");
-    println!("Waiting for server...");
+    info!("Waiting for server...");
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;
@@ -100,7 +101,7 @@ fn main() {
     let args = Args::parse();
     let code = {
         if let Err(e) = run(args) {
-            eprintln!("ERROR: {e}");
+            error!("ERROR: {e}");
             1
         } else {
             0

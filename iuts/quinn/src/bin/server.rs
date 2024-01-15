@@ -58,7 +58,7 @@ fn main() {
     let args = Args::parse();
     let code = {
         if let Err(e) = run(args) {
-            eprintln!("ERROR: {e}");
+            error!("ERROR: {e}");
             1
         } else {
             0
@@ -86,7 +86,7 @@ async fn run(args: Args) -> Result<()> {
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
     let endpoint = quinn::Endpoint::server(server_config, args.listen)?;
-    eprintln!("listening on {}", endpoint.local_addr()?);
+    info!("listening on {}", endpoint.local_addr()?);
 
     while let Some(conn) = endpoint.accept().await {
         info!("connection incoming");
