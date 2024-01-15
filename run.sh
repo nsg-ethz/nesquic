@@ -39,7 +39,7 @@ echo Start server in background
 nsexec ${SERVER_BIN} --cert res/ca/cert.der --key res/ca/key.der &> /dev/null &
 
 echo Start client
-nsexec ${PERF_CMD} ${CLIENT_BIN} --cert res/ca/cert.der https://localhost:4433/20Mbit
+nsexec ${PERF_CMD} ${CLIENT_BIN} --cert res/ca/cert.der https://localhost:4433/20Gbit
 kill %1
 
 sudo perf script > ${PERF_OUT}
