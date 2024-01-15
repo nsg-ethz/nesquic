@@ -5,7 +5,7 @@ IFACE="lo"
 NETNS="qbench"
 CLIENT_BIN="target/release/client"
 SERVER_BIN="target/release/server"
-PERF_CMD="perf record -F 100 -g -a"
+PERF_CMD="perf record -F 99 -g -a"
 PERF_OUT="res/out.perf"
 FLAME_DIR="../../tools/FlameGraph"
 
@@ -47,7 +47,7 @@ sudo rm perf.data
 chown ${USER} ${PERF_OUT}
 
 echo Render flame graph
-${FLAME_DIR}/stackcollapse-perf.pl ${PERF_OUT} > out.folded
+${FLAME_DIR}/stackcollapse-perf.pl --all ${PERF_OUT} > out.folded
 mv out.folded ${PERF_OUT}
 
-${FLAME_DIR}/flamegraph.pl ${PERF_OUT} > res/flame.svg
+${FLAME_DIR}/flamegraph.pl --colors java --hash ${PERF_OUT} > res/flame.svg
