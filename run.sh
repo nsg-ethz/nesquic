@@ -30,7 +30,7 @@ echo Start server in background
 nsexec ${SERVER_BIN} --cert res/cert.der --key res/key.der &> /dev/null &
 
 echo Start client
-nsexec perf record ${CLIENT_BIN} --cert res/cert.der https://localhost:4433/20Gbit
+nsexec perf record ${CLIENT_BIN} --cert res/cert.der https://localhost:4433/20Gbit 2>&1
 kill %1
 
 sudo chown $USER perf.data
