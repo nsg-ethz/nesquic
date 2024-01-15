@@ -13,7 +13,6 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use clap::Parser;
-use log::{error, info};
 
 #[derive(Parser, Debug)]
 #[clap(name = "server")]
@@ -58,7 +57,7 @@ fn main() {
     let args = Args::parse();
     let code = {
         if let Err(e) = run(args) {
-            error!("ERROR: {e}");
+            eprintln!("ERROR: {e}");
             1
         } else {
             0
@@ -86,14 +85,14 @@ async fn run(args: Args) -> Result<()> {
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
     let endpoint = quinn::Endpoint::server(server_config, args.listen)?;
-    info!("listening on {}", endpoint.local_addr()?);
+    println!("listening on {}", endpoint.local_addr()?);
 
     while let Some(conn) = endpoint.accept().await {
-        info!("connection incoming");
+        println!("connection incoming");
         let fut = handle_connection(conn);
         tokio::spawn(async move {
             if let Err(e) = fut.await {
-                error!("connection failed: {reason}", reason = e.to_string())
+                eprintln!("connection failed: {reason}", reason = e.to_string())
             }
         });
     }
@@ -104,14 +103,14 @@ async fn run(args: Args) -> Result<()> {
 async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
     let connection = conn.await?;
     async {
-        info!("established");
+        println!("established");
 
         // Each stream initiated by the client constitutes a new request.
         loop {
             let stream = connection.accept_bi().await;
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    info!("connection closed");
+                    println!("connection closed");
                     return Ok(());
                 }
                 Err(e) => {
@@ -123,7 +122,7 @@ async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
             tokio::spawn(
                 async move {
                     if let Err(e) = fut.await {
-                        error!("failed: {reason}", reason = e.to_string());
+                        eprintln!("failed: {reason}", reason = e.to_string());
                     }
                 }
             );
@@ -160,7 +159,7 @@ async fn handle_request(
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
     
-    info!("complete");
+    println!("complete");
     Ok(())
 }
 
