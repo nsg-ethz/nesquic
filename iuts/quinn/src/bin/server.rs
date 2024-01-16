@@ -9,6 +9,7 @@ use std::{
     str,
     sync::Arc,
 };
+use quinn_iut::noprotection::NoProtectionServerConfig;
 
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
@@ -17,8 +18,9 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(name = "server")]
 struct Args {
-    // #[clap(long = "notls")]
-    // disable_encryption: bool,
+    // do TLS handshake, but don't encrypt connection
+    #[clap(long = "unencrypted")]
+    unencrypted: bool,
     /// TLS private key in PEM format
     #[clap(short = 'k', long = "key", requires = "cert")]
     key: PathBuf,
@@ -80,7 +82,12 @@ async fn run(args: Args) -> Result<()> {
         .with_single_cert(certs, key)?;
     server_crypto.alpn_protocols = ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
 
-    let mut server_config = quinn::ServerConfig::with_crypto(Arc::new(server_crypto));
+    let mut server_config = if args.unencrypted {
+        quinn::ServerConfig::with_crypto(Arc::new(NoProtectionServerConfig::new(Arc::new(server_crypto))))
+    }
+    else {        
+        quinn::ServerConfig::with_crypto(Arc::new(server_crypto))
+    };
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
 

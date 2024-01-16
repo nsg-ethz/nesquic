@@ -4,17 +4,20 @@ use std::{fs,
           sync::Arc,
           time::{Duration, Instant}
 };
+use quinn_iut::noprotection::NoProtectionClientConfig;
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
-// use log::{info, error};
 use url::Url;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct Args {    
     url: Url,
-
+    // do TLS handshake, but don't encrypt connection
+    #[clap(long = "unencrypted")]
+    unencrypted: bool,
+    /// TLS certificate in PEM format
     #[clap(short = 'c', long = "cert")]
     cert: PathBuf,
 }
@@ -42,7 +45,13 @@ async fn run(args: Args) -> Result<()> {
         .map(|&x| x.into())
         .collect();
 
-    let client_config = quinn::ClientConfig::new(Arc::new(client_crypto));
+    let client_config = if args.unencrypted {
+        quinn::ClientConfig::new(Arc::new(NoProtectionClientConfig::new(Arc::new(client_crypto))))
+    }
+    else {        
+        quinn::ClientConfig::new(Arc::new(client_crypto))
+    };
+    
     let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
     endpoint.set_default_client_config(client_config);
 
@@ -57,6 +66,7 @@ async fn run(args: Args) -> Result<()> {
         .connect(remote, host)?
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
+
     println!("connected at {:?}", start.elapsed());
     let (mut send, mut recv) = conn
         .open_bi()
