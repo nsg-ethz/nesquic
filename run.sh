@@ -4,6 +4,7 @@ BANDWIDTH="20mbit"
 IFACE="lo"
 NETNS="qbench"
 PERF_OUT="res/out.perf"
+PERF_TMP="res/tmp.perf"
 FLAME_DIR="../../bin/FlameGraph"
 
 # stop the script if an error occurs
@@ -34,12 +35,14 @@ cargo build --release --bin server --bin client
 
 nsexec bash conn.sh
 
-sudo perf script > ${PERF_OUT}
-sudo rm perf.data
-chown ${USER} ${PERF_OUT}
+sudo mv perf.data ${PERF_OUT}
+sudo chown ${USER} ${PERF_OUT}
+
+perf script -i ${PERF_OUT} > ${PERF_TMP}
 
 echo Render flame graph
-${FLAME_DIR}/stackcollapse-perf.pl --all ${PERF_OUT} > out.folded
-mv out.folded ${PERF_OUT}
+${FLAME_DIR}/stackcollapse-perf.pl --all ${PERF_TMP} > out.folded
+mv out.folded ${PERF_TMP}
 
-${FLAME_DIR}/flamegraph.pl --colors java --hash ${PERF_OUT} > res/flame.svg
+${FLAME_DIR}/flamegraph.pl --colors java --hash ${PERF_TMP} > res/flame.svg
+rm ${PERF_TMP}
