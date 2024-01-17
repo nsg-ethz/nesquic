@@ -3,11 +3,8 @@
 BANDWIDTH="20mbit"
 IFACE="lo"
 NETNS="qbench"
-CLIENT_BIN="target/release/client"
-SERVER_BIN="target/release/server"
-PERF_CMD="perf record -F 99 -g -a"
 PERF_OUT="res/out.perf"
-FLAME_DIR="../../tools/FlameGraph"
+FLAME_DIR="../../bin/FlameGraph"
 
 # stop the script if an error occurs
 set -e
@@ -29,18 +26,13 @@ trap cleanup EXIT
 echo Create testing network
 sudo ip netns add ${NETNS}
 nsexec ip link set dev ${IFACE} up
-# nsexec tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 1000ms
+# tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 1000ms
 
 # compile IUTs in release mode
 echo Compile IUT
 cargo build --release --bin server --bin client
 
-echo Start server in background
-nsexec ${SERVER_BIN} --cert res/ca/cert.der --key res/ca/key.der &> /dev/null &
-
-echo Start client
-nsexec ${PERF_CMD} ${CLIENT_BIN} --cert res/ca/cert.der https://localhost:4433/20Gbit
-kill %1
+nsexec bash conn.sh
 
 sudo perf script > ${PERF_OUT}
 sudo rm perf.data

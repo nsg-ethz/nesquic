@@ -94,7 +94,7 @@ async fn run(args: Args) -> Result<()> {
     );
 
     conn.close(0u32.into(), b"done");
-    println!("Waiting for server...");
+    println!("waiting for server to close connection...");
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;
