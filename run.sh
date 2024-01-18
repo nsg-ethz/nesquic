@@ -37,7 +37,6 @@ nsexec bash conn.sh
 
 sudo mv perf.data ${PERF_OUT}
 sudo perf script -i ${PERF_OUT} > ${PERF_TMP}
-sudo chown ${USER} ${PERF_OUT}
 
 echo Render flame graph
 ${FLAME_DIR}/stackcollapse-perf.pl --all ${PERF_TMP} > folded.perf
