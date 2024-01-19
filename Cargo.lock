@@ -407,6 +407,7 @@ dependencies = [
  "quinn",
  "quinn-proto",
  "rustls",
+ "socket2",
  "tokio",
  "url",
 ]

@@ -4,25 +4,33 @@ use std::{fs,
           sync::Arc,
           time::{Duration, Instant}
 };
-use quinn_iut::noprotection::NoProtectionClientConfig;
+use quinn_iut::{
+    bind_socket,
+    noprotection::NoProtectionClientConfig
+};
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use quinn::TokioRuntime;
 use url::Url;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {    
     url: Url,
-    // do TLS handshake, but don't encrypt connection
+    /// do TLS handshake, but don't encrypt connection
     #[clap(long = "unencrypted")]
     unencrypted: bool,
     /// TLS certificate in PEM format
     #[clap(short = 'c', long = "cert")]
     cert: PathBuf,
+    /// Send buffer size in bytes
+    #[clap(long, default_value = "2097152")]
+    send_buffer_size: usize,
+    /// Receive buffer size in bytes
+    #[clap(long, default_value = "2097152")]
+    recv_buffer_size: usize,
 }
-
-pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
 #[tokio::main]
 async fn run(args: Args) -> Result<()> {
@@ -36,14 +44,13 @@ async fn run(args: Args) -> Result<()> {
     roots.add(&cert)?;
 
     let mut client_crypto = rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(roots)
+        .with_cipher_suites(quinn_iut::PERF_CIPHER_SUITES)
+        .with_safe_default_kx_groups()
+        .with_protocol_versions(&[&rustls::version::TLS13])
+        .unwrap()
+        .with_custom_certificate_verifier(SkipServerVerification::new())
         .with_no_client_auth();
-
-    client_crypto.alpn_protocols = ALPN_QUIC_HTTP
-        .iter()
-        .map(|&x| x.into())
-        .collect();
+    client_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
     let client_config = if args.unencrypted {
         quinn::ClientConfig::new(Arc::new(NoProtectionClientConfig::new(Arc::new(client_crypto))))
@@ -52,7 +59,9 @@ async fn run(args: Args) -> Result<()> {
         quinn::ClientConfig::new(Arc::new(client_crypto))
     };
     
-    let mut endpoint = quinn::Endpoint::client("[::]:0".parse().unwrap())?;
+    let addr = "[::]:0".parse().unwrap();
+    let socket = bind_socket(addr, args.send_buffer_size, args.recv_buffer_size)?;
+    let mut endpoint = quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
     endpoint.set_default_client_config(client_config);
 
     let request = format!("GET {}\r\n", args.url.path());
@@ -88,9 +97,9 @@ async fn run(args: Args) -> Result<()> {
 
     let duration = response_start.elapsed();
     println!(
-        "response received in {:?} - {} KiB/s",
+        "response received in {:?} - {} MiB/s",
         duration,
-        resp.len() as f32 / (duration_secs(&duration) * 1024.0)
+        resp.len() as f32 / (duration_secs(&duration) * 1024.0 * 1024.0)
     );
 
     conn.close(0u32.into(), b"done");
@@ -117,4 +126,26 @@ fn main() {
         }
     };
     std::process::exit(code);
+}
+
+struct SkipServerVerification;
+
+impl SkipServerVerification {
+    fn new() -> Arc<Self> {
+        Arc::new(Self)
+    }
+}
+
+impl rustls::client::ServerCertVerifier for SkipServerVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::Certificate,
+        _intermediates: &[rustls::Certificate],
+        _server_name: &rustls::ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp_response: &[u8],
+        _now: std::time::SystemTime,
+    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::ServerCertVerified::assertion())
+    }
 }

@@ -12,7 +12,8 @@ clap = { version = "4.4.14", features = ["derive"] }
 log = "0.4.20"
 quinn = { version = "0.10.2", features = ["rustls"] }
 quinn-proto = "0.10.6"
-rustls = "0.21.0"
+rustls = { version = "0.21.0", features = ["dangerous_configuration"] }
+socket2 = "0.5.5"
 tokio = { version = "1.35.1", features = ["macros", "full"] }
 url = "2.5.0"
 

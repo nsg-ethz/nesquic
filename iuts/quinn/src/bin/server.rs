@@ -9,16 +9,20 @@ use std::{
     str,
     sync::Arc,
 };
-use quinn_iut::noprotection::NoProtectionServerConfig;
+use quinn_iut::{
+    bind_socket,
+    noprotection::NoProtectionServerConfig
+};
 
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use clap::Parser;
+use quinn::TokioRuntime;
 
 #[derive(Parser, Debug)]
 #[clap(name = "server")]
 struct Args {
-    // do TLS handshake, but don't encrypt connection
+    /// do TLS handshake, but don't encrypt connection
     #[clap(long = "unencrypted")]
     unencrypted: bool,
     /// TLS private key in PEM format
@@ -30,9 +34,13 @@ struct Args {
     /// Address to listen on
     #[clap(long = "listen", default_value = "[::1]:4433")]
     listen: SocketAddr,
+    /// Send buffer size in bytes
+    #[clap(long, default_value = "2097152")]
+    send_buffer_size: usize,
+    /// Receive buffer size in bytes
+    #[clap(long, default_value = "2097152")]
+    recv_buffer_size: usize,
 }
-
-pub const ALPN_QUIC_HTTP: &[&[u8]] = &[b"hq-29"];
 
 struct Blob {
     bit_size: u64,
@@ -80,7 +88,7 @@ async fn run(args: Args) -> Result<()> {
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certs, key)?;
-    server_crypto.alpn_protocols = ALPN_QUIC_HTTP.iter().map(|&x| x.into()).collect();
+    server_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
     let mut server_config = if args.unencrypted {
         quinn::ServerConfig::with_crypto(Arc::new(NoProtectionServerConfig::new(Arc::new(server_crypto))))
@@ -91,7 +99,15 @@ async fn run(args: Args) -> Result<()> {
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
-    let endpoint = quinn::Endpoint::server(server_config, args.listen)?;
+    let socket = bind_socket(args.listen, args.send_buffer_size, args.recv_buffer_size)?;
+    let endpoint = quinn::Endpoint::new(
+        Default::default(),
+        Some(server_config),
+        socket,
+        Arc::new(TokioRuntime),
+    )
+    .context("creating endpoint")?;
+
     println!("listening on {}", endpoint.local_addr()?);
 
     while let Some(conn) = endpoint.accept().await {
