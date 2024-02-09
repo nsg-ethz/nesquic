@@ -18,6 +18,10 @@ use quinn_iut::{
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use clap::Parser;
+use log::{
+    info,
+    error
+};
 use quinn::TokioRuntime;
 
 #[derive(Parser, Debug)]
@@ -64,7 +68,7 @@ fn main() {
     let args = Args::parse();
     let code = {
         if let Err(e) = run(args) {
-            eprintln!("ERROR: {e}");
+            error!("ERROR: {e}");
             1
         } else {
             0
@@ -102,14 +106,14 @@ async fn run(args: Args) -> Result<()> {
     )
     .context("creating endpoint")?;
 
-    println!("listening on {}", endpoint.local_addr()?);
+    info!("listening on {}", endpoint.local_addr()?);
 
     while let Some(conn) = endpoint.accept().await {
-        println!("connection incoming");
+        info!("connection incoming");
         let fut = handle_connection(conn);
         tokio::spawn(async move {
             if let Err(e) = fut.await {
-                eprintln!("connection failed: {reason}", reason = e.to_string())
+                error!("connection failed: {reason}", reason = e.to_string())
             }
         });
     }
@@ -120,14 +124,14 @@ async fn run(args: Args) -> Result<()> {
 async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
     let connection = conn.await?;
     async {
-        println!("established");
+        info!("established");
 
         // Each stream initiated by the client constitutes a new request.
         loop {
             let stream = connection.accept_bi().await;
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    println!("connection closed");
+                    info!("connection closed");
                     return Ok(());
                 }
                 Err(e) => {
@@ -139,7 +143,7 @@ async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
             tokio::spawn(
                 async move {
                     if let Err(e) = fut.await {
-                        eprintln!("failed: {reason}", reason = e.to_string());
+                        error!("failed: {reason}", reason = e.to_string());
                     }
                 }
             );
@@ -176,7 +180,7 @@ async fn handle_request(
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
     
-    println!("complete");
+    info!("complete");
     Ok(())
 }
 
