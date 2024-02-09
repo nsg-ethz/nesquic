@@ -3,14 +3,15 @@
 //! Checkout the `README.md` for guidance.
 
 use std::{
-    ascii, fs,
+    ascii,
     net::SocketAddr,
-    path::PathBuf,
     str,
     sync::Arc,
 };
 use quinn_iut::{
     bind_socket,
+    load_certificates_from_pem,
+    load_private_key_from_file,
     noprotection::NoProtectionServerConfig
 };
 
@@ -27,19 +28,13 @@ struct Args {
     unencrypted: bool,
     /// TLS private key in PEM format
     #[clap(short = 'k', long = "key", requires = "cert")]
-    key: PathBuf,
+    key: String,
     /// TLS certificate in PEM format
     #[clap(short = 'c', long = "cert", requires = "key")]
-    cert: PathBuf,
+    cert: String,
     /// Address to listen on
     #[clap(long = "listen", default_value = "[::1]:4433")]
     listen: SocketAddr,
-    /// Send buffer size in bytes
-    #[clap(long, default_value = "2097152")]
-    send_buffer_size: usize,
-    /// Receive buffer size in bytes
-    #[clap(long, default_value = "2097152")]
-    recv_buffer_size: usize,
 }
 
 struct Blob {
@@ -64,6 +59,8 @@ impl Iterator for Blob {
 }
 
 fn main() {
+    env_logger::init();
+    
     let args = Args::parse();
     let code = {
         if let Err(e) = run(args) {
@@ -78,11 +75,8 @@ fn main() {
 
 #[tokio::main]
 async fn run(args: Args) -> Result<()> {
-    let cert_chain = fs::read(args.cert).context("failed to read certificate chain")?;
-    let certs = vec![rustls::Certificate(cert_chain)];
-
-    let key = fs::read(args.key).context("failed to read private key")?;
-    let key = rustls::PrivateKey(key);
+    let certs = load_certificates_from_pem(args.cert.as_str()).context("failed to read certificate chain")?;
+    let key = load_private_key_from_file(args.key.as_str()).context("failed to read private key")?;
 
     let mut server_crypto = rustls::ServerConfig::builder()
         .with_safe_defaults()
@@ -99,7 +93,7 @@ async fn run(args: Args) -> Result<()> {
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
     transport_config.max_concurrent_uni_streams(0_u8.into());
 
-    let socket = bind_socket(args.listen, args.send_buffer_size, args.recv_buffer_size)?;
+    let socket = bind_socket(args.listen)?;
     let endpoint = quinn::Endpoint::new(
         Default::default(),
         Some(server_config),

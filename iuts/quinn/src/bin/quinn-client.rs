@@ -1,8 +1,9 @@
-use std::{fs,
-          net::ToSocketAddrs,
-          path::PathBuf,
-          sync::Arc,
-          time::{Duration, Instant}
+use std::{
+    fs,
+    net::ToSocketAddrs,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant}
 };
 use quinn_iut::{
     bind_socket,
@@ -11,6 +12,10 @@ use quinn_iut::{
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use log::{
+    info,
+    error
+};
 use quinn::TokioRuntime;
 use url::Url;
 
@@ -24,12 +29,6 @@ struct Args {
     /// TLS certificate in PEM format
     #[clap(short = 'c', long = "cert")]
     cert: PathBuf,
-    /// Send buffer size in bytes
-    #[clap(long, default_value = "2097152")]
-    send_buffer_size: usize,
-    /// Receive buffer size in bytes
-    #[clap(long, default_value = "2097152")]
-    recv_buffer_size: usize,
 }
 
 #[tokio::main]
@@ -60,7 +59,7 @@ async fn run(args: Args) -> Result<()> {
     };
     
     let addr = "[::]:0".parse().unwrap();
-    let socket = bind_socket(addr, args.send_buffer_size, args.recv_buffer_size)?;
+    let socket = bind_socket(addr)?;
     let mut endpoint = quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
     endpoint.set_default_client_config(client_config);
 
@@ -70,13 +69,13 @@ async fn run(args: Args) -> Result<()> {
         .host_str()
         .ok_or_else(|| anyhow!("no hostname specified"))?;
 
-    println!("connecting to {host} at {remote}");
+    info!("connecting to {host} at {remote}");
     let conn = endpoint
         .connect(remote, host)?
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
 
-    println!("connected at {:?}", start.elapsed());
+    info!("connected at {:?}", start.elapsed());
     let (mut send, mut recv) = conn
         .open_bi()
         .await
@@ -89,21 +88,21 @@ async fn run(args: Args) -> Result<()> {
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
     let response_start = Instant::now();
-    println!("request sent at {:?}", response_start - start);
+    info!("request sent at {:?}", response_start - start);
     let resp = recv
         .read_to_end(usize::max_value())
         .await
         .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
     let duration = response_start.elapsed();
-    println!(
+    info!(
         "response received in {:?} - {} MiB/s",
         duration,
         resp.len() as f32 / (duration_secs(&duration) * 1024.0 * 1024.0)
     );
 
     conn.close(0u32.into(), b"done");
-    println!("waiting for server to close connection...");
+    info!("waiting for server to close connection...");
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;
@@ -116,10 +115,12 @@ fn duration_secs(x: &Duration) -> f32 {
 }
 
 fn main() {
+    env_logger::init();
+    
     let args = Args::parse();
     let code = {
         if let Err(e) = run(args) {
-            eprintln!("ERROR: {e}");
+            error!("ERROR: {e}");
             1
         } else {
             0
