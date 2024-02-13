@@ -31,16 +31,16 @@ nsexec ip link set dev ${IFACE} up
 
 # compile IUTs in release mode
 echo Compile IUT
-cargo build --release --bin server --bin client
+cargo build --release --bin quiche-server --bin quiche-client
 
 nsexec bash conn.sh
 
-sudo mv perf.data ${PERF_OUT}
-sudo perf script -i ${PERF_OUT} > ${PERF_TMP}
+# sudo mv perf.data ${PERF_OUT}
+# sudo perf script -i ${PERF_OUT} > ${PERF_TMP}
 
-echo Render flame graph
-${FLAME_DIR}/stackcollapse-perf.pl --all ${PERF_TMP} > folded.perf
-mv folded.perf ${PERF_TMP}
+# echo Render flame graph
+# ${FLAME_DIR}/stackcollapse-perf.pl --all ${PERF_TMP} > folded.perf
+# mv folded.perf ${PERF_TMP}
 
-${FLAME_DIR}/flamegraph.pl --colors java --hash ${PERF_TMP} > res/flame.svg
-rm ${PERF_TMP}
+# ${FLAME_DIR}/flamegraph.pl --colors java --hash ${PERF_TMP} > res/flame.svg
+# rm ${PERF_TMP}
