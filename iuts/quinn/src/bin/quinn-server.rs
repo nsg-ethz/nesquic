@@ -3,7 +3,6 @@
 //! Checkout the `README.md` for guidance.
 
 use std::{
-    ascii,
     net::SocketAddr,
     str,
     sync::Arc,
@@ -160,16 +159,11 @@ async fn handle_request(
         .read_to_end(64 * 1024)
         .await
         .map_err(|e| anyhow!("failed reading request: {}", e))?;
-    let mut escaped = String::new();
-    for &x in &req[..] {
-        let part = ascii::escape_default(x).collect::<Vec<_>>();
-        escaped.push_str(str::from_utf8(&part).unwrap());
-    }
-    
+
     // Execute the request
     let blob = process_get(&req)
         .map_err(|e| anyhow!("failed handling request: {}", e))?;
-
+    
     // Write the response
     send.write_chunk(Bytes::from_iter(blob))
         .await

@@ -7,6 +7,7 @@ use std::{
 };
 use quinn_iut::{
     bind_socket,
+    load_certificates_from_pem,
     noprotection::NoProtectionClientConfig
 };
 
@@ -17,6 +18,7 @@ use log::{
     error
 };
 use quinn::TokioRuntime;
+use rustls::RootCertStore;
 use url::Url;
 
 #[derive(Parser, Debug)]
@@ -28,7 +30,7 @@ struct Args {
     unencrypted: bool,
     /// TLS certificate in PEM format
     #[clap(short = 'c', long = "cert")]
-    cert: PathBuf,
+    cert: String,
 }
 
 #[tokio::main]
@@ -39,8 +41,10 @@ async fn run(args: Args) -> Result<()> {
         .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
 
     let mut roots = rustls::RootCertStore::empty();
-    let cert = rustls::Certificate(fs::read(args.cert)?);
-    roots.add(&cert)?;
+    let certs = load_certificates_from_pem(args.cert.as_str())?;
+    for cert in certs {
+        roots.add(&cert)?;
+    }
 
     let mut client_crypto = rustls::ClientConfig::builder()
         .with_cipher_suites(quinn_iut::PERF_CIPHER_SUITES)
@@ -81,6 +85,7 @@ async fn run(args: Args) -> Result<()> {
         .await
         .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
+    // TODO: check if we do this the most performant way
     send.write_all(request.as_bytes())
         .await
         .map_err(|e| anyhow!("failed to send request: {}", e))?;
