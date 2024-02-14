@@ -190,9 +190,9 @@ fn parse_bit_size(value: &str) -> Result<u64> {
         .unwrap();
     if bit_prefix.to_digit(10) == None {
         let mult: u64 = match bit_prefix {
-            'G' => 1024 * 1024 * 1024,
-            'M' => 1024 * 1024,
-            'K' => 1024,
+            'G' => 1000 * 1000 * 1000,
+            'M' => 1000 * 1000,
+            'K' => 1000,
             _ => bail!("unknown unit prefix")
         };
 

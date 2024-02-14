@@ -99,11 +99,13 @@ async fn run(args: Args) -> Result<()> {
         .await
         .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
+    info!("received response: {}b", resp.len()*8);
+
     let duration = response_start.elapsed();
     info!(
         "response received in {:?} - {} MiB/s",
         duration,
-        resp.len() as f32 / (duration_secs(&duration) * 1024.0 * 1024.0)
+        resp.len() as f32 / (duration_secs(&duration) * 1000.0 * 1000.0)
     );
 
     conn.close(0u32.into(), b"done");

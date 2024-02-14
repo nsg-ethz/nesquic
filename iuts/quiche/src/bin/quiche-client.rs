@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant}
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use log::{
     info,
@@ -36,21 +36,20 @@ fn run(args: Args) -> Result<()> {
     let mut config = quiche::Config::new(quiche::PROTOCOL_VERSION).unwrap();
     config.set_application_protos(&[b"perf"])?;
     config.load_verify_locations_from_file(args.cert.as_str())?;
-    config.verify_peer(false);
     config.set_max_idle_timeout(5000);
     config.set_max_recv_udp_payload_size(MAX_DATAGRAM_SIZE);
     config.set_max_send_udp_payload_size(MAX_DATAGRAM_SIZE);
-    config.set_initial_max_data(10_000_000);
-    config.set_initial_max_stream_data_bidi_local(1_000_000);
-    config.set_initial_max_stream_data_bidi_remote(1_000_000);
-    config.set_initial_max_stream_data_uni(1_000_000);
-    config.set_initial_max_streams_bidi(100);
-    config.set_initial_max_streams_uni(100);
+    config.set_initial_max_data(1_000_000_000);
+    config.set_initial_max_stream_data_bidi_local(1_000_000_000);
+    config.set_initial_max_stream_data_bidi_remote(1_000_000_000);
+    config.set_initial_max_stream_data_uni(1_000_000_000);
+    config.set_initial_max_streams_bidi(1);
     config.set_disable_active_migration(true);
+    config.verify_peer(false);
     config.enable_early_data();
 
     // TODO: check what greasing means
-    // config.grease(false);
+    config.grease(false);
 
     let mut scid = [0; quiche::MAX_CONN_ID_LEN];
     let rng = SystemRandom::new();
@@ -90,17 +89,18 @@ fn run(args: Args) -> Result<()> {
             continue;
         }
 
-        return Err(anyhow!(format!("send() failed: {e:?}")));
+        error!("send() failed: {e:?}");
     }
 
     let mut buf = [0; 65535];
-    let mut pkt_count = 0;
-    let start = Instant::now();
-
-    // Prepare request.
     let request = format!("GET {}\r\n", args.url.path());
+    let req_start = Instant::now();
     let mut req_sent = false;
-    let mut res_rcvd = false;
+    let mut res_recv = false;
+    let mut res_start;
+    let res_size = parse_bit_size(args.url.path())?;
+    info!("expecting {res_size}b blob");
+    let mut res_cnt: u64 = 0;
 
     loop {
         poll.poll(&mut events, conn.timeout()).unwrap();
@@ -152,20 +152,19 @@ fn run(args: Args) -> Result<()> {
             };
 
             debug!("processed {} bytes", read);
+            while let Ok((read, fin)) = conn.stream_recv(0, &mut buf) {
+                if req_sent {
+                    res_cnt += (read * 8) as u64;
+                    debug!("{res_cnt}/{res_size} received");
+                }
+
+                if fin {
+                    res_recv = true;
+                }
+            }
         }
 
         debug!("done reading");
-
-        if conn.is_closed() {
-            info!("connection closed, {:?}", conn.stats());
-            break Ok(());
-        }
-
-        // we have received our response, we can close the connection
-        if conn.is_established() && req_sent && conn.stream_finished(0_u32.into()) {
-            debug!("closing connection");
-            conn.close(false, 0_u32.into(), b"done")?;
-        }
 
         // send our perf request
         if conn.is_established() && !req_sent {
@@ -174,6 +173,8 @@ fn run(args: Args) -> Result<()> {
             let buf = request.as_bytes();
             conn.stream_send(0, buf, true)?;
             req_sent = true;
+            res_start = Instant::now();
+            info!("request sent at {:?}", res_start - req_start);
         }
 
         // Generate outgoing QUIC packets and send them on the UDP socket, until
@@ -207,12 +208,46 @@ fn run(args: Args) -> Result<()> {
             debug!("written {}", write);
         }
 
+        // we can terminate if the connection is closed
         if conn.is_closed() {
             info!("connection closed, {:?}", conn.stats());
             break Ok(());
         }
+
+        // we have received our response, we can start closing the connection
+        if res_recv && conn.stream_finished(0) && !conn.is_closed() && !conn.is_draining() {
+            debug!("closing connection");
+            conn.close(true, 0_u32.into(), b"done")?;
+        }
     }
 }
+
+fn parse_bit_size(value: &str) -> Result<u64> {
+    if value.len() < 5 || !value.starts_with("/") || !value.ends_with("bit") {
+        bail!("malformed blob size");
+    }
+
+    let bit_prefix = value
+        .chars()
+        .rev()
+        .nth(3)
+        .unwrap();
+    if bit_prefix.to_digit(10) == None {
+        let mult: u64 = match bit_prefix {
+            'G' => 1000 * 1000 * 1000,
+            'M' => 1000 * 1000,
+            'K' => 1000,
+            _ => bail!("unknown unit prefix")
+        };
+
+        let size = value[1..value.len()-4].parse::<u64>()?;
+        Ok(mult * size)
+    }
+    else {
+        let size = value[1..value.len()-3].parse::<u64>()?;
+        Ok(size)
+    }
+} 
 
 fn main() {
     env_logger::init();
