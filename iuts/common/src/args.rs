@@ -8,7 +8,7 @@ use url::Url;
 #[derive(Parser, Debug)]
 #[clap(name = "client")]
 pub struct ClientArgs {    
-    /// the URL to contact the QUIC server
+    /// the address of the server
     pub url: Url,
     /// do TLS handshake, but don't encrypt connection
     #[clap(long = "unencrypted")]
@@ -16,6 +16,8 @@ pub struct ClientArgs {
     /// TLS certificate in PEM format
     #[clap(short = 'c', long = "cert")]
     pub cert: String,
+    #[clap(short = 'b', long = "blob")]
+    pub blob: String,
 }
 
 #[derive(Parser, Debug)]

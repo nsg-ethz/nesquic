@@ -4,7 +4,7 @@ use std::{
 };
 use common::{
     args::ClientArgs,
-    parse_bit_size
+    perf::{create_req, parse_blob_size}
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -84,12 +84,12 @@ fn run(args: ClientArgs) -> Result<()> {
     }
 
     let mut buf = [0; 65535];
-    let request = format!("GET {}\r\n", args.url.path());
+    let request = create_req(&args.blob)?;
     let req_start = Instant::now();
     let mut req_sent = false;
     let mut res_recv = false;
     let mut res_start;
-    let res_size = parse_bit_size(args.url.path())?;
+    let res_size = parse_blob_size(&args.blob)?;
     info!("expecting {res_size}b blob");
     let mut res_cnt: u64 = 0;
 
@@ -145,7 +145,7 @@ fn run(args: ClientArgs) -> Result<()> {
             debug!("processed {} bytes", read);
             while let Ok((read, fin)) = conn.stream_recv(0, &mut buf) {
                 if req_sent {
-                    res_cnt += (read * 8) as u64;
+                    res_cnt += read as u64;
                     debug!("{res_cnt}/{res_size} received");
                 }
 
@@ -160,8 +160,7 @@ fn run(args: ClientArgs) -> Result<()> {
         if conn.is_established() && !req_sent {
             info!("sending perf request {:?}", request);
 
-            let buf = request.as_bytes();
-            conn.stream_send(0, buf, true)?;
+            conn.stream_send(0, &request, true)?;
             req_sent = true;
             res_start = Instant::now();
             info!("request sent at {:?}", res_start - req_start);

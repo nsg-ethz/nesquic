@@ -4,10 +4,9 @@ use std::{
     time::{Duration, Instant}
 };
 use common::{
-    Blob,
-    parse_bit_size,
-    process_get,
-    args::ServerArgs
+    args::ServerArgs, 
+    perf::Blob,
+    perf::process_req,
 };
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -313,7 +312,7 @@ fn handle_writable_stream(client: &mut Client, stream_id: u64) -> Result<()> {
 }
 
 fn handle_request(req: &[u8], client: &mut Client) -> Result<()> {
-    let mut blob = process_get(req)?;
+    let mut blob = process_req(req)?;
     let stream_id = client.partial_responses.len() as u64;
     send_blob(&mut client.conn, stream_id, &mut blob)?;
 

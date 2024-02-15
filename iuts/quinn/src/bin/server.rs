@@ -3,8 +3,6 @@
 //! Checkout the `README.md` for guidance.
 
 use std::{
-    net::SocketAddr,
-    str,
     sync::Arc,
 };
 use quinn_iut::{
@@ -14,9 +12,7 @@ use quinn_iut::{
     noprotection::NoProtectionServerConfig
 };
 use common::{
-    Blob,
-    parse_bit_size,
-    process_get,
+    perf::process_req,
     args::ServerArgs
 };
 
@@ -130,7 +126,7 @@ async fn handle_request(
         .map_err(|e| anyhow!("failed reading request: {}", e))?;
 
     // Execute the request
-    let blob = process_get(&req)
+    let blob = process_req(&req)
         .map_err(|e| anyhow!("failed handling request: {}", e))?;
     
     // Write the response

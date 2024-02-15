@@ -1,7 +1,5 @@
 use std::{
-    fs,
     net::ToSocketAddrs,
-    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant}
 };
@@ -12,7 +10,7 @@ use quinn_iut::{
 };
 use common::{
     args::ClientArgs,
-    parse_bit_size
+    perf::create_req
 };
 
 use anyhow::{anyhow, Result};
@@ -22,7 +20,6 @@ use log::{
     error
 };
 use quinn::TokioRuntime;
-use rustls::RootCertStore;
 
 
 #[tokio::main]
@@ -59,7 +56,7 @@ async fn run(args: ClientArgs) -> Result<()> {
     let mut endpoint = quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
     endpoint.set_default_client_config(client_config);
 
-    let request = format!("GET {}\r\n", args.url.path());
+    let request = create_req(&args.blob)?;
     let start = Instant::now();
     let host = args.url
         .host_str()
@@ -78,7 +75,7 @@ async fn run(args: ClientArgs) -> Result<()> {
         .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
     // TODO: check if we do this the most performant way
-    send.write_all(request.as_bytes())
+    send.write_all(&request)
         .await
         .map_err(|e| anyhow!("failed to send request: {}", e))?;
     send.finish()
