@@ -35,7 +35,7 @@ trap cleanup EXIT
 echo Create testing network
 sudo ip netns add ${NETNS}
 nsexec ip link set dev ${IFACE} up
-# tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 1000ms
+# nsexec tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 100ms
 
 # compile IUTs in release mode
 echo Compile IUT
