@@ -10,10 +10,10 @@ use quinn_iut::{
 };
 use common::{
     args::ClientArgs,
-    perf::create_req
+    perf::{create_req, parse_blob_size}
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::Parser;
 use log::{
     info,
@@ -88,7 +88,7 @@ async fn run(args: ClientArgs) -> Result<()> {
         .await
         .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
-    info!("received response: {}b", resp.len()*8);
+    info!("received response: {}b", resp.len());
 
     let duration = response_start.elapsed();
     info!(
@@ -102,6 +102,11 @@ async fn run(args: ClientArgs) -> Result<()> {
 
     // Give the server a fair chance to receive the close packet
     endpoint.wait_idle().await;
+
+    let res_size = parse_blob_size(&args.blob)? as usize;
+    if res_size != resp.len() {
+        bail!("received blob size ({}B) different from requested blob size ({}B)", resp.len(), res_size)
+    }
 
     Ok(())
 }

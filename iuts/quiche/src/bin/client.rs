@@ -89,9 +89,7 @@ fn run(args: ClientArgs) -> Result<()> {
     let mut req_sent = false;
     let mut res_recv = false;
     let mut res_start;
-    let res_size = parse_blob_size(&args.blob)?;
-    info!("expecting {res_size}b blob");
-    let mut res_cnt: u64 = 0;
+    let mut res_cnt = 0;
 
     loop {
         poll.poll(&mut events, conn.timeout()).unwrap();
@@ -146,10 +144,9 @@ fn run(args: ClientArgs) -> Result<()> {
             while let Ok((read, fin)) = conn.stream_recv(0, &mut buf) {
                 if req_sent {
                     res_cnt += read as u64;
-                    debug!("{res_cnt}/{res_size} received");
                 }
 
-                if fin {
+                if req_sent && fin {
                     res_recv = true;
                 }
             }
@@ -200,6 +197,12 @@ fn run(args: ClientArgs) -> Result<()> {
         // we can terminate if the connection is closed
         if conn.is_closed() {
             info!("connection closed, {:?}", conn.stats());
+
+            let res_size = parse_blob_size(&args.blob)?;
+            if res_size != res_cnt {
+                bail!("received blob size ({}B) different from requested blob size ({}B)", res_cnt, res_size)
+            }
+
             break Ok(());
         }
 
