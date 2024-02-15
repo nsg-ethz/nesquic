@@ -163,7 +163,6 @@ fn run(args: Args) -> Result<()> {
                 }
             }
         }
-
         debug!("done reading");
 
         // send our perf request

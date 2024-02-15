@@ -1,33 +1,48 @@
 use std::{
     collections::HashMap,
-    net::ToSocketAddrs,
     net::SocketAddr,
     time::{Duration, Instant}
 };
 
-use anyhow::{anyhow, Result};
-use clap::{Arg, Parser};
+use anyhow::{anyhow, bail, Context, Result};
+use clap::Parser;
 use log::{
     info,
     error,
     debug
 };
+use quiche::Connection;
 use ring::rand::*;
-
-struct PartialResponse {
-    body: Vec<u8>,
-
-    written: usize,
-}
 
 struct Client {
     conn: quiche::Connection,
-    partial_responses: HashMap<u64, PartialResponse>,
+    partial_responses: HashMap<u64, Blob>,
 }
 
 type ClientMap = HashMap<quiche::ConnectionId<'static>, Client>;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
+
+struct Blob {
+    bit_size: u64,
+    cursor: u64
+}
+
+impl Iterator for Blob {
+
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor < self.bit_size {
+            self.cursor += 8;
+            Some(0)
+        }   
+        else {
+            None
+        }
+    }
+
+}
 
 #[derive(Parser, Debug)]
 #[clap(name = "server")]
@@ -63,15 +78,13 @@ fn run(args: Args) -> Result<()> {
     config.set_max_idle_timeout(5000);
     config.set_max_recv_udp_payload_size(MAX_DATAGRAM_SIZE);
     config.set_max_send_udp_payload_size(MAX_DATAGRAM_SIZE);
-    config.set_initial_max_data(10_000_000);
-    config.set_initial_max_stream_data_bidi_local(1_000_000);
-    config.set_initial_max_stream_data_bidi_remote(1_000_000);
-    config.set_initial_max_stream_data_uni(1_000_000);
-    config.set_initial_max_streams_bidi(100);
-    config.set_initial_max_streams_uni(100);
+    config.set_initial_max_data(1_000_000_000);
+    config.set_initial_max_stream_data_bidi_local(1_000_000_000);
+    config.set_initial_max_stream_data_bidi_remote(1_000_000_000);
+    config.set_initial_max_stream_data_uni(1_000_000_000);
+    config.set_initial_max_streams_bidi(1);
     config.set_disable_active_migration(true);
-
-    let h3_config = quiche::h3::Config::new().unwrap();
+    config.enable_early_data();
 
     let rng = SystemRandom::new();
     let conn_id_seed =
@@ -92,8 +105,7 @@ fn run(args: Args) -> Result<()> {
             // has expired, so handle it without attempting to read packets. We
             // will then proceed with the send loop.
             if events.is_empty() && !continue_write {
-
-                // clients.values_mut().for_each(|c| c.conn.on_timeout());
+                clients.values_mut().for_each(|c| c.conn.on_timeout());
 
                 break 'read;
             }
@@ -232,12 +244,10 @@ fn run(args: Args) -> Result<()> {
 
                 let client = Client {
                     conn,
-                    http3_conn: None,
-                    partial_responses: HashMap::new(),
+                    partial_responses: HashMap::new()
                 };
 
                 clients.insert(scid.clone(), client);
-
                 clients.get_mut(&scid).unwrap()
             } else {
                 match clients.get_mut(&hdr.dcid) {
@@ -264,89 +274,16 @@ fn run(args: Args) -> Result<()> {
 
             info!("{} processed {} bytes", client.conn.trace_id(), read);
 
-            // Create a new HTTP/3 connection as soon as the QUIC connection
-            // is established.
-            if (client.conn.is_in_early_data() || client.conn.is_established()) &&
-                client.http3_conn.is_none() {
-                info!(
-                    "{} QUIC handshake completed, now trying HTTP/3",
-                    client.conn.trace_id()
-                );
-
-                let h3_conn = match quiche::h3::Connection::with_transport(
-                    &mut client.conn,
-                    &h3_config,
-                ) {
-                    Ok(v) => v,
-
-                    Err(e) => {
-                        error!("failed to create HTTP/3 connection: {}", e);
-                        continue 'read;
-                    },
-                };
-
-                // TODO: sanity check h3 connection before adding to map
-                client.http3_conn = Some(h3_conn);
+            while let Ok((read, fin)) = client.conn.stream_recv(0, pkt_buf) {
+                if fin {
+                    let req = &pkt_buf[..read];
+                    handle_request(req, client)?;
+                }
             }
 
-            if client.http3_conn.is_some() {
-                // Handle writable streams.
-                for stream_id in client.conn.writable() {
-                    handle_writable(client, stream_id);
-                }
-
-                // Process HTTP/3 events.
-                loop {
-                    let http3_conn = client.http3_conn.as_mut().unwrap();
-                    let event = http3_conn.poll(&mut client.conn);
-
-                    info!("{event:?}");
-
-                    match event {
-                        Ok((
-                            stream_id,
-                            quiche::h3::Event::Headers { list, .. },
-                        )) => {
-                            info!("handle request");
-                            handle_request(
-                                client,
-                                stream_id,
-                                &list,
-                            );
-                        },
-
-                        Ok((stream_id, quiche::h3::Event::Data)) => {
-                            info!(
-                                "{} got data on stream id {}",
-                                client.conn.trace_id(),
-                                stream_id
-                            );
-                        },
-
-                        Ok((_stream_id, quiche::h3::Event::Finished)) => (),
-                        Ok((_stream_id, quiche::h3::Event::Reset { .. })) => (),
-                        Ok((
-                            _prioritized_element_id,
-                            quiche::h3::Event::PriorityUpdate,
-                        )) => (),
-
-                        Ok((_goaway_id, quiche::h3::Event::GoAway)) => (),
-
-                        Err(quiche::h3::Error::Done) => {
-                            break;
-                        },
-
-                        Err(e) => {
-                            error!(
-                                "{} HTTP/3 error {:?}",
-                                client.conn.trace_id(),
-                                e
-                            );
-
-                            break;
-                        },
-                    }
-                }
+            // continue partial responses
+            for stream_id in client.conn.writable() {
+                handle_writable_stream(client, stream_id)?;
             }
         }
 
@@ -392,6 +329,91 @@ fn run(args: Args) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn handle_writable_stream(client: &mut Client, stream_id: u64) -> Result<()> {
+    let blob = client.partial_responses
+        .get_mut(&stream_id)
+        .ok_or_else(|| anyhow!("unknown stream"))?;
+
+    send_blob(&mut client.conn, stream_id, blob)?;
+
+    if blob.cursor >= blob.bit_size {
+        client.partial_responses.remove(&stream_id);
+    }
+
+    Ok(())
+}
+
+fn handle_request(req: &[u8], client: &mut Client) -> Result<()> {
+    let mut blob = process_get(req)?;
+    let stream_id = client.partial_responses.len() as u64;
+    send_blob(&mut client.conn, stream_id, &mut blob)?;
+
+    client.partial_responses.insert(stream_id, blob);
+
+    Ok(())
+}
+
+fn send_blob(conn: &mut Connection, stream_id: u64, blob: &mut Blob) -> Result<()> {
+    let buf = vec![0; ((blob.bit_size - blob.cursor)/8) as usize];
+    let sent = match conn.stream_send(stream_id, &buf, true) {
+        Ok(cnt) => {
+            debug!("sent some data: {cnt}/{}", buf.len());
+            Ok(cnt)
+        },
+        Err(quiche::Error::Done) => Ok(0),
+        Err(e) => Err(e),
+    }?;
+
+    blob.cursor += (sent as u64) * 8;
+
+    Ok(())
+}
+
+fn parse_bit_size(value: &str) -> Result<u64> {
+    if value.len() < 5 || !value.starts_with("/") || !value.ends_with("bit") {
+        bail!("malformed blob size");
+    }
+
+    let bit_prefix = value
+        .chars()
+        .rev()
+        .nth(3)
+        .unwrap();
+    if bit_prefix.to_digit(10) == None {
+        let mult: u64 = match bit_prefix {
+            'G' => 1000 * 1000 * 1000,
+            'M' => 1000 * 1000,
+            'K' => 1000,
+            _ => bail!("unknown unit prefix")
+        };
+
+        let size = value[1..value.len()-4].parse::<u64>()?;
+        Ok(mult * size)
+    }
+    else {
+        let size = value[1..value.len()-3].parse::<u64>()?;
+        Ok(size)
+    }
+} 
+
+fn process_get(x: &[u8]) -> Result<Blob> {
+    if x.len() < 4 || &x[0..4] != b"GET " {
+        bail!("missing GET");
+    }
+    if x[4..].len() < 2 || &x[x.len() - 2..] != b"\r\n" {
+        bail!("missing \\r\\n");
+    }
+    let x = &x[4..x.len() - 2];
+    let end = x.iter().position(|&c| c == b' ').unwrap_or(x.len());
+    let path = std::str::from_utf8(&x[..end]).context("path is malformed UTF-8")?;
+    let bsize = parse_bit_size(path)?;
+
+    Ok(Blob {
+        bit_size: bsize,
+        cursor: 0
+    })
 }
 
 /// Generate a stateless retry token.
