@@ -92,9 +92,9 @@ async fn run(args: ClientArgs) -> Result<()> {
 
     let duration = response_start.elapsed();
     info!(
-        "response received in {:?} - {} MiB/s",
+        "response received in {:?} - {} Mbit/s",
         duration,
-        resp.len() as f32 / (duration_secs(&duration) * 1000.0 * 1000.0)
+        8.0*resp.len() as f32 / (duration_secs(&duration) * 1000.0 * 1000.0)
     );
 
     conn.close(0u32.into(), b"done");

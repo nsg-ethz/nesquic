@@ -6,6 +6,14 @@ NETNS="qbench"
 PERF_OUT="res/out.perf"
 PERF_TMP="res/tmp.perf"
 FLAME_DIR="../../bin/FlameGraph"
+IUT=$1
+
+if [ $# -lt 1 ] 
+then 
+    echo "Specify the IUT you want to benchmark"
+    exit 1
+fi
+echo Running benchmarks for ${IUT}
 
 # stop the script if an error occurs
 set -e
@@ -31,9 +39,9 @@ nsexec ip link set dev ${IFACE} up
 
 # compile IUTs in release mode
 echo Compile IUT
-cargo build --release --bin quiche-server --bin quiche-client
+cargo build --release --bin ${IUT}-server --bin ${IUT}-client
 
-nsexec bash conn.sh
+nsexec bash conn.sh ${IUT}
 
 # sudo mv perf.data ${PERF_OUT}
 # sudo perf script -i ${PERF_OUT} > ${PERF_TMP}

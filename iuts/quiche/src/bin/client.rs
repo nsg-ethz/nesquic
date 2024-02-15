@@ -88,7 +88,7 @@ fn run(args: ClientArgs) -> Result<()> {
     let req_start = Instant::now();
     let mut req_sent = false;
     let mut res_recv = false;
-    let mut res_start;
+    let mut res_start = Instant::now();
     let mut res_cnt = 0;
 
     loop {
@@ -198,6 +198,13 @@ fn run(args: ClientArgs) -> Result<()> {
         if conn.is_closed() {
             info!("connection closed, {:?}", conn.stats());
 
+            let duration = res_start.elapsed();
+            info!(
+                "response received in {:?} - {} Mbit/s",
+                duration,
+                8.0*res_cnt as f32 / (duration_secs(&duration) * 1000.0 * 1000.0)
+            );
+
             let res_size = parse_blob_size(&args.blob)?;
             if res_size != res_cnt {
                 bail!("received blob size ({}B) different from requested blob size ({}B)", res_cnt, res_size)
@@ -212,6 +219,10 @@ fn run(args: ClientArgs) -> Result<()> {
             conn.close(true, 0_u32.into(), b"done")?;
         }
     }
+}
+
+fn duration_secs(x: &Duration) -> f32 {
+    x.as_secs() as f32 + x.subsec_nanos() as f32 * 1e-9
 }
 
 fn main() {
