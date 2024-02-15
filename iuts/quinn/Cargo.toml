@@ -22,6 +22,8 @@ common = { path = "../common" }
 
 [[bin]]
 name = "quinn-client"
+path = "src/bin/client.rs"
 
 [[bin]]
 name = "quinn-server"
+path = "src/bin/server.rs"

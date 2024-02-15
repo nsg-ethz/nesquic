@@ -18,6 +18,8 @@ common = { path = "../common" }
 
 [[bin]]
 name = "quiche-client"
+path = "src/bin/client.rs"
 
 [[bin]]
 name = "quiche-server"
+path = "src/bin/server.rs"
