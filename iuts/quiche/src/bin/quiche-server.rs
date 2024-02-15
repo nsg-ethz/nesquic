@@ -3,6 +3,12 @@ use std::{
     net::SocketAddr,
     time::{Duration, Instant}
 };
+use common::{
+    Blob,
+    parse_bit_size,
+    process_get,
+    args::ServerArgs
+};
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
@@ -23,45 +29,7 @@ type ClientMap = HashMap<quiche::ConnectionId<'static>, Client>;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
 
-struct Blob {
-    bit_size: u64,
-    cursor: u64
-}
-
-impl Iterator for Blob {
-
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor < self.bit_size {
-            self.cursor += 8;
-            Some(0)
-        }   
-        else {
-            None
-        }
-    }
-
-}
-
-#[derive(Parser, Debug)]
-#[clap(name = "server")]
-struct Args {
-    /// do TLS handshake, but don't encrypt connection
-    #[clap(long = "unencrypted")]
-    unencrypted: bool,
-    /// TLS private key in PEM format
-    #[clap(short = 'k', long = "key", requires = "cert")]
-    key: String,
-    /// TLS certificate in PEM format
-    #[clap(short = 'c', long = "cert", requires = "key")]
-    cert: String,
-    /// Address to listen on
-    #[clap(long = "listen", default_value = "[::1]:4433")]
-    listen: SocketAddr,
-}
-
-fn run(args: Args) -> Result<()> {
+fn run(args: ServerArgs) -> Result<()> {
     let mut socket = mio::net::UdpSocket::bind(args.listen).unwrap();
 
     let mut poll = mio::Poll::new().unwrap();
@@ -93,7 +61,6 @@ fn run(args: Args) -> Result<()> {
     let mut clients = ClientMap::new();
 
     let local_addr = socket.local_addr().unwrap();
-    let mut continue_write = false;
     let mut buf = [0; 65535];
     let mut out = [0; MAX_DATAGRAM_SIZE];
 
@@ -104,7 +71,7 @@ fn run(args: Args) -> Result<()> {
             // If the event loop reported no events, it means that the timeout
             // has expired, so handle it without attempting to read packets. We
             // will then proceed with the send loop.
-            if events.is_empty() && !continue_write {
+            if events.is_empty() {
                 clients.values_mut().for_each(|c| c.conn.on_timeout());
 
                 break 'read;
@@ -338,7 +305,7 @@ fn handle_writable_stream(client: &mut Client, stream_id: u64) -> Result<()> {
 
     send_blob(&mut client.conn, stream_id, blob)?;
 
-    if blob.cursor >= blob.bit_size {
+    if blob.cursor >= blob.size {
         client.partial_responses.remove(&stream_id);
     }
 
@@ -356,7 +323,7 @@ fn handle_request(req: &[u8], client: &mut Client) -> Result<()> {
 }
 
 fn send_blob(conn: &mut Connection, stream_id: u64, blob: &mut Blob) -> Result<()> {
-    let buf = vec![0; ((blob.bit_size - blob.cursor)/8) as usize];
+    let buf = vec![0; (blob.size - blob.cursor) as usize];
     let sent = match conn.stream_send(stream_id, &buf, true) {
         Ok(cnt) => {
             debug!("sent some data: {cnt}/{}", buf.len());
@@ -366,54 +333,9 @@ fn send_blob(conn: &mut Connection, stream_id: u64, blob: &mut Blob) -> Result<(
         Err(e) => Err(e),
     }?;
 
-    blob.cursor += (sent as u64) * 8;
+    blob.cursor += sent as u64;
 
     Ok(())
-}
-
-fn parse_bit_size(value: &str) -> Result<u64> {
-    if value.len() < 5 || !value.starts_with("/") || !value.ends_with("bit") {
-        bail!("malformed blob size");
-    }
-
-    let bit_prefix = value
-        .chars()
-        .rev()
-        .nth(3)
-        .unwrap();
-    if bit_prefix.to_digit(10) == None {
-        let mult: u64 = match bit_prefix {
-            'G' => 1000 * 1000 * 1000,
-            'M' => 1000 * 1000,
-            'K' => 1000,
-            _ => bail!("unknown unit prefix")
-        };
-
-        let size = value[1..value.len()-4].parse::<u64>()?;
-        Ok(mult * size)
-    }
-    else {
-        let size = value[1..value.len()-3].parse::<u64>()?;
-        Ok(size)
-    }
-} 
-
-fn process_get(x: &[u8]) -> Result<Blob> {
-    if x.len() < 4 || &x[0..4] != b"GET " {
-        bail!("missing GET");
-    }
-    if x[4..].len() < 2 || &x[x.len() - 2..] != b"\r\n" {
-        bail!("missing \\r\\n");
-    }
-    let x = &x[4..x.len() - 2];
-    let end = x.iter().position(|&c| c == b' ').unwrap_or(x.len());
-    let path = std::str::from_utf8(&x[..end]).context("path is malformed UTF-8")?;
-    let bsize = parse_bit_size(path)?;
-
-    Ok(Blob {
-        bit_size: bsize,
-        cursor: 0
-    })
 }
 
 /// Generate a stateless retry token.
@@ -475,7 +397,7 @@ fn validate_token<'a>(
 fn main() {
     env_logger::init();
 
-    let args = Args::parse();
+    let args = ServerArgs::parse();
     let code = {
         if let Err(e) = run(args) {
             error!("ERROR: {e}");

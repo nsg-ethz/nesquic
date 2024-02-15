@@ -2,6 +2,10 @@ use std::{
     net::ToSocketAddrs,
     time::{Duration, Instant}
 };
+use common::{
+    args::ClientArgs,
+    parse_bit_size
+};
 
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
@@ -11,23 +15,10 @@ use log::{
     error
 };
 use ring::rand::*;
-use url::Url;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {    
-    url: Url,
-    /// do TLS handshake, but don't encrypt connection
-    #[clap(long = "unencrypted")]
-    unencrypted: bool,
-    /// TLS certificate in PEM format
-    #[clap(short = 'c', long = "cert")]
-    cert: String,
-}
-
-fn run(args: Args) -> Result<()> {
+fn run(args: ClientArgs) -> Result<()> {
     let remote = (args.url.host_str().unwrap(), args.url.port().unwrap_or(4433))
         .to_socket_addrs()?
         .next()
@@ -221,37 +212,10 @@ fn run(args: Args) -> Result<()> {
     }
 }
 
-fn parse_bit_size(value: &str) -> Result<u64> {
-    if value.len() < 5 || !value.starts_with("/") || !value.ends_with("bit") {
-        bail!("malformed blob size");
-    }
-
-    let bit_prefix = value
-        .chars()
-        .rev()
-        .nth(3)
-        .unwrap();
-    if bit_prefix.to_digit(10) == None {
-        let mult: u64 = match bit_prefix {
-            'G' => 1000 * 1000 * 1000,
-            'M' => 1000 * 1000,
-            'K' => 1000,
-            _ => bail!("unknown unit prefix")
-        };
-
-        let size = value[1..value.len()-4].parse::<u64>()?;
-        Ok(mult * size)
-    }
-    else {
-        let size = value[1..value.len()-3].parse::<u64>()?;
-        Ok(size)
-    }
-} 
-
 fn main() {
     env_logger::init();
 
-    let args = Args::parse();
+    let args = ClientArgs::parse();
     let code = {
         if let Err(e) = run(args) {
             error!("ERROR: {e}");
