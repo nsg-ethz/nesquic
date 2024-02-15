@@ -10,6 +10,10 @@ use quinn_iut::{
     load_certificates_from_pem,
     noprotection::NoProtectionClientConfig
 };
+use common::{
+    args::ClientArgs,
+    parse_bit_size
+};
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
@@ -19,22 +23,10 @@ use log::{
 };
 use quinn::TokioRuntime;
 use rustls::RootCertStore;
-use url::Url;
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {    
-    url: Url,
-    /// do TLS handshake, but don't encrypt connection
-    #[clap(long = "unencrypted")]
-    unencrypted: bool,
-    /// TLS certificate in PEM format
-    #[clap(short = 'c', long = "cert")]
-    cert: String,
-}
 
 #[tokio::main]
-async fn run(args: Args) -> Result<()> {
+async fn run(args: ClientArgs) -> Result<()> {
     let remote = (args.url.host_str().unwrap(), args.url.port().unwrap_or(4433))
         .to_socket_addrs()?
         .next()
@@ -124,7 +116,7 @@ fn duration_secs(x: &Duration) -> f32 {
 fn main() {
     env_logger::init();
     
-    let args = Args::parse();
+    let args = ClientArgs::parse();
     let code = {
         if let Err(e) = run(args) {
             error!("ERROR: {e}");

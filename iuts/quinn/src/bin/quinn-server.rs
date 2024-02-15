@@ -13,58 +13,27 @@ use quinn_iut::{
     load_private_key_from_file,
     noprotection::NoProtectionServerConfig
 };
+use common::{
+    Blob,
+    parse_bit_size,
+    process_get,
+    args::ServerArgs
+};
 
 use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use clap::Parser;
+
 use log::{
     info,
     error
 };
 use quinn::TokioRuntime;
 
-#[derive(Parser, Debug)]
-#[clap(name = "server")]
-struct Args {
-    /// do TLS handshake, but don't encrypt connection
-    #[clap(long = "unencrypted")]
-    unencrypted: bool,
-    /// TLS private key in PEM format
-    #[clap(short = 'k', long = "key", requires = "cert")]
-    key: String,
-    /// TLS certificate in PEM format
-    #[clap(short = 'c', long = "cert", requires = "key")]
-    cert: String,
-    /// Address to listen on
-    #[clap(long = "listen", default_value = "[::1]:4433")]
-    listen: SocketAddr,
-}
-
-struct Blob {
-    bit_size: u64,
-    cursor: u64
-}
-
-impl Iterator for Blob {
-
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor < self.bit_size {
-            self.cursor += 8;
-            Some(0)
-        }   
-        else {
-            None
-        }
-    }
-
-}
-
 fn main() {
     env_logger::init();
     
-    let args = Args::parse();
+    let args = ServerArgs::parse();
     let code = {
         if let Err(e) = run(args) {
             error!("ERROR: {e}");
@@ -77,7 +46,7 @@ fn main() {
 }
 
 #[tokio::main]
-async fn run(args: Args) -> Result<()> {
+async fn run(args: ServerArgs) -> Result<()> {
     let certs = load_certificates_from_pem(args.cert.as_str()).context("failed to read certificate chain")?;
     let key = load_private_key_from_file(args.key.as_str()).context("failed to read private key")?;
 
@@ -176,49 +145,4 @@ async fn handle_request(
     
     info!("complete");
     Ok(())
-}
-
-fn parse_bit_size(value: &str) -> Result<u64> {
-    if value.len() < 5 || !value.starts_with("/") || !value.ends_with("bit") {
-        bail!("malformed blob size");
-    }
-
-    let bit_prefix = value
-        .chars()
-        .rev()
-        .nth(3)
-        .unwrap();
-    if bit_prefix.to_digit(10) == None {
-        let mult: u64 = match bit_prefix {
-            'G' => 1000 * 1000 * 1000,
-            'M' => 1000 * 1000,
-            'K' => 1000,
-            _ => bail!("unknown unit prefix")
-        };
-
-        let size = value[1..value.len()-4].parse::<u64>()?;
-        Ok(mult * size)
-    }
-    else {
-        let size = value[1..value.len()-3].parse::<u64>()?;
-        Ok(size)
-    }
-} 
-
-fn process_get(x: &[u8]) -> Result<Blob> {
-    if x.len() < 4 || &x[0..4] != b"GET " {
-        bail!("missing GET");
-    }
-    if x[4..].len() < 2 || &x[x.len() - 2..] != b"\r\n" {
-        bail!("missing \\r\\n");
-    }
-    let x = &x[4..x.len() - 2];
-    let end = x.iter().position(|&c| c == b' ').unwrap_or(x.len());
-    let path = str::from_utf8(&x[..end]).context("path is malformed UTF-8")?;
-    let bsize = parse_bit_size(path)?;
-
-    Ok(Blob {
-        bit_size: bsize,
-        cursor: 0
-    })
 }
