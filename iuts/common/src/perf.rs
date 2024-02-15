@@ -82,5 +82,21 @@ mod tests {
     fn it_parses_bit_size() {
         let size = parse_blob_size("100Mbit");
         assert_eq!(size.unwrap(), 100_000_000/8);
+
+        let size = parse_blob_size("12lbit");
+        assert_eq!(size.is_err(), true);
+
+        let size = parse_blob_size("Gbit");
+        assert_eq!(size.is_err(), true);
+    }
+
+    #[test]
+    fn it_creates_valid_reqs() {
+        let blob = "20Gbit";
+        let lhs = process_req(&create_req(&blob).unwrap())
+            .unwrap()
+            .size;
+        let rhs = parse_blob_size(&blob).unwrap();
+        assert_eq!(lhs, rhs);
     }
 }
