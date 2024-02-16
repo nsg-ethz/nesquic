@@ -1,7 +1,6 @@
 use std::{
     net::ToSocketAddrs,
     sync::Arc,
-    time::{Duration, Instant}
 };
 use quinn_iut::{
     bind_socket,
@@ -10,7 +9,11 @@ use quinn_iut::{
 };
 use common::{
     args::ClientArgs,
-    perf::{create_req, parse_blob_size}
+    perf::{
+        Stats,
+        create_req, 
+        parse_blob_size
+    }
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -23,7 +26,7 @@ use quinn::TokioRuntime;
 
 
 #[tokio::main]
-async fn run(args: ClientArgs) -> Result<()> {
+async fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
     let remote = (args.url.host_str().unwrap(), args.url.port().unwrap_or(4433))
         .to_socket_addrs()?
         .next()
@@ -57,7 +60,6 @@ async fn run(args: ClientArgs) -> Result<()> {
     endpoint.set_default_client_config(client_config);
 
     let request = create_req(&args.blob)?;
-    let start = Instant::now();
     let host = args.url
         .host_str()
         .ok_or_else(|| anyhow!("no hostname specified"))?;
@@ -68,7 +70,6 @@ async fn run(args: ClientArgs) -> Result<()> {
         .await
         .map_err(|e| anyhow!("failed to connect: {}", e))?;
 
-    info!("connected at {:?}", start.elapsed());
     let (mut send, mut recv) = conn
         .open_bi()
         .await
@@ -81,21 +82,17 @@ async fn run(args: ClientArgs) -> Result<()> {
     send.finish()
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
-    let response_start = Instant::now();
-    info!("request sent at {:?}", response_start - start);
+    
+    stats.start_measurement();
     let resp = recv
         .read_to_end(usize::max_value())
         .await
         .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
-    info!("received response: {}b", resp.len());
+    info!("received response: {}B", resp.len());
 
-    let duration = response_start.elapsed();
-    info!(
-        "response received in {:?} - {} Mbit/s",
-        duration,
-        8.0*resp.len() as f32 / (duration_secs(&duration) * 1000.0 * 1000.0)
-    );
+    let (duration, throughput) = stats.stop_measurement()?;
+    info!("response received in {:?} - {:.2} Mbit/s", duration, throughput);
 
     conn.close(0u32.into(), b"done");
     info!("waiting for server to close connection...");
@@ -111,22 +108,23 @@ async fn run(args: ClientArgs) -> Result<()> {
     Ok(())
 }
 
-fn duration_secs(x: &Duration) -> f32 {
-    x.as_secs() as f32 + x.subsec_nanos() as f32 * 1e-9
-}
-
 fn main() {
     env_logger::init();
     
     let args = ClientArgs::parse();
-    let code = {
-        if let Err(e) = run(args) {
+    let blob_size = parse_blob_size(&args.blob).expect("didn't recognize blob size");
+    let mut stats = Stats::new(blob_size);
+    let mut code = 0;
+
+    for _ in 0..args.reps {
+        if let Err(e) = run(&args, &mut stats) {
             error!("ERROR: {e}");
-            1
-        } else {
-            0
+            code = 1;
+            break;
         }
-    };
+    }
+
+    println!("{}", stats.summary());
     std::process::exit(code);
 }
 

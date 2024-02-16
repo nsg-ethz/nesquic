@@ -1,5 +1,8 @@
-use std::str;
+use std::{
+    fmt::format, str, time::{Duration, Instant}
+};
 use anyhow::{Result, Context, bail};
+use average::MeanWithError;
 
 /// A blob represents the response payload
 pub struct Blob {
@@ -23,6 +26,80 @@ impl Iterator for Blob {
         else {
             None
         }
+    }
+
+}
+
+/// Stats keep track of the measurements
+pub struct Stats {
+    /// the measured time differences
+    deltas: Vec<Duration>,
+
+    /// the current start time
+    start: Option<Instant>,
+
+    /// reference blob size in bytes
+    /// needed to compute throughput
+    blob_size: u64,
+}
+
+impl Stats {
+
+    pub fn new(blob_bytes: u64) -> Self {
+        Stats {
+            deltas: Vec::new(),
+            start: None,
+            blob_size: blob_bytes
+        }
+    }
+
+    /// Starts a new measurement
+    pub fn start_measurement(&mut self) {
+        self.start = Some(Instant::now());
+    }
+
+    /// Stops the current measurement and resets the current measurement
+    /// Returns an error if `start_measurement` wasn't called before
+    /// Otherwise, returns measured duration and throughput in Mbit/s
+    pub fn stop_measurement(&mut self) -> Result<(Duration, f64)> {
+        if let Some(start) = self.start {
+            let end = Instant::now();
+            let t = end - start;
+            self.deltas.push(t);
+            self.start = None;
+
+            Ok((t, self.throughput_for_duration(&t)))
+        }
+        else {
+            bail!("haven't started a measurement yet.")
+        }
+    }
+
+    fn durations(&self) -> MeanWithError {
+        self.deltas
+            .iter()
+            .map(|t| t.as_secs_f64())
+            .collect()
+    }
+
+    fn throughput_for_duration(&self, t: &Duration) -> f64 {
+        8.0*self.blob_size as f64 / (t.as_secs_f64() * 1000.0 * 1000.0)
+    }
+
+    fn throughputs(&self) -> MeanWithError {
+        self.deltas
+            .iter()
+            .map(|t| self.throughput_for_duration(t))
+            .collect()
+    }
+
+    /// Summarizes the measurements
+    pub fn summary(&self) -> String {
+        let ts = self.durations();
+        let tp = self.throughputs();
+        
+        format!("reps: {} mean duration: {:.2}s std duration: {:.2}s 
+        mean throughput: {:.2}Mbit/s std throughput: {:.2}Mbit/s", self.deltas.len(), ts.mean(), ts.error(), tp.mean(), tp.error())
     }
 
 }

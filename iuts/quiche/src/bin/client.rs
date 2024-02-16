@@ -1,10 +1,14 @@
 use std::{
     net::ToSocketAddrs,
-    time::{Duration, Instant}
+    time::Duration
 };
 use common::{
     args::ClientArgs,
-    perf::{create_req, parse_blob_size}
+    perf::{
+        Stats,
+        create_req, 
+        parse_blob_size
+    }
 };
 
 use anyhow::{anyhow, bail, Result};
@@ -18,7 +22,7 @@ use ring::rand::*;
 
 const MAX_DATAGRAM_SIZE: usize = 1350;
 
-fn run(args: ClientArgs) -> Result<()> {
+fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
     let remote = (args.url.host_str().unwrap(), args.url.port().unwrap_or(4433))
         .to_socket_addrs()?
         .next()
@@ -85,10 +89,8 @@ fn run(args: ClientArgs) -> Result<()> {
 
     let mut buf = [0; 65535];
     let request = create_req(&args.blob)?;
-    let req_start = Instant::now();
     let mut req_sent = false;
     let mut res_recv = false;
-    let mut res_start = Instant::now();
     let mut res_cnt = 0;
 
     loop {
@@ -159,8 +161,7 @@ fn run(args: ClientArgs) -> Result<()> {
 
             conn.stream_send(0, &request, true)?;
             req_sent = true;
-            res_start = Instant::now();
-            info!("request sent at {:?}", res_start - req_start);
+            stats.start_measurement();
         }
 
         // Generate outgoing QUIC packets and send them on the UDP socket, until
@@ -198,12 +199,8 @@ fn run(args: ClientArgs) -> Result<()> {
         if conn.is_closed() {
             info!("connection closed, {:?}", conn.stats());
 
-            let duration = res_start.elapsed();
-            info!(
-                "response received in {:?} - {} Mbit/s",
-                duration,
-                8.0*res_cnt as f32 / (duration_secs(&duration) * 1000.0 * 1000.0)
-            );
+            let (duration, throughput) = stats.stop_measurement()?;
+            info!("response received in {:?} - {:.2} Mbit/s", duration, throughput);
 
             let res_size = parse_blob_size(&args.blob)?;
             if res_size != res_cnt {
@@ -221,21 +218,22 @@ fn run(args: ClientArgs) -> Result<()> {
     }
 }
 
-fn duration_secs(x: &Duration) -> f32 {
-    x.as_secs() as f32 + x.subsec_nanos() as f32 * 1e-9
-}
-
 fn main() {
     env_logger::init();
-
+    
     let args = ClientArgs::parse();
-    let code = {
-        if let Err(e) = run(args) {
+    let blob_size = parse_blob_size(&args.blob).expect("didn't recognize blob size");
+    let mut stats = Stats::new(blob_size);
+    let mut code = 0;
+
+    for _ in 0..args.reps {
+        if let Err(e) = run(&args, &mut stats) {
             error!("ERROR: {e}");
-            1
-        } else {
-            0
+            code = 1;
+            break;
         }
-    };
+    }
+
+    println!("{}", stats.summary());
     std::process::exit(code);
 }
