@@ -12,7 +12,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#define ADDR "172.64.155.249" // this is stackoverflow.com :)
+#define ADDR "127.0.0.1" // this is stackoverflow.com :)
 #define PORT 8080
 #define SA struct sockaddr
 #define CM struct cmsghdr
@@ -72,32 +72,10 @@ ssize_t send_max_msg_tcp() {
             printf("error writing: %s\n", strerror(errno));
             exit(-1);
         }
-        printf("wrote %ld bytes\n", bytes_written);
+        // printf("wrote %ld bytes\n", bytes_written);
         if (bytes_written > bytes_written_max) bytes_written_max = bytes_written;
     }
 
-    // using sendmsg
-    // size_t k = 64;
-    // struct iovec iov[k];
-    // for (int i = 0; i < k; i++) {
-    //     void* buf = malloc(2 << 20);
-    //     iov[i].iov_base = buf;
-    //     iov[i].iov_len = sizeof(buf);
-    // }
-
-    // struct msghdr hdr;
-    // memset(&hdr, 0, sizeof(hdr));    
-    
-    // hdr.msg_iov = iov;
-    // hdr.msg_iovlen = k;
-
-    // size_t bytes_written = sendmsg(sockfd, &hdr, 0);
-    // if (bytes_written == -1) {
-    //     printf("error sending msg: %s\n", strerror(errno));
-    //     exit(-1);
-    // }
- 
-    // // close the socket
     close(sockfd);
 
     return bytes_written_max;
@@ -185,11 +163,11 @@ ssize_t send_max_msg_udp() {
 int main(int argc, char *argv[]) {
     printf("this bin finds the max payload one syscall can send.\n");
 
-    // ssize_t tcp_b = send_max_msg_tcp();
-    // float tcp_kb = tcp_b / 1024.0;
-    // printf("wrote %f kb on a TCP socket.\n", tcp_kb);
+    ssize_t tcp_b = send_max_msg_tcp();
+    float tcp_kb = tcp_b / 1024.0;
+    printf("wrote %.2f KB on a TCP socket.\n", tcp_kb);
 
     ssize_t udp_b = send_max_msg_udp();
     float udp_kb = udp_b / 1024.0;
-    printf("wrote %f kb on a UDP socket.\n", udp_kb);
+    printf("wrote %.2f KB on a UDP socket.\n", udp_kb);
 }
