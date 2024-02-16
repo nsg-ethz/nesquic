@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    time::{Duration, Instant}
+    time::Duration
 };
 use common::{
     args::ServerArgs, 
@@ -9,7 +9,7 @@ use common::{
     perf::process_req,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use log::{
     info,
@@ -293,8 +293,6 @@ fn run(args: ServerArgs) -> Result<()> {
             !c.conn.is_closed()
         });
     }
-
-    Ok(())
 }
 
 fn handle_writable_stream(client: &mut Client, stream_id: u64) -> Result<()> {

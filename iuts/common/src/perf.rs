@@ -1,7 +1,11 @@
 use std::{
-    fmt::format, str, time::{Duration, Instant}
+    str, 
+    time::{
+        Duration, 
+        Instant
+    }
 };
-use anyhow::{Result, Context, bail};
+use anyhow::{Result, bail};
 use average::MeanWithError;
 
 /// A blob represents the response payload

@@ -2,9 +2,7 @@
 //!
 //! Checkout the `README.md` for guidance.
 
-use std::{
-    sync::Arc,
-};
+use std::sync::Arc;
 use quinn_iut::{
     bind_socket,
     load_certificates_from_pem,
@@ -16,7 +14,7 @@ use common::{
     args::ServerArgs
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
 use clap::Parser;
 

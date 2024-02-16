@@ -1,7 +1,4 @@
-use std::{
-    net::ToSocketAddrs,
-    time::Duration
-};
+use std::net::ToSocketAddrs;
 use common::{
     args::ClientArgs,
     perf::{
