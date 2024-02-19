@@ -4,6 +4,7 @@ members = [
     "iuts/common",
     "iuts/quinn",
     "iuts/quiche",
+    "iuts/nesquic",
 ]
 
 [profile.release]
