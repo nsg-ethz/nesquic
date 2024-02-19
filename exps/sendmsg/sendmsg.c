@@ -50,6 +50,18 @@ ssize_t send_max_msg_tcp() {
     }
     
     bzero(&servaddr, sizeof(servaddr));
+
+    int max_seg_size = 9 * 1024;
+    if (setsockopt(sockfd, IPPROTO_TCP, TCP_MAXSEG, &max_seg_size, sizeof(max_seg_size)) != 0) {
+        printf("failed to set TCP max segment size...\n");
+        exit(-1);
+    }
+
+    int send_buf_size = 32 * 1024 * 1024;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &send_buf_size, sizeof(send_buf_size)) != 0) {
+        printf("failed to set socket send buffer size...\n");
+        exit(-1);
+    }
  
     // assign IP, PORT
     servaddr.sin_family = AF_INET;
@@ -63,7 +75,7 @@ ssize_t send_max_msg_tcp() {
     }
 
     // using write
-    char buf[2 << 20];
+    char buf[1024*1024*7];
     bzero(buf, sizeof(buf));
     ssize_t bytes_written_max = 0;
     for (int i = 0; i < 10; i++) {
