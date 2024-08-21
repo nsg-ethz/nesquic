@@ -16,6 +16,9 @@ ring = "0.17.7"
 url = "2.5.0"
 common = { path = "../common" }
 rio = "0.9.4"
+io-uring = "0.6.4"
+slab = "0.4.9"
+libc = "0.2.158"
 
 [[bin]]
 name = "nesquic-client"
