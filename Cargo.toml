@@ -1,10 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-    "iuts/common",
-    "iuts/quinn",
-    "iuts/quiche",
-]
+members = ["common", "iuts/quinn", "iuts/quiche", "qbench"]
 
 [profile.release]
 debug = true

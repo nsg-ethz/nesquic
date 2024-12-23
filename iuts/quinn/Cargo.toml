@@ -18,7 +18,7 @@ rustls-pemfile = "2.0.0"
 socket2 = "0.5.5"
 tokio = { version = "1.35.1", features = ["macros", "full"] }
 url = "2.5.0"
-common = { path = "../common" }
+common = { path = "../../common" }
 
 [[bin]]
 name = "quinn-client"
