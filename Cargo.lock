@@ -449,6 +449,7 @@ dependencies = [
  "anyhow",
  "average",
  "clap",
+ "log",
  "mio",
  "ring 0.17.14",
  "tokio",
@@ -1524,6 +1525,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",
+ "clap",
  "common",
  "env_logger",
  "log",

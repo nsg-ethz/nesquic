@@ -14,6 +14,8 @@ struct ConnectionData {
 static CONNECTION_MAP: Mutex<Option<HashMap<QcHandle, ConnectionData>>> = Mutex::new(None);
 
 fn main() {
+    env_logger::init();
+
     init_conn_map();
     let callbacks = Callbacks {
         incoming_connection: Box::new(handle_inc),
@@ -33,7 +35,6 @@ fn handle_inc(_: &Incoming) -> ConnectionDecision {
     return ConnectionDecision::Accept;
 }
 fn handle_conn(handle: QcHandle) {
-    println!("new connection!");
     new_data(handle);
 }
 
@@ -78,7 +79,6 @@ fn new_data(handle: QcHandle) {
     while let Some(s) = handle.clone().readable_stream() {
         if let Some((len, fin)) = handle.read(s, &mut buf) {
             if fin != true || len != 8 {
-                println!("expected one 64bit number as a request");
                 continue;
             }
             let to_send = usize::from_be_bytes(buf[..8].try_into().expect("unexpected slice size"));
@@ -115,7 +115,6 @@ fn writable(handle: QcHandle) {
         let data = match get(handle.clone()) {
             Some(a) => a,
             None => {
-                println!("attempt to send on uninitialized handle...");
                 return;
             }
         };

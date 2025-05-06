@@ -5,7 +5,7 @@ COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
-CLIENT_BIN="target/release/$1-client"
+CLIENT_BIN="target/release/qbench"
 SERVER_BIN="target/release/$1-server"
 CPU_SYSTEM=0,1,20,21
 CPU_QBENCH=2-19,22-39
@@ -47,6 +47,6 @@ sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "^vfs_readv?$" > res/runs/read.log
 sleep 3
 
 echo Start client
-run client ${CLIENT_BIN} --cert res/pem/cert.pem --blob 1000Mbit --reps 30 https://localhost:4433
+run client ${CLIENT_BIN} --cert res/pem/cert.pem --blob 500Mbit --reps 30 https://127.0.0.1:4433
 
 cleanup

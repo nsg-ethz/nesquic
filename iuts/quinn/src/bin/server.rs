@@ -2,15 +2,15 @@
 //!
 //! Checkout the `README.md` for guidance.
 
+use anyhow::{anyhow, Context, Result};
+use bytes::Bytes;
+use clap::Parser;
 use common::{args::ServerArgs, perf::process_req};
 use quinn_iut::{
     bind_socket, load_certificates_from_pem, load_private_key_from_file,
     noprotection::NoProtectionServerConfig,
 };
 use std::sync::Arc;
-
-use anyhow::{anyhow, Context, Result};
-use bytes::Bytes;
 
 use log::{error, info};
 use quinn::TokioRuntime;
@@ -62,7 +62,7 @@ async fn run(args: ServerArgs) -> Result<()> {
     )
     .context("creating endpoint")?;
 
-    info!("listening on {}", endpoint.local_addr()?);
+    info!("Listening on {}", endpoint.local_addr()?);
 
     while let Some(conn) = endpoint.accept().await {
         info!("connection incoming");

@@ -1,3 +1,4 @@
+use log::{debug, error, info};
 use std::io;
 use std::marker::PhantomData;
 pub use std::net::SocketAddr;
@@ -28,9 +29,9 @@ pub struct QuicConfig<'a> {
 impl QuicConfig<'_> {
     pub fn new() -> Self {
         QuicConfig {
-            key_fp: "pem/key.pem",
-            cert_fp: "pem/cert.pem",
-            local_addr_str: "127.0.0.1:6789",
+            key_fp: "res/pem/key.pem",
+            cert_fp: "res/pem/cert.pem",
+            local_addr_str: "127.0.0.1:4433",
             max_recv_datagram_size: 1350,
             max_send_datagram_size: 1350,
         }
@@ -107,7 +108,7 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
                 // Invalid packet
                 continue 'socket;
             };
-            println!("received {} bytes from {}", len, from);
+            debug!("received {} bytes from {}", len, from);
             use DatagramEvent::*;
             match event {
                 NewConnection(incoming) => {
@@ -145,6 +146,7 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
     #[tokio::main]
     pub async fn listen(&mut self) -> io::Result<()> {
         let socket_addr = self.ep.get_local_addr();
+        info!("Listening on {}", socket_addr);
         let socket = UdpSocket::bind(socket_addr).await.unwrap();
         let socket = Arc::new(socket);
         self.socket = Some(socket);
@@ -163,7 +165,7 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
         let socket = self.socket();
         let mut buf = [0; 8192];
         let cxs = self.ep.connections_vec();
-        println!("{} active connections", cxs.len());
+        debug!("{} active connections", cxs.len());
         for handle in cxs {
             let handle = handle.clone();
             drain_handle(&mut buf, handle.clone(), socket.clone()).await;
@@ -186,7 +188,7 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
                     None => time::Duration::from_millis(1000),
                 };
                 sleep(d).await;
-                println!("Potential timeout!");
+                error!("Potential timeout!");
                 m_h.on_timeout();
                 let mut buf = [0; 8192];
                 drain_handle(&mut buf, handle.clone(), socket.clone()).await;

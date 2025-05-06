@@ -1,33 +1,20 @@
-use std::{
-    net::ToSocketAddrs,
-    sync::Arc,
-};
-use quinn_iut::{
-    bind_socket,
-    load_certificates_from_pem,
-    noprotection::NoProtectionClientConfig
-};
-use common::{
-    args::ClientArgs,
-    perf::{
-        Stats,
-        create_req, 
-        parse_blob_size
-    }
-};
-
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;
-use log::{
-    info,
-    error
+use common::{
+    args::ClientArgs,
+    perf::{create_req, parse_blob_size, Stats},
 };
+use log::{error, info};
 use quinn::TokioRuntime;
-
+use quinn_iut::{bind_socket, load_certificates_from_pem, noprotection::NoProtectionClientConfig};
+use std::{net::ToSocketAddrs, sync::Arc};
 
 #[tokio::main]
 async fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
-    let remote = (args.url.host_str().unwrap(), args.url.port().unwrap_or(4433))
+    let remote = (
+        args.url.host_str().unwrap(),
+        args.url.port().unwrap_or(4433),
+    )
         .to_socket_addrs()?
         .next()
         .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
@@ -48,19 +35,22 @@ async fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
     client_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
     let client_config = if args.unencrypted {
-        quinn::ClientConfig::new(Arc::new(NoProtectionClientConfig::new(Arc::new(client_crypto))))
-    }
-    else {        
+        quinn::ClientConfig::new(Arc::new(NoProtectionClientConfig::new(Arc::new(
+            client_crypto,
+        ))))
+    } else {
         quinn::ClientConfig::new(Arc::new(client_crypto))
     };
-    
+
     let addr = "[::]:0".parse().unwrap();
     let socket = bind_socket(addr)?;
-    let mut endpoint = quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
+    let mut endpoint =
+        quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
     endpoint.set_default_client_config(client_config);
 
     let request = create_req(&args.blob)?;
-    let host = args.url
+    let host = args
+        .url
         .host_str()
         .ok_or_else(|| anyhow!("no hostname specified"))?;
 
@@ -82,7 +72,7 @@ async fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
     send.finish()
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
-    
+
     stats.start_measurement();
     let resp = recv
         .read_to_end(usize::max_value())
@@ -92,7 +82,10 @@ async fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
     info!("received response: {}B", resp.len());
 
     let (duration, throughput) = stats.stop_measurement()?;
-    info!("response received in {:?} - {:.2} Mbit/s", duration, throughput);
+    info!(
+        "response received in {:?} - {:.2} Mbit/s",
+        duration, throughput
+    );
 
     conn.close(0u32.into(), b"done");
     info!("waiting for server to close connection...");
@@ -102,7 +95,11 @@ async fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
 
     let res_size = parse_blob_size(&args.blob)? as usize;
     if res_size != resp.len() {
-        bail!("received blob size ({}B) different from requested blob size ({}B)", resp.len(), res_size)
+        bail!(
+            "received blob size ({}B) different from requested blob size ({}B)",
+            resp.len(),
+            res_size
+        )
     }
 
     Ok(())
@@ -110,7 +107,7 @@ async fn run(args: &ClientArgs, stats: &mut Stats) -> Result<()> {
 
 fn main() {
     env_logger::init();
-    
+
     let args = ClientArgs::parse();
     let blob_size = parse_blob_size(&args.blob).expect("didn't recognize blob size");
     let mut stats = Stats::new(blob_size);

@@ -33,7 +33,6 @@ fn handle_inc(_: &Incoming) -> ConnectionDecision {
     return ConnectionDecision::Accept;
 }
 fn handle_conn(handle: QcHandle) {
-    println!("new connection!");
     new_data(handle);
 }
 

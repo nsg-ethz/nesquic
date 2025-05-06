@@ -1,4 +1,5 @@
 use common::io::{self, ConnectionHandle, DatagramEvent, QuicConfig, SocketAddr};
+use log::error;
 use quiche;
 use ring::rand;
 use std::collections::HashMap;
@@ -77,7 +78,7 @@ impl ConnectionHandle for QcHandle {
         match conn.stream_recv(s, buf) {
             Ok(s) => Some(s),
             Err(e) => {
-                println!("{}", e);
+                error!("{}", e);
                 None
             }
         }
@@ -102,7 +103,7 @@ impl ConnectionHandle for QcHandle {
             Ok((l, i)) => Some((l, i.to)),
             Err(quiche::Error::Done) => None,
             Err(e) => {
-                println!("{} send failed: {}", conn.trace_id(), e);
+                error!("{} send failed: {}", conn.trace_id(), e);
                 conn.close(false, 0x1, b"fail").ok();
                 None
             }
@@ -175,7 +176,7 @@ impl io::QuicEndpoint<Incoming, QcHandle> for Endpoint {
         let conn = match quiche::accept(&inc.conn_id, None, self.local_addr, from, &mut self.cfg) {
             Ok(c) => c,
             Err(e) => {
-                println!("did not accept: {}", e);
+                error!("did not accept: {}", e);
                 return None;
             }
         };
@@ -201,12 +202,10 @@ impl io::QuicEndpoint<Incoming, QcHandle> for Endpoint {
 
         if !self.connections.contains_key(&hdr.dcid) && !self.connections.contains_key(&conn_id) {
             if hdr.ty != quiche::Type::Initial {
-                println!("unexpected packet");
+                error!("unexpected packet");
                 return None;
             }
-            println!("hdr.version: {}", hdr.version);
             if !quiche::version_is_supported(hdr.version) {
-                println!("version negotiation");
                 // TODO: version negotiation
                 return None;
             }
@@ -235,7 +234,7 @@ impl io::QuicEndpoint<Incoming, QcHandle> for Endpoint {
         match conn.recv(pkt_buf, recv_info) {
             Ok(n) => Some(n),
             Err(e) => {
-                println!("conn handle failed: {:?}", e);
+                error!("conn handle failed: {:?}", e);
                 None
             }
         }
@@ -244,9 +243,6 @@ impl io::QuicEndpoint<Incoming, QcHandle> for Endpoint {
     fn clean(&mut self) {
         self.connections.retain(|_, ref mut h| {
             let conn = h.get();
-            if conn.is_closed() {
-                println!("cleaned connection");
-            }
             !conn.is_closed()
         });
     }
