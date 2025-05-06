@@ -8,11 +8,12 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.79"
 bytes = "1.5.0"
-clap = { version = "4.4.14", features = ["derive"] }
 env_logger = "0.11.1"
 log = "0.4.20"
-quinn = { version = "0.10.2", features = ["rustls"] }
-quinn-proto = "0.10.6"
+# quinn = { version = "0.10.2", features = ["rustls"] }
+quinn = { path = "../../../quinn/quinn", features = ["rustls"] }
+quinn-proto = { path = "../../../quinn/quinn-proto" }
+# quinn-proto = "0.10.6"
 rustls = { version = "0.21.0", features = ["dangerous_configuration", "quic"] }
 rustls-pemfile = "2.0.0"
 socket2 = "0.5.5"

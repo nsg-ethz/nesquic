@@ -2,31 +2,22 @@
 //!
 //! Checkout the `README.md` for guidance.
 
-use std::sync::Arc;
+use common::{args::ServerArgs, perf::process_req};
 use quinn_iut::{
-    bind_socket,
-    load_certificates_from_pem,
-    load_private_key_from_file,
-    noprotection::NoProtectionServerConfig
+    bind_socket, load_certificates_from_pem, load_private_key_from_file,
+    noprotection::NoProtectionServerConfig,
 };
-use common::{
-    perf::process_req,
-    args::ServerArgs
-};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use clap::Parser;
 
-use log::{
-    info,
-    error
-};
+use log::{error, info};
 use quinn::TokioRuntime;
 
 fn main() {
     env_logger::init();
-    
+
     let args = ServerArgs::parse();
     let code = {
         if let Err(e) = run(args) {
@@ -41,8 +32,10 @@ fn main() {
 
 #[tokio::main]
 async fn run(args: ServerArgs) -> Result<()> {
-    let certs = load_certificates_from_pem(args.cert.as_str()).context("failed to read certificate chain")?;
-    let key = load_private_key_from_file(args.key.as_str()).context("failed to read private key")?;
+    let certs = load_certificates_from_pem(args.cert.as_str())
+        .context("failed to read certificate chain")?;
+    let key =
+        load_private_key_from_file(args.key.as_str()).context("failed to read private key")?;
 
     let mut server_crypto = rustls::ServerConfig::builder()
         .with_safe_defaults()
@@ -51,9 +44,10 @@ async fn run(args: ServerArgs) -> Result<()> {
     server_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
     let mut server_config = if args.unencrypted {
-        quinn::ServerConfig::with_crypto(Arc::new(NoProtectionServerConfig::new(Arc::new(server_crypto))))
-    }
-    else {        
+        quinn::ServerConfig::with_crypto(Arc::new(NoProtectionServerConfig::new(Arc::new(
+            server_crypto,
+        ))))
+    } else {
         quinn::ServerConfig::with_crypto(Arc::new(server_crypto))
     };
     let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
@@ -102,13 +96,11 @@ async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
                 Ok(s) => s,
             };
             let fut = handle_request(stream);
-            tokio::spawn(
-                async move {
-                    if let Err(e) = fut.await {
-                        error!("failed: {reason}", reason = e.to_string());
-                    }
+            tokio::spawn(async move {
+                if let Err(e) = fut.await {
+                    error!("failed: {reason}", reason = e.to_string());
                 }
-            );
+            });
         }
     }
     .await?;
@@ -124,9 +116,8 @@ async fn handle_request(
         .map_err(|e| anyhow!("failed reading request: {}", e))?;
 
     // Execute the request
-    let blob = process_req(&req)
-        .map_err(|e| anyhow!("failed handling request: {}", e))?;
-    
+    let blob = process_req(&req).map_err(|e| anyhow!("failed handling request: {}", e))?;
+
     // Write the response
     send.write_chunk(Bytes::from_iter(blob))
         .await
@@ -136,7 +127,7 @@ async fn handle_request(
     send.finish()
         .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
-    
+
     info!("complete");
     Ok(())
 }

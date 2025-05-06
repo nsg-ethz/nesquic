@@ -10,3 +10,6 @@ anyhow = "1.0.79"
 average = "0.14.1"
 clap = { version = "4.5.0", features = ["derive"] }
 url = "2.5.0"
+mio = "1.0.3"
+ring = "0.17.14"
+tokio = { version = "1.44.1", features = ["full"] }

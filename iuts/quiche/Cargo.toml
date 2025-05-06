@@ -7,12 +7,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
-clap = { version = "4.4.18", features = ["derive"] }
 env_logger = "0.11.1"
 log = "0.4.20"
-mio = { version = "0.8.10", features = ["net", "os-poll"] }
-quiche = "0.20.0"
-ring = "0.17.7"
+quiche = "0.23.4"
+ring = "0.17.14"
 url = "2.5.0"
 common = { path = "../../common" }
 
