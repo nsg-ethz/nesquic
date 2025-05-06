@@ -5,10 +5,24 @@ COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
+# Parse arguments
+while getopts "n:i:" opt; do
+    case $opt in
+        n ) NAME=${OPTARG} ;;
+        i ) IUT=${OPTARG} ;;
+        \?)
+            echo "Invalid option: -$OPTARG"
+            ;;
+    esac
+done
+
 BANDWIDTH="20mbit"
 IFACE="lo"
 NETNS="qbench"
-IUT=$1
+ROOT=$(dirname "$(readlink -f "$0")")
+SUMMARY_DIR=${ROOT}/../res/runs/${NAME}
+
+mkdir -p ${SUMMARY_DIR}
 
 if [ $# -lt 1 ]
 then
@@ -41,6 +55,6 @@ nsexec ip link set dev ${IFACE} up
 
 # compile IUTs in release mode
 echo Compile IUT
-cargo build --release --bin ${IUT}-server --bin ${IUT}-client
+cargo build --release --bin ${IUT}-server --bin qbench
 
-nsexec bash script/conn.sh ${IUT}
+${ROOT}/conn.sh -n ${NAME} -i ${IUT}

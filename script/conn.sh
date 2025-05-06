@@ -5,18 +5,33 @@ COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
-CLIENT_BIN="target/release/qbench"
-SERVER_BIN="target/release/$1-server"
-CPU_SYSTEM=0,1,20,21
-CPU_QBENCH=2-19,22-39
-TASKSET="taskset -c ${CPU_QBENCH}"
+# Parse arguments
+while getopts "n:i:" opt; do
+    case $opt in
+        n ) NAME=${OPTARG} ;;
+        i ) IUT=${OPTARG} ;;
+        \?)
+            echo "Invalid option: -$OPTARG"
+            ;;
+    esac
+done
 
-function run {
-    sudo -E systemd-run -q --scope -u $1 --slice qbench.slice ${@:2}
-}
+ROOT=$(dirname "$(readlink -f "$0")")
+SUMMARY_DIR=${ROOT}/../res/runs/${NAME}
+
+mkdir -p ${SUMMARY_DIR}
+
+CLIENT_BIN="${ROOT}/../target/release/qbench"
+SERVER_BIN="${ROOT}/../target/release/${IUT}-server"
+CPU_SYSTEM=0-10,20-30
+CPU_QBENCH=10-19,31-39
 
 function runb {
     sudo -b -E systemd-run -q --scope -u $1 --slice qbench.slice ${@:2}
+}
+
+function run {
+    sudo -E systemd-run -q --scope -u $1 ${@:2}
 }
 
 function stop_probes {
@@ -25,9 +40,11 @@ function stop_probes {
 
 function cleanup {
     stop_probes
-    sudo systemctl stop server.scope > /dev/null 2>&1
-    sudo systemctl stop client.scope > /dev/null 2>&1
+    sudo systemctl stop qb-server.scope > /dev/null 2>&1
+    sudo systemctl stop qb-cpu.scope > /dev/null 2>&1
 }
+
+cleanup
 
 echo -e "${COLOR_YELLOW}Assigning CPUs ${CPU_QBENCH} to experiment${COLOR_OFF}"
 sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_SYSTEM}
@@ -36,13 +53,14 @@ sudo systemctl set-property --runtime init.scope AllowedCPUs=${CPU_SYSTEM}
 sudo systemctl set-property --runtime qbench.slice AllowedCPUs=${CPU_QBENCH}
 
 echo Start server in background
-runb server ${SERVER_BIN} --cert res/pem/cert.pem --key res/pem/key.pem
+runb qb-server ${SERVER_BIN} --cert res/pem/cert.pem --key res/pem/key.pem
 sleep 1
-SERVER_PID=$(pidof $1-server)
+SERVER_PID=$(pidof ${IUT}-server)
 
-sudo -b funclatency-bpfcc -p ${SERVER_PID} ${SERVER_BIN}:"*rustls*" > res/runs/rustls.log 2>/dev/null
-sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "^vfs_writev?$" > res/runs/write.log 2>/dev/null
-sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "^vfs_readv?$" > res/runs/read.log 2>/dev/null
+# sudo -b systemd-run -q --scope -u qb-cpu ${ROOT}/capture-cpu.sh -n ${NAME} -i ${IUT}
+# sudo -b funclatency-bpfcc -p ${SERVER_PID} ${SERVER_BIN}:"*rustls*" > ${SUMMARY_DIR}/${IUT}-rustls.log 2>/dev/null
+    # sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "^vfs_writev?$" > ${SUMMARY_DIR}/${IUT}-write.log 2>/dev/null
+        # sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "^vfs_readv?$" > ${SUMMARY_DIR}/${IUT}-read.log 2>/dev/null
 
 sleep 3
 
