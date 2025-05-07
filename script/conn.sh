@@ -57,14 +57,19 @@ runb qb-server ${SERVER_BIN} --cert res/pem/cert.pem --key res/pem/key.pem
 sleep 1
 SERVER_PID=$(pidof ${IUT}-server)
 
-# sudo -b systemd-run -q --scope -u qb-cpu ${ROOT}/capture-cpu.sh -n ${NAME} -i ${IUT}
-# sudo -b funclatency-bpfcc -p ${SERVER_PID} ${SERVER_BIN}:"*rustls*" > ${SUMMARY_DIR}/${IUT}-rustls.log 2>/dev/null
-    # sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "^vfs_writev?$" > ${SUMMARY_DIR}/${IUT}-write.log 2>/dev/null
-        # sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "^vfs_readv?$" > ${SUMMARY_DIR}/${IUT}-read.log 2>/dev/null
+sudo -b systemd-run -q --scope -u qb-cpu ${ROOT}/capture-cpu.sh -n ${NAME} -i ${IUT}
+sudo -b funclatency-bpfcc -p ${SERVER_PID} ${SERVER_BIN}:"*rustls*crypt_in_place*" > ${SUMMARY_DIR}/${IUT}-bpf-rustls.log 2>/dev/null
+sudo -b funclatency-bpfcc -p ${SERVER_PID} "__sys_sendmmsg" > ${SUMMARY_DIR}/${IUT}-bpf-write.log 2>/dev/null
+sudo -b funclatency-bpfcc -p ${SERVER_PID} "do_recvmmsg" > ${SUMMARY_DIR}/${IUT}-bpf-read.log 2>/dev/null
+sudo -b funclatency-bpfcc -p ${SERVER_PID} -r "process_backlog" > ${SUMMARY_DIR}/${IUT}-bpf-ipc.log 2>/dev/null
+sudo -b funclatency-bpfcc -p ${SERVER_PID} "ep_send_events" > ${SUMMARY_DIR}/${IUT}-bpf-epoll.log 2>/dev/null
 
 sleep 3
 
 echo Start client
-run client ${CLIENT_BIN} --cert res/pem/cert.pem --blob 500Mbit --reps 30 https://127.0.0.1:4433
+run client ${CLIENT_BIN} --cert res/pem/cert.pem --blob 20000Mbit --reps 1 https://127.0.0.1:4433 > ${SUMMARY_DIR}/${IUT}-qbench.log 2>/dev/null
+
+echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
+cat ${SUMMARY_DIR}/${IUT}-qbench.log
 
 cleanup
