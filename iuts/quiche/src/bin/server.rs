@@ -1,27 +1,41 @@
 use common::io::{
     Callbacks, ConnectionDecision, ConnectionHandle, HLQuicEndpoint, QuicConfig, QuicEndpoint,
 };
+use log::{debug, error, info, warn};
 use quiche_iut::{Endpoint, Incoming, QcHandle};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone)]
-struct ConnectionData {
+enum ConnectionData {
+    Ready(ReadyData),
+    Waiting(WaitingData),
+    Failed,
+}
+
+#[derive(Clone)]
+struct WaitingData {
+    received: usize,
+    bytes: [u8; 8],
+}
+
+#[derive(Clone)]
+struct ReadyData {
     to_send: usize,
     sent: usize,
 }
 
-static CONNECTION_MAP: Mutex<Option<HashMap<QcHandle, ConnectionData>>> = Mutex::new(None);
+type ConnMap = Option<HashMap<QcHandle, ConnectionData>>;
+static CONNECTION_MAP: Mutex<ConnMap> = Mutex::new(None);
 
 fn main() {
     env_logger::init();
-
     init_conn_map();
     let callbacks = Callbacks {
-        incoming_connection: Box::new(handle_inc),
-        new_connection: Box::new(handle_conn),
-        new_data: Box::new(new_data),
-        writable: Box::new(writable),
+        incoming_connection: Arc::new(handle_inc),
+        new_connection: Arc::new(handle_conn),
+        new_data: Arc::new(new_data),
+        writable: Arc::new(writable),
     };
     let cfg = QuicConfig::new();
     let Some(endpoint) = Endpoint::with_config(cfg) else {
@@ -35,6 +49,7 @@ fn handle_inc(_: &Incoming) -> ConnectionDecision {
     return ConnectionDecision::Accept;
 }
 fn handle_conn(handle: QcHandle) {
+    info!("new connection!");
     new_data(handle);
 }
 
@@ -43,53 +58,99 @@ fn init_conn_map() {
     *m = Some(HashMap::new());
 }
 
-fn insert(handle: QcHandle, to_send: usize) {
-    let mut guard = CONNECTION_MAP.lock().unwrap();
-    let mut m = match &mut *guard {
+fn insert<'a>(guard: &mut MutexGuard<'a, ConnMap>, handle: &QcHandle, state: ConnectionData) {
+    let m = match &mut **guard {
         Some(a) => a,
         None => panic!("conn map not initialised"),
     };
-    m.insert(handle, ConnectionData { to_send, sent: 0 });
+    m.insert(handle.clone(), state);
 }
 
-fn get(handle: QcHandle) -> Option<ConnectionData> {
-    let mut guard = CONNECTION_MAP.lock().unwrap();
-    let mut m = match &mut *guard {
+fn get<'a>(guard: &mut MutexGuard<'a, ConnMap>, handle: &QcHandle) -> Option<ConnectionData> {
+    let m = match &mut **guard {
         Some(a) => a,
         None => panic!("conn map not initialised"),
     };
-    m.get(&handle).cloned()
+    m.get(handle).cloned()
 }
 
-fn update(handle: QcHandle, data: ConnectionData) {
-    let mut guard = CONNECTION_MAP.lock().unwrap();
-    let mut m = match &mut *guard {
+fn update<'a>(guard: &mut MutexGuard<'a, ConnMap>, handle: &QcHandle, state: ConnectionData) {
+    let mut m = match &mut **guard {
         Some(a) => a,
         None => panic!("conn map not initialised"),
     };
     if let Some(d) = m.get_mut(&handle) {
-        *d = data;
+        *d = state;
     } else {
-        m.insert(handle, data);
+        m.insert(handle.clone(), state);
     }
+}
+
+fn update_fail<'a>(guard: &mut MutexGuard<'a, ConnMap>, handle: &QcHandle) {
+    let state = ConnectionData::Failed;
+    update(guard, handle, state)
+}
+
+fn get_guard() -> MutexGuard<'static, ConnMap> {
+    CONNECTION_MAP.lock().unwrap()
 }
 
 fn new_data(handle: QcHandle) {
     let mut buf = [0; 4096];
     while let Some(s) = handle.clone().readable_stream() {
         if let Some((len, fin)) = handle.read(s, &mut buf) {
-            if fin != true || len != 8 {
+            let mut guard = get_guard();
+            let mut prev = match get(&mut guard, &handle) {
+                None => WaitingData {
+                    received: 0,
+                    bytes: [0; 8],
+                },
+                Some(ConnectionData::Waiting(w)) => w,
+                Some(_) => {
+                    error!("data after fail or ready");
+                    update_fail(&mut guard, &handle);
+                    continue;
+                }
+            };
+            let new_len = len + prev.received;
+            if new_len > 8 {
+                error!("more than 8 bytes!");
+                update_fail(&mut guard, &handle);
                 continue;
             }
-            let to_send = usize::from_be_bytes(buf[..8].try_into().expect("unexpected slice size"));
-            update(handle.clone(), ConnectionData { to_send, sent: 0 });
+            // Read new bytes into local buffer
+            for i in 0..len {
+                prev.bytes[prev.received + i] = buf[i];
+            }
+            if fin == false {
+                info!("partial packet received, waiting for more data");
+                let new_data = WaitingData {
+                    received: new_len,
+                    bytes: prev.bytes,
+                };
+                update(&mut guard, &handle, ConnectionData::Waiting(new_data));
+                continue;
+            }
+            if new_len != 8 {
+                error!("expected one 64bit number as a request");
+                update_fail(&mut guard, &handle);
+                continue;
+            }
+            let to_send =
+                usize::from_be_bytes(prev.bytes.try_into().expect("unexpected slice size"));
+            update(
+                &mut guard,
+                &handle,
+                ConnectionData::Ready(ReadyData { to_send, sent: 0 }),
+            );
+            write_stream(&mut guard, &handle, s);
         }
     }
-    writable(handle);
 }
 
-fn send_until_full(buf: &[u8], handle: QcHandle, s: u64, data: &ConnectionData) -> usize {
+fn send_until_full(buf: &[u8], handle: QcHandle, s: u64, data: &ReadyData) -> usize {
     let to_send = data.to_send;
+    let sent_before = data.sent;
     let mut sent = data.sent;
     loop {
         let rem = to_send - sent;
@@ -106,24 +167,31 @@ fn send_until_full(buf: &[u8], handle: QcHandle, s: u64, data: &ConnectionData) 
             break;
         }
     }
+    info!("wrote {}", sent - sent_before);
     sent
 }
 
-const WRITE_DATA: [u8; 1024 * 1024] = [0; 1024 * 1024];
+fn write_stream<'a>(guard: &mut MutexGuard<'a, ConnMap>, handle: &QcHandle, s: u64) {
+    let data = match get(guard, handle) {
+        Some(ConnectionData::Ready(a)) => a,
+        _ => {
+            warn!("attempt to send on uninitialized handle...");
+            return;
+        }
+    };
+    let sent = send_until_full(&WRITE_DATA, handle.clone(), s, &data);
+    let new_data = ReadyData {
+        to_send: data.to_send,
+        sent,
+    };
+    update(guard, handle, ConnectionData::Ready(new_data));
+    debug!("sent {} bytes ({} - {})", sent - data.sent, data.sent, sent);
+}
+
+static WRITE_DATA: [u8; 1024 * 1024] = [0; 1024 * 1024];
 fn writable(handle: QcHandle) {
     while let Some(s) = handle.writable_stream() {
-        let data = match get(handle.clone()) {
-            Some(a) => a,
-            None => {
-                return;
-            }
-        };
-        let sent = send_until_full(&WRITE_DATA, handle.clone(), s, &data);
-        let new_data = ConnectionData {
-            to_send: data.to_send,
-            sent,
-        };
-        update(handle.clone(), new_data);
-        //println!("sent {} bytes ({} - {})", sent - data.sent, data.sent, sent);
+        let mut guard = get_guard();
+        write_stream(&mut guard, &handle, s);
     }
 }

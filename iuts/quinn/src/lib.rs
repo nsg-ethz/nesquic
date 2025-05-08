@@ -1,19 +1,11 @@
-use std::{
-    net::SocketAddr,
-    fs::File,
-    io::BufReader 
-};
 use anyhow::{anyhow, Context, Result};
+use rustls::{Certificate, PrivateKey};
 use socket2::{Domain, Protocol, Socket, Type};
-use rustls::{
-    Certificate,
-    PrivateKey
-};
+use std::{fs::File, io::BufReader, net::SocketAddr};
 
 pub mod noprotection;
 
-pub fn bind_socket(
-    addr: SocketAddr) -> Result<std::net::UdpSocket> {
+pub fn bind_socket(addr: SocketAddr) -> Result<std::net::UdpSocket> {
     let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))
         .context("create socket")?;
 
@@ -31,12 +23,14 @@ pub fn bind_socket(
 pub fn load_private_key_from_file(path: &str) -> Result<PrivateKey> {
     let file = File::open(&path)?;
     let mut reader = BufReader::new(file);
-    let mut keys: Vec<_> = rustls_pemfile::ec_private_keys(& mut reader).collect();
+    let mut keys: Vec<_> = rustls_pemfile::ec_private_keys(&mut reader).collect();
 
     match keys.len() {
         0 => Err(anyhow!("No PKCS8-encoded private key found in {path}")),
         1 => Ok(PrivateKey(keys.remove(0)?.secret_sec1_der().to_owned())),
-        _ => Err(anyhow!("More than one PKCS8-encoded private key found in {path}")),
+        _ => Err(anyhow!(
+            "More than one PKCS8-encoded private key found in {path}"
+        )),
     }
 }
 

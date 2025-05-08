@@ -1,5 +1,4 @@
-use log::{debug, error, info};
-use std::io;
+use log::{debug, info};
 use std::marker::PhantomData;
 pub use std::net::SocketAddr;
 use std::sync::Arc;
@@ -39,7 +38,7 @@ impl QuicConfig<'_> {
 }
 
 // Implicitly locks
-pub trait ConnectionHandle: Sized + Send + Clone {
+pub trait ConnectionHandle: Sized + Sync + Send + Clone {
     fn write(&self, stream_id: u64, data: &[u8], fin: bool) -> Option<usize>;
     fn read(&self, stream_id: u64, buf: &mut [u8]) -> Option<(usize, bool)>;
     fn close(&self);
@@ -74,13 +73,13 @@ pub trait ConnectionHandle: Sized + Send + Clone {
 }
 
 pub struct Callbacks<INC, CH: ConnectionHandle> {
-    pub incoming_connection: Box<dyn Fn(&INC) -> ConnectionDecision>,
-    pub new_connection: Box<dyn Fn(CH)>,
-    pub new_data: Box<dyn Fn(CH)>,
-    pub writable: Box<dyn Fn(CH)>,
+    pub incoming_connection: Arc<dyn Fn(&INC) -> ConnectionDecision + Send + Sync>,
+    pub new_connection: Arc<dyn Fn(CH) + Send + Sync>,
+    pub new_data: Arc<dyn Fn(CH) + Send + Sync>,
+    pub writable: Arc<dyn Fn(CH) + Send + Sync>,
 }
 
-pub struct HLQuicEndpoint<INC, CH: ConnectionHandle, QE: QuicEndpoint<INC, CH>> {
+pub struct HLQuicEndpoint<INC: Send + Sync, CH: ConnectionHandle, QE: QuicEndpoint<INC, CH>> {
     ep: Box<QE>, //low level end point
     socket: Option<Arc<UdpSocket>>,
     callbacks: Callbacks<INC, CH>,
@@ -88,7 +87,12 @@ pub struct HLQuicEndpoint<INC, CH: ConnectionHandle, QE: QuicEndpoint<INC, CH>> 
     ch: PhantomData<CH>,
 }
 
-impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpoint<INC, CH, QE> {
+impl<
+        INC: Send + Sync + 'static,
+        CH: ConnectionHandle + 'static,
+        QE: QuicEndpoint<INC, CH> + 'static,
+    > HLQuicEndpoint<INC, CH, QE>
+{
     pub fn new(ep: Box<QE>, callbacks: Callbacks<INC, CH>) -> Self {
         HLQuicEndpoint {
             ep,
@@ -98,7 +102,7 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
             ch: PhantomData,
         }
     }
-    async fn read_loop(&mut self) {
+    async fn read_loop(&self) -> ! {
         let mut buf = [0; 65536];
         let socket = self.socket();
         'socket: loop {
@@ -143,15 +147,23 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
             self.send_all().await;
         }
     }
-    #[tokio::main]
-    pub async fn listen(&mut self) -> io::Result<()> {
+    #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+    pub async fn listen(&mut self) -> ! {
         let socket_addr = self.ep.get_local_addr();
-        info!("Listening on {}", socket_addr);
         let socket = UdpSocket::bind(socket_addr).await.unwrap();
         let socket = Arc::new(socket);
         self.socket = Some(socket);
+        const NUM_THREADS: usize = 5;
+        let self_unmut = Arc::new(&*self);
+        for _ in 0..NUM_THREADS - 1 {
+            let this = unsafe {
+                std::mem::transmute::<Arc<&Self>, Arc<&'static Self>>(self_unmut.clone())
+            };
+            tokio::spawn(async move {
+                this.read_loop().await;
+            });
+        }
         self.read_loop().await;
-        Ok(())
     }
 
     fn socket(&self) -> Arc<UdpSocket> {
@@ -161,11 +173,10 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
         }
     }
 
-    async fn send_all(&mut self) {
+    async fn send_all(&self) {
         let socket = self.socket();
         let mut buf = [0; 8192];
         let cxs = self.ep.connections_vec();
-        debug!("{} active connections", cxs.len());
         for handle in cxs {
             let handle = handle.clone();
             drain_handle(&mut buf, handle.clone(), socket.clone()).await;
@@ -177,7 +188,7 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
         }
     }
 
-    fn start_timeout_timer(&mut self, handle: CH) {
+    fn start_timeout_timer(&self, handle: CH) {
         let m_h = handle.clone();
         let socket = self.socket();
         tokio::spawn(async move {
@@ -188,7 +199,7 @@ impl<INC, CH: ConnectionHandle + 'static, QE: QuicEndpoint<INC, CH>> HLQuicEndpo
                     None => time::Duration::from_millis(1000),
                 };
                 sleep(d).await;
-                error!("Potential timeout!");
+                info!("Potential timeout!");
                 m_h.on_timeout();
                 let mut buf = [0; 8192];
                 drain_handle(&mut buf, handle.clone(), socket.clone()).await;
@@ -207,19 +218,16 @@ async fn drain_handle<CH: ConnectionHandle>(buf: &mut [u8], handle: CH, socket: 
 }
 
 /// Implemented by TRANSLATION
-pub trait QuicEndpoint<INC, CH: ConnectionHandle> {
+pub trait QuicEndpoint<INC: Sync + Send, CH: ConnectionHandle>: Sync + Send {
     fn get_local_addr(&self) -> &SocketAddr;
     fn with_config(cfg: QuicConfig<'_>) -> Option<Box<Self>>;
-    fn handle_packet(
-        &mut self,
-        pkt_buf: &mut [u8],
-        from: SocketAddr,
-    ) -> Option<DatagramEvent<INC, CH>>;
-    fn conn_handle(&mut self, handle: CH, pkt_buf: &mut [u8], from: SocketAddr) -> Option<usize>;
-    fn connections_vec(&self) -> Vec<&CH>;
-    fn clean(&mut self);
-    fn accept_connection(&mut self, inc: INC, from: SocketAddr) -> Option<CH>;
-    fn reject_connection(&mut self, inc: INC, from: SocketAddr);
+    fn handle_packet(&self, pkt_buf: &mut [u8], from: SocketAddr)
+        -> Option<DatagramEvent<INC, CH>>;
+    fn conn_handle(&self, handle: CH, pkt_buf: &mut [u8], from: SocketAddr) -> Option<usize>;
+    fn connections_vec(&self) -> Vec<CH>;
+    fn clean(&self);
+    fn accept_connection(&self, inc: INC, from: SocketAddr) -> Option<CH>;
+    fn reject_connection(&self, inc: INC, from: SocketAddr);
 }
 
 /// Relevant for APPLICATION

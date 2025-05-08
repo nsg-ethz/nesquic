@@ -1,5 +1,5 @@
 use common::io::{self, ConnectionHandle, DatagramEvent, QuicConfig, SocketAddr};
-use log::error;
+use log::{error, info, warn};
 use quiche;
 use ring::rand;
 use std::collections::HashMap;
@@ -8,10 +8,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time;
 
 pub struct Endpoint {
-    cfg: quiche::Config,
+    cfg: Mutex<quiche::Config>,
     local_addr: SocketAddr,
     conn_id_seed: ring::hmac::Key,
-    connections: ConnectionMap,
+    connections: Mutex<ConnectionMap>,
 }
 
 type ConnectionMap = HashMap<quiche::ConnectionId<'static>, QcHandle>;
@@ -78,7 +78,7 @@ impl ConnectionHandle for QcHandle {
         match conn.stream_recv(s, buf) {
             Ok(s) => Some(s),
             Err(e) => {
-                error!("{}", e);
+                println!("{}", e);
                 None
             }
         }
@@ -103,7 +103,7 @@ impl ConnectionHandle for QcHandle {
             Ok((l, i)) => Some((l, i.to)),
             Err(quiche::Error::Done) => None,
             Err(e) => {
-                error!("{} send failed: {}", conn.trace_id(), e);
+                println!("{} send failed: {}", conn.trace_id(), e);
                 conn.close(false, 0x1, b"fail").ok();
                 None
             }
@@ -159,34 +159,36 @@ impl io::QuicEndpoint<Incoming, QcHandle> for Endpoint {
 
         let connections = ConnectionMap::new();
         Some(Box::new(Endpoint {
-            cfg: config,
+            cfg: Mutex::new(config),
             conn_id_seed,
-            connections,
+            connections: Mutex::new(connections),
             local_addr: cfg.local_addr_str.parse().expect("invalid local addr"),
         }))
     }
 
-    fn reject_connection(&mut self, inc: Incoming, from: SocketAddr) {
+    fn reject_connection(&self, inc: Incoming, from: SocketAddr) {
         _ = from;
         _ = inc;
         return;
     }
 
-    fn accept_connection(&mut self, inc: Incoming, from: SocketAddr) -> Option<QcHandle> {
-        let conn = match quiche::accept(&inc.conn_id, None, self.local_addr, from, &mut self.cfg) {
+    fn accept_connection(&self, inc: Incoming, from: SocketAddr) -> Option<QcHandle> {
+        let mut cfg = self.cfg.lock().unwrap();
+        let conn = match quiche::accept(&inc.conn_id, None, self.local_addr, from, &mut *cfg) {
             Ok(c) => c,
             Err(e) => {
-                error!("did not accept: {}", e);
+                error!("quiche did not accept: {}", e);
                 return None;
             }
         };
         let handle = QcHandle::new(conn);
-        self.connections.insert(inc.conn_id.clone(), handle.clone());
+        let mut connections = self.connections.lock().unwrap();
+        connections.insert(inc.conn_id.clone(), handle.clone());
         Some(handle.clone())
     }
 
     fn handle_packet(
-        &mut self,
+        &self,
         pkt_buf: &mut [u8],
         _from: SocketAddr,
     ) -> Option<DatagramEvent<Incoming, QcHandle>> {
@@ -200,32 +202,29 @@ impl io::QuicEndpoint<Incoming, QcHandle> for Endpoint {
         let conn_id = &conn_id.as_ref()[..quiche::MAX_CONN_ID_LEN];
         let conn_id = conn_id.to_vec().into();
 
-        if !self.connections.contains_key(&hdr.dcid) && !self.connections.contains_key(&conn_id) {
+        let connections = self.connections.lock().unwrap();
+        if !connections.contains_key(&hdr.dcid) && !connections.contains_key(&conn_id) {
             if hdr.ty != quiche::Type::Initial {
-                error!("unexpected packet");
+                warn!("unexpected packet");
                 return None;
             }
             if !quiche::version_is_supported(hdr.version) {
+                warn!("version negotiation (not implemented)");
                 // TODO: version negotiation
                 return None;
             }
             return Some(DatagramEvent::NewConnection(Incoming { conn_id }));
         } else {
-            let handle = if self.connections.contains_key(&hdr.dcid) {
-                self.connections.get_mut(&hdr.dcid).unwrap()
+            let handle = if connections.contains_key(&hdr.dcid) {
+                connections.get(&hdr.dcid).unwrap()
             } else {
-                self.connections.get_mut(&conn_id).unwrap()
+                connections.get(&conn_id).unwrap()
             };
             return Some(DatagramEvent::Known(handle.clone()));
         }
     }
 
-    fn conn_handle(
-        &mut self,
-        handle: QcHandle,
-        pkt_buf: &mut [u8],
-        from: SocketAddr,
-    ) -> Option<usize> {
+    fn conn_handle(&self, handle: QcHandle, pkt_buf: &mut [u8], from: SocketAddr) -> Option<usize> {
         let mut conn = handle.get();
         let recv_info = quiche::RecvInfo {
             to: self.local_addr,
@@ -240,14 +239,19 @@ impl io::QuicEndpoint<Incoming, QcHandle> for Endpoint {
         }
     }
 
-    fn clean(&mut self) {
-        self.connections.retain(|_, ref mut h| {
+    fn clean(&self) {
+        let mut connections = self.connections.lock().unwrap();
+        connections.retain(|_, ref mut h| {
             let conn = h.get();
+            if conn.is_closed() {
+                info!("cleaned connection");
+            }
             !conn.is_closed()
         });
     }
 
-    fn connections_vec(&self) -> Vec<&QcHandle> {
-        self.connections.values().collect()
+    fn connections_vec(&self) -> Vec<QcHandle> {
+        let connections = self.connections.lock().unwrap();
+        connections.values().map(|a| a.clone()).collect()
     }
 }
