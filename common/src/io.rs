@@ -1,10 +1,10 @@
-use log::{debug, info};
+use log::debug;
+use std::io;
 use std::marker::PhantomData;
 pub use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time;
 pub use tokio::net::UdpSocket;
-use tokio::time::sleep;
 
 pub struct Transmit<'a> {
     pub to: SocketAddr,
@@ -28,9 +28,9 @@ pub struct QuicConfig<'a> {
 impl QuicConfig<'_> {
     pub fn new() -> Self {
         QuicConfig {
-            key_fp: "res/pem/key.pem",
-            cert_fp: "res/pem/cert.pem",
-            local_addr_str: "127.0.0.1:4433",
+            key_fp: "pem/key.pem",
+            cert_fp: "pem/cert.pem",
+            local_addr_str: "127.0.0.1:6789",
             max_recv_datagram_size: 1350,
             max_send_datagram_size: 1350,
         }
@@ -103,10 +103,21 @@ impl<
         }
     }
     async fn read_loop(&self) -> ! {
-        let mut buf = [0; 65536];
+        let mut buf = [0; 65535];
+        let mut out = [0; 1350]; // TODO: MAX_DATAGRAM_SIZE here
         let socket = self.socket();
         'socket: loop {
-            let (len, from) = socket.recv_from(&mut buf).await.expect("recv error");
+            let (len, from) = match socket.try_recv_from(&mut buf) {
+                Ok(tuple) => tuple,
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    self.send_all(&mut out);
+                    socket.recv_from(&mut buf).await.expect("recv error")
+                }
+                Err(e) => {
+                    panic!("recv error: {}", e)
+                }
+            };
+            //let (len, from) = socket.recv_from(&mut buf).await.expect("recv error");
             let pkt_buf = &mut buf[..len];
             let Some(event) = self.ep.handle_packet(pkt_buf, from) else {
                 // Invalid packet
@@ -131,7 +142,8 @@ impl<
                 }
                 Known(conn) => {
                     self.ep.conn_handle(conn.clone(), pkt_buf, from);
-                    (self.callbacks.new_data)(conn);
+                    (self.callbacks.new_data)(conn.clone());
+                    (self.callbacks.writable)(conn);
                 }
                 Respond(t) => {
                     let mut sent = 0;
@@ -144,25 +156,26 @@ impl<
                     }
                 }
             };
-            self.send_all().await;
+            //self.send_all(&mut out).await;
         }
     }
-    #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+    //#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+    #[tokio::main(flavor = "current_thread")]
     pub async fn listen(&mut self) -> ! {
         let socket_addr = self.ep.get_local_addr();
         let socket = UdpSocket::bind(socket_addr).await.unwrap();
         let socket = Arc::new(socket);
         self.socket = Some(socket);
+        /*
         const NUM_THREADS: usize = 5;
         let self_unmut = Arc::new(&*self);
-        for _ in 0..NUM_THREADS - 1 {
-            let this = unsafe {
-                std::mem::transmute::<Arc<&Self>, Arc<&'static Self>>(self_unmut.clone())
-            };
+        for _ in 0..NUM_THREADS-1 {
+            let this = unsafe { std::mem::transmute::<Arc<&Self>, Arc<&'static Self>>(self_unmut.clone()) };
             tokio::spawn(async move {
                 this.read_loop().await;
             });
         }
+        */
         self.read_loop().await;
     }
 
@@ -173,25 +186,27 @@ impl<
         }
     }
 
-    async fn send_all(&self) {
+    fn send_all(&self, out: &mut [u8]) {
         let socket = self.socket();
-        let mut buf = [0; 8192];
         let cxs = self.ep.connections_vec();
         for handle in cxs {
             let handle = handle.clone();
-            drain_handle(&mut buf, handle.clone(), socket.clone()).await;
+            drain_handle(out, handle.clone(), socket.clone());
         }
 
         self.ep.clean();
+        /*
         for handle in self.ep.connections_vec() {
             (self.callbacks.writable)(handle.clone());
         }
+        */
     }
 
     fn start_timeout_timer(&self, handle: CH) {
         let m_h = handle.clone();
         let socket = self.socket();
         tokio::spawn(async move {
+            /*
             loop {
                 let handle = m_h.clone();
                 let d = match handle.time_to_timeout() {
@@ -202,18 +217,31 @@ impl<
                 info!("Potential timeout!");
                 m_h.on_timeout();
                 let mut buf = [0; 8192];
-                drain_handle(&mut buf, handle.clone(), socket.clone()).await;
+                drain_handle(&mut buf, handle.clone(), socket.clone());
                 if handle.is_closed() {
                     break;
                 }
             }
+            */
         });
     }
 }
 
-async fn drain_handle<CH: ConnectionHandle>(buf: &mut [u8], handle: CH, socket: Arc<UdpSocket>) {
+fn drain_handle<CH: ConnectionHandle>(buf: &mut [u8], handle: CH, socket: Arc<UdpSocket>) {
     while let Some((len, to)) = handle.poll(buf) {
-        socket.send_to(&buf[..len], to).await.expect("send error");
+        let written = match socket.try_send_to(&buf[..len], to) {
+            Ok(n) => n,
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                break;
+            }
+            Err(e) => {
+                panic!("send failed: {}", e);
+            }
+        };
+        if written != len {
+            panic!("could not write whole packet");
+        }
+        //socket.send_to(&buf[..len], to).await.expect("send error");
     }
 }
 

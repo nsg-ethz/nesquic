@@ -9,7 +9,8 @@ edition = "2021"
 anyhow = "1.0.79"
 env_logger = "0.11.1"
 log = "0.4.20"
-quiche = "0.23.4"
+quiche = "0.24.2"
+mio = { version = "1.0.3", features = ["net", "os-poll"] }
 ring = "0.17.14"
 url = "2.5.0"
 common = { path = "../../common" }
