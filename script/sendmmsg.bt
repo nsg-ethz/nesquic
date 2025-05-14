@@ -1,0 +1,36 @@
+#ifndef BPFTRACE_HAVE_BTF
+#include <linux/socket.h>
+#endif
+
+tracepoint:syscalls:sys_enter_sendmmsg {
+    $mmsg = (struct msghdr *)args->mmsg;
+    $n = 0;
+    $j = 0;
+    $vlen = args->vlen;
+
+    if ($vlen > 64) {
+        $vlen = 64;
+    }
+
+    while ($j < $vlen) {
+        $iter = $mmsg->msg_iter;
+
+        $iov = $iter.__iov;
+        $i = 0;
+        $cnt = $iter.nr_segs;
+        if ($cnt > 64) {
+            $cnt = 64;
+        }
+
+        while ($i < $cnt) {
+            $n += $iov->iov_len;
+            $i += 1;
+            $iov += 1;
+        }
+
+        $mmsg += 1;
+        $j += 1;
+    }
+
+    @bytes = hist($n);
+}

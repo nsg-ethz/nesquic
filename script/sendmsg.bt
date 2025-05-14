@@ -1,0 +1,30 @@
+#ifndef BPFTRACE_HAVE_BTF
+#include <linux/socket.h>
+#endif
+
+tracepoint:syscalls:sys_enter_sendmsg {
+    $msghdr = (struct msghdr *)args->msg;
+    $iter = $msghdr->msg_iter;
+
+    if ($iter.iter_type == ITER_UBUF) {
+        $iov_base = uptr($iter.__ubuf_iovec.iov_base);
+        $iov_len  = $iter.__ubuf_iovec.iov_len;
+    }
+
+    // $iov = $iter.__iov;
+    // $i = 0;
+    // $cnt = $iter.nr_segs;
+    // if ($cnt > 64) {
+    //     $cnt = 64;
+    // }
+
+    // $n = 0;
+    // while ($i < $cnt) {
+    //     $n += $iov->iov_len;
+
+    //     $i += 1;
+    //     $iov += 1;
+    // }
+
+    // @bytes = hist($n);
+}
