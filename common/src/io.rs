@@ -28,9 +28,9 @@ pub struct QuicConfig<'a> {
 impl QuicConfig<'_> {
     pub fn new() -> Self {
         QuicConfig {
-            key_fp: "pem/key.pem",
-            cert_fp: "pem/cert.pem",
-            local_addr_str: "127.0.0.1:6789",
+            key_fp: "res/pem/key.pem",
+            cert_fp: "res/pem/cert.pem",
+            local_addr_str: "127.0.0.1:4433",
             max_recv_datagram_size: 1350,
             max_send_datagram_size: 1350,
         }

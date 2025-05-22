@@ -1,12 +1,9 @@
-use std::{
-    str, 
-    time::{
-        Duration, 
-        Instant
-    }
-};
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use average::MeanWithError;
+use std::{
+    str,
+    time::{Duration, Instant},
+};
 
 /// A blob represents the response payload
 pub struct Blob {
@@ -15,23 +12,20 @@ pub struct Blob {
 
     /// The cursor indicating how much data has been
     /// sent so far
-    pub cursor: u64
+    pub cursor: u64,
 }
 
 impl Iterator for Blob {
-
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor < self.size {
             self.cursor += 1;
             Some(0)
-        }   
-        else {
+        } else {
             None
         }
     }
-
 }
 
 /// Stats keep track of the measurements
@@ -48,12 +42,11 @@ pub struct Stats {
 }
 
 impl Stats {
-
     pub fn new(blob_bytes: u64) -> Self {
         Stats {
             deltas: Vec::new(),
             start: None,
-            blob_size: blob_bytes
+            blob_size: blob_bytes,
         }
     }
 
@@ -73,21 +66,17 @@ impl Stats {
             self.start = None;
 
             Ok((t, self.throughput_for_duration(&t)))
-        }
-        else {
+        } else {
             bail!("haven't started a measurement yet.")
         }
     }
 
     fn durations(&self) -> MeanWithError {
-        self.deltas
-            .iter()
-            .map(|t| t.as_secs_f64())
-            .collect()
+        self.deltas.iter().map(|t| t.as_secs_f64()).collect()
     }
 
     fn throughput_for_duration(&self, t: &Duration) -> f64 {
-        8.0*self.blob_size as f64 / (t.as_secs_f64() * 1000.0 * 1000.0)
+        self.blob_size as f64 / (t.as_secs_f64() * 1000.0 * 1000.0)
     }
 
     fn throughputs(&self) -> MeanWithError {
@@ -101,11 +90,17 @@ impl Stats {
     pub fn summary(&self) -> String {
         let ts = self.durations();
         let tp = self.throughputs();
-        
-        format!("reps: {} mean duration: {:.2}s std duration: {:.2}s 
-        mean throughput: {:.2}Mbit/s std throughput: {:.2}Mbit/s", self.deltas.len(), ts.mean(), ts.error(), tp.mean(), tp.error())
-    }
 
+        format!(
+            "reps: {} duration: {:.5}s +- {:.5}s
+        mean throughput: {:.5}Mbit/s std throughput: {:.5}Mbit/s",
+            self.deltas.len(),
+            ts.mean(),
+            ts.error(),
+            tp.mean(),
+            tp.error()
+        )
+    }
 }
 
 pub fn create_req(blob: &str) -> Result<[u8; 8]> {
@@ -116,10 +111,7 @@ pub fn create_req(blob: &str) -> Result<[u8; 8]> {
 pub fn process_req(buf: &[u8]) -> Result<Blob> {
     let size = u64::from_be_bytes(buf.try_into()?);
 
-    Ok(Blob {
-        size,
-        cursor: 0
-    })
+    Ok(Blob { size, cursor: 0 })
 }
 
 /// Parses blob sizes specified in [GMK]bit
@@ -129,31 +121,25 @@ pub fn parse_blob_size(value: &str) -> Result<u64> {
         bail!("malformed blob size");
     }
 
-    let bit_prefix = value
-        .chars()
-        .rev()
-        .nth(3)
-        .unwrap();
-    
-    
+    let bit_prefix = value.chars().rev().nth(3).unwrap();
+
     let size_bits = if bit_prefix.to_digit(10) == None {
         let mult: u64 = match bit_prefix {
             'G' => 1000 * 1000 * 1000,
             'M' => 1000 * 1000,
             'K' => 1000,
-            _ => bail!("unknown unit prefix")
+            _ => bail!("unknown unit prefix"),
         };
 
-        let size = value[..value.len()-4].parse::<u64>()?;
+        let size = value[..value.len() - 4].parse::<u64>()?;
         Ok(mult * size)
-    }
-    else {
-        let size = value[..value.len()-3].parse::<u64>()?;
+    } else {
+        let size = value[..value.len() - 3].parse::<u64>()?;
         Ok(size)
     };
 
-    size_bits.map(|k| k/8)
-} 
+    size_bits.map(|k| k / 8)
+}
 
 #[cfg(test)]
 mod tests {
@@ -162,7 +148,7 @@ mod tests {
     #[test]
     fn it_parses_bit_size() {
         let size = parse_blob_size("100Mbit");
-        assert_eq!(size.unwrap(), 100_000_000/8);
+        assert_eq!(size.unwrap(), 100_000_000 / 8);
 
         let size = parse_blob_size("12lbit");
         assert_eq!(size.is_err(), true);
@@ -174,9 +160,7 @@ mod tests {
     #[test]
     fn it_creates_valid_reqs() {
         let blob = "20Gbit";
-        let lhs = process_req(&create_req(&blob).unwrap())
-            .unwrap()
-            .size;
+        let lhs = process_req(&create_req(&blob).unwrap()).unwrap().size;
         let rhs = parse_blob_size(&blob).unwrap();
         assert_eq!(lhs, rhs);
     }

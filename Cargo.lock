@@ -1456,9 +1456,9 @@ dependencies = [
 
 [[package]]
 name = "quiche"
-version = "0.23.7"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1cbb048e05b5ff6cf61e6084b1b893bd5d3b73a00fc6bfdb2beb28b48cc255a"
+checksum = "92102d59549aa31d5d98fd99c3b04d1191af5a9f94223295555476f025f44506"
 dependencies = [
  "cmake",
  "debug_panic",
@@ -1482,6 +1482,7 @@ dependencies = [
  "common",
  "env_logger",
  "log",
+ "mio",
  "quiche",
  "ring 0.17.14",
  "url",
