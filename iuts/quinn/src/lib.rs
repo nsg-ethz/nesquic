@@ -3,7 +3,9 @@ use rustls::{Certificate, PrivateKey};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{fs::File, io::BufReader, net::SocketAddr};
 
+pub mod client;
 pub mod noprotection;
+pub mod server;
 
 pub fn bind_socket(addr: SocketAddr) -> Result<std::net::UdpSocket> {
     let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))

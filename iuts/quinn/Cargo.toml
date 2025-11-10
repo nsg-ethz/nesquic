@@ -3,25 +3,6 @@ name = "quinn-iut"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-anyhow = "1.0.79"
-bytes = "1.5.0"
-clap = { version = "4.5.0", features = ["derive"] }
-env_logger = "0.11.1"
-log = "0.4.20"
-# quinn = { version = "0.10.2", features = ["rustls"] }
-quinn = { path = "../../../quinn/quinn", features = ["rustls"] }
-quinn-proto = { path = "../../../quinn/quinn-proto" }
-# quinn-proto = "0.10.6"
-rustls = { version = "0.21.0", features = ["dangerous_configuration", "quic"] }
-rustls-pemfile = "2.0.0"
-socket2 = "0.5.5"
-tokio = { version = "1.35.1", features = ["macros", "full"] }
-url = "2.5.0"
-common = { path = "../../common" }
-
 [[bin]]
 name = "quinn-client"
 path = "src/bin/client.rs"
@@ -29,3 +10,18 @@ path = "src/bin/client.rs"
 [[bin]]
 name = "quinn-server"
 path = "src/bin/server.rs"
+
+[dependencies]
+anyhow = "1.0.79"
+bytes = "1.5.0"
+clap = { version = "4.5.0", features = ["derive"] }
+env_logger = "0.11.1"
+log = "0.4.20"
+quinn = { version = "0.10.2", features = ["rustls"] }
+quinn-proto = "0.10.6"
+rustls = { version = "0.21.0", features = ["dangerous_configuration", "quic"] }
+rustls-pemfile = "2.0.0"
+socket2 = "0.5.5"
+tokio = { version = "1.35.1", features = ["macros", "full"] }
+url = "2.5.0"
+common = { path = "../../common" }

@@ -1446,8 +1446,8 @@ dependencies = [
  "common",
  "env_logger",
  "log",
- "quinn 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "quinn-proto 0.10.6",
+ "quinn",
+ "quinn-proto",
  "rustls",
  "rustls-pemfile 2.0.0",
  "socket2 0.5.8",
@@ -1491,28 +1491,13 @@ dependencies = [
 [[package]]
 name = "quinn"
 version = "0.10.2"
-dependencies = [
- "bytes",
- "pin-project-lite",
- "quinn-proto 0.10.2",
- "quinn-udp 0.4.0",
- "rustc-hash",
- "rustls",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "quinn"
-version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8cc2c5017e4b43d5995dcea317bc46c1e09404c0a9664d2908f7f02dfe943d75"
 dependencies = [
  "bytes",
  "pin-project-lite",
- "quinn-proto 0.10.6",
- "quinn-udp 0.4.1",
+ "quinn-proto",
+ "quinn-udp",
  "rustc-hash",
  "rustls",
  "thiserror",
@@ -1530,29 +1515,13 @@ dependencies = [
  "common",
  "env_logger",
  "log",
- "quinn 0.10.2",
- "quinn-proto 0.10.2",
+ "quinn",
+ "quinn-proto",
  "rustls",
  "rustls-pemfile 2.0.0",
  "socket2 0.5.8",
  "tokio",
  "url",
-]
-
-[[package]]
-name = "quinn-proto"
-version = "0.10.2"
-dependencies = [
- "bytes",
- "rand",
- "ring 0.16.20",
- "rustc-hash",
- "rustls",
- "rustls-native-certs",
- "slab",
- "thiserror",
- "tinyvec",
- "tracing",
 ]
 
 [[package]]
@@ -1571,17 +1540,6 @@ dependencies = [
  "thiserror",
  "tinyvec",
  "tracing",
-]
-
-[[package]]
-name = "quinn-udp"
-version = "0.4.0"
-dependencies = [
- "bytes",
- "libc",
- "socket2 0.5.8",
- "tracing",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
