@@ -1,9 +1,9 @@
-use common::{
-    args::ClientArgs,
-    perf::{create_req, parse_blob_size, Stats},
-};
 use quic::{bind_socket, load_certificates_from_pem, noprotection::NoProtectionClientConfig};
 use std::{net::ToSocketAddrs, sync::Arc};
+use utils::{
+    bin::ClientArgs,
+    perf::{create_req, parse_blob_size, Stats},
+};
 
 use anyhow::{anyhow, bail, Result};
 use clap::Parser;

@@ -1,10 +1,10 @@
-use common::io::{
-    Callbacks, ConnectionDecision, ConnectionHandle, HLQuicEndpoint, QuicConfig, QuicEndpoint,
-};
 use log::{debug, error, info, warn};
 use quiche_iut::{Endpoint, Incoming, QcHandle};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
+use utils::io::{
+    Callbacks, ConnectionDecision, ConnectionHandle, HLQuicEndpoint, QuicConfig, QuicEndpoint,
+};
 
 #[derive(Clone)]
 enum ConnectionData {

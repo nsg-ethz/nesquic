@@ -1,6 +1,8 @@
-use std::net::SocketAddr;
-
+use crate::perf::Stats;
+use anyhow::Result;
+use async_trait::async_trait;
 use clap::Parser;
+use std::net::SocketAddr;
 use url::Url;
 
 #[derive(Parser, Debug)]
@@ -62,4 +64,23 @@ impl ServerArgs {
             listen: "127.0.0.1:4433".parse().unwrap(),
         }
     }
+}
+
+#[async_trait]
+pub trait Client
+where
+    Self: Sized,
+{
+    fn new(args: ClientArgs) -> Result<Self>;
+    async fn run(&mut self) -> Result<()>;
+    fn stats(&self) -> &Stats;
+}
+
+#[async_trait]
+pub trait Server
+where
+    Self: Sized,
+{
+    fn new(args: ServerArgs) -> Result<Self>;
+    async fn listen(&self) -> Result<()>;
 }

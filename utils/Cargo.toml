@@ -1,5 +1,5 @@
 [package]
-name = "common"
+name = "utils"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
+async-trait = "0.1.89"
 average = "0.14.1"
 clap = { version = "4.5.0", features = ["derive"] }
 log = "0.4.20"

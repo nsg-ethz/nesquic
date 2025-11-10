@@ -1,28 +1,16 @@
+use anyhow::Result;
 use clap::Parser;
-use common::{
-    args::ClientArgs,
-    perf::{parse_blob_size, Stats},
-};
-use log::error;
-use quinn_iut::client;
+use quinn_iut::client::Client;
+use utils::bin::{Client as ClientBin, ClientArgs};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     env_logger::init();
 
-    let args = ClientArgs::parse();
-    let blob_size = parse_blob_size(&args.blob).expect("didn't recognize blob size");
-    let mut stats = Stats::new(blob_size);
-    let mut code = 0;
+    let mut client = Client::new(ClientArgs::parse())?;
+    client.run().await?;
 
-    for _ in 0..args.reps {
-        if let Err(e) = client::run(&args, &mut stats).await {
-            error!("Client connection error: {e}");
-            code = 1;
-            break;
-        }
-    }
+    println!("{}", client.stats().summary());
 
-    println!("{}", stats.summary());
-    std::process::exit(code);
+    Ok(())
 }

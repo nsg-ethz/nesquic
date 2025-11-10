@@ -1,20 +1,14 @@
+use anyhow::Result;
 use clap::Parser;
-use common::args::ServerArgs;
-use log::error;
-use quinn_iut::server;
+use quinn_iut::server::Server;
+use utils::bin::{Server as ServerBin, ServerArgs};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     env_logger::init();
 
-    let args = ServerArgs::parse();
-    let code = {
-        if let Err(e) = server::run(args).await {
-            error!("Server connection error: {e}");
-            1
-        } else {
-            0
-        }
-    };
-    std::process::exit(code);
+    let server = Server::new(ServerArgs::parse())?;
+    server.listen().await?;
+
+    Ok(())
 }

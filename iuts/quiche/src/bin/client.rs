@@ -1,9 +1,9 @@
-use common::io::{
-    Callbacks, ConnectionDecision, ConnectionHandle, HLQuicEndpoint, QuicConfig, QuicEndpoint,
-};
 use quiche_iut::{Endpoint, Incoming, QcHandle};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use utils::io::{
+    Callbacks, ConnectionDecision, ConnectionHandle, HLQuicEndpoint, QuicConfig, QuicEndpoint,
+};
 
 #[derive(Clone)]
 struct ConnectionData {

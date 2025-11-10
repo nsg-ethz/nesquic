@@ -1,4 +1,3 @@
-use common::io::{self, ConnectionHandle, DatagramEvent, QuicConfig, SocketAddr};
 use log::{error, info, warn};
 use quiche;
 use ring::rand;
@@ -6,6 +5,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time;
+use utils::io::{self, ConnectionHandle, DatagramEvent, QuicConfig, SocketAddr};
 
 pub struct Endpoint {
     cfg: Mutex<quiche::Config>,

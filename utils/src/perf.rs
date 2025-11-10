@@ -146,9 +146,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_parses_bit_size() {
+    fn parse_blob_sizes() {
         let size = parse_blob_size("100Mbit");
         assert_eq!(size.unwrap(), 100_000_000 / 8);
+
+        let size = parse_blob_size("100bit");
+        assert_eq!(size.unwrap(), 100 / 8);
 
         let size = parse_blob_size("12lbit");
         assert_eq!(size.is_err(), true);
@@ -158,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn it_creates_valid_reqs() {
+    fn create_requests() {
         let blob = "20Gbit";
         let lhs = process_req(&create_req(&blob).unwrap()).unwrap().size;
         let rhs = parse_blob_size(&blob).unwrap();

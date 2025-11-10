@@ -3,56 +3,67 @@ use crate::{
     noprotection::NoProtectionServerConfig,
 };
 use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
 use bytes::Bytes;
-use common::{args::ServerArgs, perf::process_req};
 use log::{error, info};
-use quinn::TokioRuntime;
+use quinn::{ServerConfig, TokioRuntime};
 use std::sync::Arc;
+use utils::{bin, bin::ServerArgs, perf::process_req};
 
-pub async fn run(args: ServerArgs) -> Result<()> {
-    let certs = load_certificates_from_pem(args.cert.as_str())
-        .context("failed to read certificate chain")?;
-    let key =
-        load_private_key_from_file(args.key.as_str()).context("failed to read private key")?;
+pub struct Server {
+    args: ServerArgs,
+    config: ServerConfig,
+}
 
-    let mut server_crypto = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(certs, key)?;
-    server_crypto.alpn_protocols = vec![b"perf".to_vec()];
+#[async_trait]
+impl bin::Server for Server {
+    fn new(args: ServerArgs) -> Result<Self> {
+        let certs = load_certificates_from_pem(args.cert.as_str())
+            .context("failed to read certificate chain")?;
+        let key =
+            load_private_key_from_file(args.key.as_str()).context("failed to read private key")?;
 
-    let mut server_config = if args.unencrypted {
-        quinn::ServerConfig::with_crypto(Arc::new(NoProtectionServerConfig::new(Arc::new(
-            server_crypto,
-        ))))
-    } else {
-        quinn::ServerConfig::with_crypto(Arc::new(server_crypto))
-    };
-    let transport_config = Arc::get_mut(&mut server_config.transport).unwrap();
-    transport_config.max_concurrent_uni_streams(0_u8.into());
+        let mut server_crypto = rustls::ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)?;
+        server_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-    let socket = bind_socket(args.listen)?;
-    let endpoint = quinn::Endpoint::new(
-        Default::default(),
-        Some(server_config),
-        socket,
-        Arc::new(TokioRuntime),
-    )
-    .context("creating endpoint")?;
+        let config = if args.unencrypted {
+            quinn::ServerConfig::with_crypto(Arc::new(NoProtectionServerConfig::new(Arc::new(
+                server_crypto,
+            ))))
+        } else {
+            quinn::ServerConfig::with_crypto(Arc::new(server_crypto))
+        };
 
-    info!("Listening on {}", endpoint.local_addr()?);
-
-    while let Some(conn) = endpoint.accept().await {
-        info!("connection incoming");
-        let fut = handle_connection(conn);
-        tokio::spawn(async move {
-            if let Err(e) = fut.await {
-                error!("connection failed: {reason}", reason = e.to_string())
-            }
-        });
+        Ok(Server { args, config })
     }
 
-    Ok(())
+    async fn listen(&self) -> Result<()> {
+        let socket = bind_socket(self.args.listen)?;
+        let endpoint = quinn::Endpoint::new(
+            Default::default(),
+            Some(self.config.clone()),
+            socket,
+            Arc::new(TokioRuntime),
+        )
+        .context("creating endpoint")?;
+
+        info!("Listening on {}", endpoint.local_addr()?);
+
+        while let Some(conn) = endpoint.accept().await {
+            info!("connection incoming");
+            let fut = handle_connection(conn);
+            tokio::spawn(async move {
+                if let Err(e) = fut.await {
+                    error!("connection failed: {reason}", reason = e.to_string())
+                }
+            });
+        }
+
+        Ok(())
+    }
 }
 
 async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
