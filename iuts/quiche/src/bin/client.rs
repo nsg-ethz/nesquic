@@ -3,7 +3,7 @@ use common::io::{
 };
 use quiche_iut::{Endpoint, Incoming, QcHandle};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 struct ConnectionData {
@@ -16,10 +16,10 @@ static CONNECTION_MAP: Mutex<Option<HashMap<QcHandle, ConnectionData>>> = Mutex:
 fn main() {
     init_conn_map();
     let callbacks = Callbacks {
-        incoming_connection: Box::new(handle_inc),
-        new_connection: Box::new(handle_conn),
-        new_data: Box::new(new_data),
-        writable: Box::new(writable),
+        incoming_connection: Arc::new(handle_inc),
+        new_connection: Arc::new(handle_conn),
+        new_data: Arc::new(new_data),
+        writable: Arc::new(writable),
     };
     let cfg = QuicConfig::new();
     let Some(endpoint) = Endpoint::with_config(cfg) else {
