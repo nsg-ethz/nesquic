@@ -8,11 +8,6 @@ anyhow = "1.0.95"
 clap = "4.5.23"
 env_logger = "0.11.6"
 log = "0.4.22"
-quinn = { version = "0.10.2", features = ["rustls"] }
-quinn-proto = "0.10.6"
+quinn-iut = { path = "../iuts/quinn" }
 tokio = { version = "1.42.0", features = ["full"] }
 utils = { path = "../utils" }
-rustls = { version = "0.21.0", features = ["dangerous_configuration", "quic"] }
-rustls-pemfile = "2.0.0"
-socket2 = "0.5.8"
-bytes = "1.9.0"

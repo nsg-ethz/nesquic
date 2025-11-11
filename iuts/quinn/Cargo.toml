@@ -3,14 +3,6 @@ name = "quinn-iut"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "quinn-client"
-path = "src/bin/client.rs"
-
-[[bin]]
-name = "quinn-server"
-path = "src/bin/server.rs"
-
 [dependencies]
 anyhow = "1.0.79"
 async-trait = "0.1.89"

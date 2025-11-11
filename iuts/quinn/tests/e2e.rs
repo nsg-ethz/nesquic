@@ -1,4 +1,4 @@
-use quinn_iut::{client::Client, server::Server};
+use quinn_iut::{Client, Server};
 use utils::test;
 
 #[tokio::test]

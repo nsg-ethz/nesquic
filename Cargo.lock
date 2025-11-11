@@ -1438,15 +1438,10 @@ name = "qbench"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bytes",
  "clap",
  "env_logger",
  "log",
- "quinn",
- "quinn-proto",
- "rustls",
- "rustls-pemfile 2.0.0",
- "socket2 0.5.8",
+ "quinn-iut",
  "tokio",
  "utils",
 ]

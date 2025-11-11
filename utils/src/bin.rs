@@ -5,24 +5,25 @@ use clap::Parser;
 use std::net::SocketAddr;
 use url::Url;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Clone, Debug)]
 #[clap(name = "client")]
 pub struct ClientArgs {
     /// the address of the server
+    #[clap(default_value = "https://127.0.0.1:4433")]
     pub url: Url,
 
     /// do TLS handshake, but don't encrypt connection
-    #[clap(long = "unencrypted")]
+    #[clap(long, default_value = "false")]
     pub unencrypted: bool,
 
     /// TLS certificate in PEM format
-    #[clap(short = 'c', long = "cert")]
+    #[clap(short, long)]
     pub cert: String,
 
-    #[clap(short = 'b', long = "blob")]
+    #[clap(short, long)]
     pub blob: String,
 
-    #[clap(short = 'r', long = "reps", default_value = "1")]
+    #[clap(short, long, default_value = "1")]
     pub reps: u16,
 }
 
@@ -38,20 +39,20 @@ impl ClientArgs {
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Clone, Debug)]
 #[clap(name = "server")]
 pub struct ServerArgs {
     /// do TLS handshake, but don't encrypt connection
-    #[clap(long = "unencrypted", default_value = "false")]
+    #[clap(long, default_value = "false")]
     pub unencrypted: bool,
     /// TLS private key in PEM format
-    #[clap(short = 'k', long = "key", requires = "cert")]
+    #[clap(short, long, requires = "cert")]
     pub key: String,
     /// TLS certificate in PEM format
-    #[clap(short = 'c', long = "cert", requires = "key")]
+    #[clap(short, long, requires = "key")]
     pub cert: String,
     /// Address to listen on
-    #[clap(long = "listen", default_value = "127.0.0.1:4433")]
+    #[clap(default_value = "127.0.0.1:4433")]
     pub listen: SocketAddr,
 }
 
