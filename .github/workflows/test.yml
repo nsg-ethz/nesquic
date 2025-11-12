@@ -63,4 +63,4 @@ jobs:
               # Skip tests which require sudo
               run: cargo test --profile=${{ matrix.profile }} --locked --verbose --workspace -- --skip ':root:'  --include-ignored
             - name: Run root tests
-              run: cd qbench && cargo test --profile=${{ matrix.profile }} --locked --verbose -- ':root:'
+              run: cd nesquic && cargo test --profile=${{ matrix.profile }} --locked --verbose -- ':root:'

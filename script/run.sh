@@ -18,7 +18,7 @@ done
 
 BANDWIDTH="20mbit"
 IFACE="lo"
-NETNS="qbench"
+NETNS="nesquic"
 ROOT=$(dirname "$(readlink -f "$0")")
 SUMMARY_DIR=${ROOT}/../res/runs/${NAME}
 
@@ -55,6 +55,6 @@ nsexec ip link set dev ${IFACE} up
 
 # compile IUTs in release mode
 echo Compile IUT
-cargo build --release --bin ${IUT}-server --bin qbench
+cargo build --release --bin ${IUT}-server --bin nesquic
 
 ${ROOT}/conn.sh -n ${NAME} -i ${IUT}

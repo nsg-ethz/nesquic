@@ -23,7 +23,7 @@ FILE=${SUMMARY_DIR}/${IUT}-cpu.log
 mkdir -p ${SUMMARY_DIR}
 
 function read_cpu_usage() {
-    awk '$1 == "usage_usec" { print $2 }' /sys/fs/cgroup/qbench.slice/cpu.stat
+    awk '$1 == "usage_usec" { print $2 }' /sys/fs/cgroup/nesquic.slice/cpu.stat
 }
 
 TS=$(date +%s%N)

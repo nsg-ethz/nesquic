@@ -21,13 +21,13 @@ SUMMARY_DIR=${ROOT}/../res/runs/${NAME}
 
 mkdir -p ${SUMMARY_DIR}
 
-CLIENT_BIN="${ROOT}/../target/release/qbench"
+CLIENT_BIN="${ROOT}/../target/release/nesquic"
 SERVER_BIN="${ROOT}/../target/release/${IUT}-server"
 CPU_SYSTEM=0-10,20-30
-CPU_QBENCH=10-19,31-39
+CPU_NESQUIC=10-19,31-39
 
 function runb {
-    sudo -b -E systemd-run -q --scope -u $1 --slice qbench.slice ${@:2}
+    sudo -b -E systemd-run -q --scope -u $1 --slice nesquic.slice ${@:2}
 }
 
 function run {
@@ -52,11 +52,11 @@ cleanup
 echo -e "${COLOR_YELLOW}Setting CPU governor${COLOR_OFF}"
 echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
-echo -e "${COLOR_YELLOW}Assigning CPUs ${CPU_QBENCH} to experiment${COLOR_OFF}"
+echo -e "${COLOR_YELLOW}Assigning CPUs ${CPU_NESQUIC} to experiment${COLOR_OFF}"
 sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_SYSTEM}
 sudo systemctl set-property --runtime system.slice AllowedCPUs=${CPU_SYSTEM}
 sudo systemctl set-property --runtime init.scope AllowedCPUs=${CPU_SYSTEM}
-sudo systemctl set-property --runtime qbench.slice AllowedCPUs=${CPU_QBENCH}
+sudo systemctl set-property --runtime nesquic.slice AllowedCPUs=${CPU_NESQUIC}
 
 echo Start server in background
 if [ ${IUT} = "msquic" ]; then
@@ -83,9 +83,9 @@ sleep 3
 
 echo Start client
 
-run client ${CLIENT_BIN} --cert res/pem/cert.pem --blob 200Mbit --reps 50 https://127.0.0.1:4433 > ${SUMMARY_DIR}/${IUT}-qbench.log 2>&1
+run client ${CLIENT_BIN} --cert res/pem/cert.pem --blob 200Mbit --reps 50 https://127.0.0.1:4433 > ${SUMMARY_DIR}/${IUT}-nesquic.log 2>&1
 
 echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
-cat ${SUMMARY_DIR}/${IUT}-qbench.log
+cat ${SUMMARY_DIR}/${IUT}-nesquic.log
 
 cleanup
