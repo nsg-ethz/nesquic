@@ -1441,6 +1441,7 @@ dependencies = [
  "clap",
  "env_logger",
  "log",
+ "quiche-iut",
  "quinn-iut",
  "tokio",
  "utils",
@@ -1471,6 +1472,7 @@ name = "quiche-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "env_logger",
  "log",
  "mio",
@@ -1504,7 +1506,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bytes",
- "clap",
  "env_logger",
  "log",
  "quinn",

@@ -71,7 +71,7 @@ impl Stats {
         }
     }
 
-    fn durations(&self) -> MeanWithError {
+    pub fn durations(&self) -> MeanWithError {
         self.deltas.iter().map(|t| t.as_secs_f64()).collect()
     }
 
@@ -79,7 +79,7 @@ impl Stats {
         self.blob_size as f64 / (t.as_secs_f64() * 1000.0 * 1000.0)
     }
 
-    fn throughputs(&self) -> MeanWithError {
+    pub fn throughputs(&self) -> MeanWithError {
         self.deltas
             .iter()
             .map(|t| self.throughput_for_duration(t))

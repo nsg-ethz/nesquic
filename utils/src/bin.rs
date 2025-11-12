@@ -33,7 +33,7 @@ impl ClientArgs {
             url: Url::parse("https://127.0.0.1:4433").unwrap(),
             unencrypted: false,
             cert: format!("{}/../res/pem/cert.pem", env!("CARGO_MANIFEST_DIR")),
-            blob: "100bit".to_string(),
+            blob: "128bit".to_string(),
             reps: 1,
         }
     }
@@ -83,5 +83,5 @@ where
     Self: Sized,
 {
     fn new(args: ServerArgs) -> Result<Self>;
-    async fn listen(&self) -> Result<()>;
+    async fn listen(&mut self) -> Result<()>;
 }

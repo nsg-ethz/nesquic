@@ -57,7 +57,7 @@ async fn run_client(lib: Lib, args: ClientArgs) -> Result<()> {
 }
 
 async fn run_server(lib: Lib, args: ServerArgs) -> Result<()> {
-    let server = match lib {
+    let mut server = match lib {
         Lib::Quinn => QuinnServer::new(args)?,
         Lib::Quiche => unimplemented!("quiche"),
         Lib::Msquic => unimplemented!("msquic"),

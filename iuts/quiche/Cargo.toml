@@ -3,10 +3,9 @@ name = "quiche-iut"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0.79"
+async-trait = "0.1.89"
 env_logger = "0.11.1"
 log = "0.4.20"
 quiche = "0.24.2"
@@ -14,11 +13,3 @@ mio = { version = "1.0.3", features = ["net", "os-poll"] }
 ring = "0.17.14"
 url = "2.5.0"
 utils = { path = "../../utils" }
-
-[[bin]]
-name = "quiche-client"
-path = "src/bin/client.rs"
-
-[[bin]]
-name = "quiche-server"
-path = "src/bin/server.rs"

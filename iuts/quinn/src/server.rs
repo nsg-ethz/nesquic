@@ -40,7 +40,7 @@ impl bin::Server for Server {
         Ok(Server { args, config })
     }
 
-    async fn listen(&self) -> Result<()> {
+    async fn listen(&mut self) -> Result<()> {
         let socket = bind_socket(self.args.listen)?;
         let endpoint = quinn::Endpoint::new(
             Default::default(),
