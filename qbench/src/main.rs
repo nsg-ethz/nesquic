@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
+use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
 use tokio::signal::unix::{signal, SignalKind};
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
@@ -22,7 +23,7 @@ pub enum Command {
 #[derive(Parser, Debug)]
 pub struct ClientLibArgs {
     #[clap(short, long, value_enum)]
-    pub lib: Lib,
+    pub lib: Library,
 
     #[clap(flatten)]
     pub client_args: ClientArgs,
@@ -31,40 +32,48 @@ pub struct ClientLibArgs {
 #[derive(Parser, Debug)]
 pub struct ServerLibArgs {
     #[clap(short, long, value_enum)]
-    pub lib: Lib,
+    pub lib: Library,
 
     #[clap(flatten)]
     pub server_args: ServerArgs,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
-pub enum Lib {
+pub enum Library {
     Quinn,
     Quiche,
     Msquic,
     Ngtcp,
 }
 
-async fn run_client(lib: Lib, args: ClientArgs) -> Result<()> {
-    let mut client = match lib {
-        Lib::Quinn => QuinnClient::new(args)?,
-        Lib::Quiche => unimplemented!("quiche"),
-        Lib::Msquic => unimplemented!("msquic"),
-        Lib::Ngtcp => unimplemented!("ngtcp"),
-    };
-
-    client.run().await
+async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
+    match lib {
+        Library::Quinn => {
+            let mut client = QuinnClient::new(args)?;
+            client.run().await
+        }
+        Library::Quiche => {
+            let mut client = QuicheClient::new(args)?;
+            client.run().await
+        }
+        Library::Msquic => unimplemented!("msquic"),
+        Library::Ngtcp => unimplemented!("ngtcp"),
+    }
 }
 
-async fn run_server(lib: Lib, args: ServerArgs) -> Result<()> {
-    let mut server = match lib {
-        Lib::Quinn => QuinnServer::new(args)?,
-        Lib::Quiche => unimplemented!("quiche"),
-        Lib::Msquic => unimplemented!("msquic"),
-        Lib::Ngtcp => unimplemented!("ngtcp"),
-    };
-
-    server.listen().await
+async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
+    match lib {
+        Library::Quinn => {
+            let mut server = QuinnServer::new(args)?;
+            server.listen().await
+        }
+        Library::Quiche => {
+            let mut server = QuicheServer::new(args)?;
+            server.listen().await
+        }
+        Library::Msquic => unimplemented!("msquic"),
+        Library::Ngtcp => unimplemented!("ngtcp"),
+    }
 }
 
 #[tokio::main]
