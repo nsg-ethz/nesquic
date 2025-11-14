@@ -1,0 +1,14 @@
+[package]
+name = "msquic-iut"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.79"
+async-trait = "0.1.89"
+env_logger = "0.11.1"
+log = "0.4.20"
+msquic = "2.5.1-beta"
+msquic-async = { version = "0.3.0" }
+tokio = "1.48.0"
+utils = { path = "../../utils" }

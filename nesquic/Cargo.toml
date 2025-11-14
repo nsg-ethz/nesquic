@@ -8,6 +8,7 @@ anyhow = "1.0.95"
 clap = "4.5.23"
 env_logger = "0.11.6"
 log = "0.4.22"
+msquic-iut = { path = "../iuts/msquic" }
 quinn-iut = { path = "../iuts/quinn" }
 quiche-iut = { path = "../iuts/quiche" }
 tokio = { version = "1.42.0", features = ["full"] }
