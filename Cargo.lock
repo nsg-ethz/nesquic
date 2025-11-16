@@ -1850,7 +1850,6 @@ name = "msquic-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "env_logger",
  "log",
  "msquic",
@@ -2411,7 +2410,6 @@ name = "quiche-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "env_logger",
  "log",
  "mio",
@@ -2445,7 +2443,6 @@ name = "quinn-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "bytes",
  "env_logger",
  "log",
@@ -3922,7 +3919,6 @@ name = "utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
  "average",
  "clap",
  "log",

@@ -1,6 +1,5 @@
 pub use anyhow::{bail, Result};
-use async_trait::async_trait;
-use log::{debug, warn};
+use log::debug;
 pub use std::{io, net::SocketAddr, time};
 pub use tokio::net::UdpSocket;
 
@@ -50,162 +49,162 @@ pub trait Connection: Sized + Sync + Send {
     */
 }
 
-#[async_trait]
-pub trait Endpoint {
-    type INC: Send + Sync;
-    type CH: Connection;
+// #[async_trait]
+// pub trait Endpoint {
+//     type INC: Send + Sync;
+//     type CH: Connection;
 
-    async fn bind(&self, addr: SocketAddr) -> Result<UdpSocket> {
-        let socket = UdpSocket::bind(addr).await.unwrap();
-        Ok(socket)
-    }
+//     async fn bind(&self, addr: SocketAddr) -> Result<UdpSocket> {
+//         let socket = UdpSocket::bind(addr).await.unwrap();
+//         Ok(socket)
+//     }
 
-    async fn event_loop(&mut self, socket: UdpSocket) -> Result<()> {
-        let addr = socket.local_addr()?;
-        let mut buf = [0; 65535];
-        let mut out = [0; 1350]; // TODO: MAX_DATAGRAM_SIZE here
-        'socket: loop {
-            let (len, from) = match socket.try_recv_from(&mut buf) {
-                Ok(tuple) => tuple,
-                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    self.clean();
-                    socket.recv_from(&mut buf).await.expect("recv error")
-                }
-                Err(e) => bail!(e),
-            };
-            //let (len, from) = socket.recv_from(&mut buf).await.expect("recv error");
-            let pkt_buf = &mut buf[..len];
-            let Some(event) = self.handle_packet(pkt_buf, from) else {
-                // Invalid packet
-                continue 'socket;
-            };
-            debug!("received {} bytes from {}", len, from);
+//     async fn event_loop(&mut self, socket: UdpSocket) -> Result<()> {
+//         let addr = socket.local_addr()?;
+//         let mut buf = [0; 65535];
+//         let mut out = [0; 1350]; // TODO: MAX_DATAGRAM_SIZE here
+//         'socket: loop {
+//             let (len, from) = match socket.try_recv_from(&mut buf) {
+//                 Ok(tuple) => tuple,
+//                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+//                     self.clean();
+//                     socket.recv_from(&mut buf).await.expect("recv error")
+//                 }
+//                 Err(e) => bail!(e),
+//             };
+//             //let (len, from) = socket.recv_from(&mut buf).await.expect("recv error");
+//             let pkt_buf = &mut buf[..len];
+//             let Some(event) = self.handle_packet(pkt_buf, from) else {
+//                 // Invalid packet
+//                 continue 'socket;
+//             };
+//             debug!("received {} bytes from {}", len, from);
 
-            match event {
-                DatagramEvent::NewConnection(id) => {
-                    match self.incoming_connection(&id) {
-                        ConnectionDecision::Accept => {
-                            self.accept_connection(&id, from)?;
+//             match event {
+//                 DatagramEvent::NewConnection(id) => {
+//                     match self.incoming_connection(&id) {
+//                         ConnectionDecision::Accept => {
+//                             self.accept_connection(&id, from)?;
 
-                            self.conn_recv(&id, pkt_buf, from, addr);
-                            self.start_timeout_timer(&id);
-                            self.new_connection(&id);
-                        }
-                        ConnectionDecision::Reject => {
-                            self.reject_connection(id, from);
-                        }
-                    };
-                }
-                DatagramEvent::Known(id) => {
-                    self.conn_recv(&id, pkt_buf, from, addr);
-                    self.new_data(&id);
-                }
-                DatagramEvent::Respond(t) => {
-                    let mut sent = 0;
-                    let to_send = t.data.len();
-                    while sent < to_send {
-                        sent += socket
-                            .send_to(&t.data[sent..], t.to)
-                            .await
-                            .expect("send error");
-                    }
-                }
-            };
-            //self.send_all(&mut out).await;
-        }
-    }
+//                             self.conn_recv(&id, pkt_buf, from, addr);
+//                             self.start_timeout_timer(&id);
+//                             self.new_connection(&id);
+//                         }
+//                         ConnectionDecision::Reject => {
+//                             self.reject_connection(id, from);
+//                         }
+//                     };
+//                 }
+//                 DatagramEvent::Known(id) => {
+//                     self.conn_recv(&id, pkt_buf, from, addr);
+//                     self.new_data(&id);
+//                 }
+//                 DatagramEvent::Respond(t) => {
+//                     let mut sent = 0;
+//                     let to_send = t.data.len();
+//                     while sent < to_send {
+//                         sent += socket
+//                             .send_to(&t.data[sent..], t.to)
+//                             .await
+//                             .expect("send error");
+//                     }
+//                 }
+//             };
+//             //self.send_all(&mut out).await;
+//         }
+//     }
 
-    fn handle_packet(
-        &self,
-        pkt_buf: &mut [u8],
-        from: SocketAddr,
-    ) -> Option<DatagramEvent<Self::INC>>;
+//     fn handle_packet(
+//         &self,
+//         pkt_buf: &mut [u8],
+//         from: SocketAddr,
+//     ) -> Option<DatagramEvent<Self::INC>>;
 
-    fn clean(&mut self);
+//     fn clean(&mut self);
 
-    fn accept_connection(&mut self, _: &Self::INC, _: SocketAddr) -> Result<()> {
-        bail!("Default implementation always fails")
-    }
+//     fn accept_connection(&mut self, _: &Self::INC, _: SocketAddr) -> Result<()> {
+//         bail!("Default implementation always fails")
+//     }
 
-    fn reject_connection(&mut self, _: Self::INC, _: SocketAddr) {}
+//     fn reject_connection(&mut self, _: Self::INC, _: SocketAddr) {}
 
-    // fn send_all(&mut self, out: &mut [u8], socket: &UdpSocket) {
-    //     // let socket = self.socket();
-    //     let mut cxs = self.connections_vec().clone();
-    //     for conn in cxs.iter_mut() {
-    //         drain_conn(out, conn, &socket);
-    //     }
+//     // fn send_all(&mut self, out: &mut [u8], socket: &UdpSocket) {
+//     //     // let socket = self.socket();
+//     //     let mut cxs = self.connections_vec().clone();
+//     //     for conn in cxs.iter_mut() {
+//     //         drain_conn(out, conn, &socket);
+//     //     }
 
-    //     self.clean();
-    //     /*
-    //     for handle in self.ep.connections_vec() {
-    //         (self.writable)(handle.clone());
-    //     }
-    //     */
-    // }
+//     //     self.clean();
+//     //     /*
+//     //     for handle in self.ep.connections_vec() {
+//     //         (self.writable)(handle.clone());
+//     //     }
+//     //     */
+//     // }
 
-    fn new_connection(&mut self, id: &Self::INC);
+//     fn new_connection(&mut self, id: &Self::INC);
 
-    fn new_data(&mut self, id: &Self::INC);
+//     fn new_data(&mut self, id: &Self::INC);
 
-    fn incoming_connection(&self, _: &Self::INC) -> ConnectionDecision {
-        ConnectionDecision::Accept
-    }
+//     fn incoming_connection(&self, _: &Self::INC) -> ConnectionDecision {
+//         ConnectionDecision::Accept
+//     }
 
-    fn conn_recv(
-        &mut self,
-        id: &Self::INC,
-        buf: &mut [u8],
-        from: SocketAddr,
-        to: SocketAddr,
-    ) -> Option<usize>;
+//     fn conn_recv(
+//         &mut self,
+//         id: &Self::INC,
+//         buf: &mut [u8],
+//         from: SocketAddr,
+//         to: SocketAddr,
+//     ) -> Option<usize>;
 
-    fn start_timeout_timer(&self, id: &Self::INC) {
-        // let m_h = handle.clone();
-        // let socket = self.socket();
-        // tokio::spawn(async move {
-        /*
-        loop {
-            let handle = m_h.clone();
-            let d = match handle.time_to_timeout() {
-                Some(d) => d,
-                None => time::Duration::from_millis(1000),
-            };
-            sleep(d).await;
-            info!("Potential timeout!");
-            m_h.on_timeout();
-            let mut buf = [0; 8192];
-            drain_conn(&mut buf, handle.clone(), socket.clone());
-            if handle.is_closed() {
-                break;
-            }
-        }
-        */
-        // });
-    }
-}
+//     fn start_timeout_timer(&self, id: &Self::INC) {
+//         // let m_h = handle.clone();
+//         // let socket = self.socket();
+//         // tokio::spawn(async move {
+//         /*
+//         loop {
+//             let handle = m_h.clone();
+//             let d = match handle.time_to_timeout() {
+//                 Some(d) => d,
+//                 None => time::Duration::from_millis(1000),
+//             };
+//             sleep(d).await;
+//             info!("Potential timeout!");
+//             m_h.on_timeout();
+//             let mut buf = [0; 8192];
+//             drain_conn(&mut buf, handle.clone(), socket.clone());
+//             if handle.is_closed() {
+//                 break;
+//             }
+//         }
+//         */
+//         // });
+//     }
+// }
 
-fn drain_conn<CH: Connection>(buf: &mut [u8], conn: &mut CH, socket: &UdpSocket) {
-    while let Some((len, to)) = conn.poll(buf) {
-        let written = match socket.try_send_to(&buf[..len], to) {
-            Ok(n) => n,
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                break;
-            }
-            Err(e) => {
-                panic!("send failed: {}", e);
-            }
-        };
-        if written != len {
-            panic!("could not write whole packet");
-        }
-        //socket.send_to(&buf[..len], to).await.expect("send error");
-    }
-}
+// fn drain_conn<CH: Connection>(buf: &mut [u8], conn: &mut CH, socket: &UdpSocket) {
+//     while let Some((len, to)) = conn.poll(buf) {
+//         let written = match socket.try_send_to(&buf[..len], to) {
+//             Ok(n) => n,
+//             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+//                 break;
+//             }
+//             Err(e) => {
+//                 panic!("send failed: {}", e);
+//             }
+//         };
+//         if written != len {
+//             panic!("could not write whole packet");
+//         }
+//         //socket.send_to(&buf[..len], to).await.expect("send error");
+//     }
+// }
 
-/// Relevant for APPLICATION
-pub enum ConnectionDecision {
-    Accept,
-    Reject,
-    // TODO: Retry
-}
+// /// Relevant for APPLICATION
+// pub enum ConnectionDecision {
+//     Accept,
+//     Reject,
+//     // TODO: Retry
+// }

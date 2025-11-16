@@ -1,6 +1,5 @@
 use crate::{bind_socket, load_certificates_from_pem, noprotection::NoProtectionClientConfig};
 use anyhow::{anyhow, bail, Result};
-use async_trait::async_trait;
 use log::info;
 use quinn::{ClientConfig, TokioRuntime};
 use std::{net::ToSocketAddrs, sync::Arc};
@@ -16,7 +15,6 @@ pub struct Client {
     stats: Stats,
 }
 
-#[async_trait]
 impl bin::Client for Client {
     fn new(args: ClientArgs) -> Result<Self> {
         let mut roots = rustls::RootCertStore::empty();

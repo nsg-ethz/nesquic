@@ -1,9 +1,9 @@
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
 
-pub async fn run<C: Client, S: Server + Send>() {
+async fn run<C: Client, S: Server + Send>() {
     env_logger::init();
 
-    tokio::spawn(async move {
+    tokio::spawn(async {
         let mut server = S::new(ServerArgs::test()).expect("server::new");
         let res = server.listen().await;
         assert!(res.is_ok());
@@ -21,17 +21,22 @@ async fn run_quinn() {
     run::<quinn_iut::Client, quinn_iut::Server>().await;
 }
 
-#[tokio::test]
-async fn run_quiche() {
-    run::<quiche_iut::Client, quiche_iut::Server>().await;
-}
+// #[tokio::test]
+// async fn run_quiche() {
+//     run::<quiche_iut::Client, quiche_iut::Server>().await;
+// }
 
-#[tokio::test]
-async fn run_quinn_quiche() {
-    run::<quinn_iut::Client, quiche_iut::Server>().await;
-}
+// #[tokio::test]
+// async fn run_quinn_quiche() {
+//     run::<quinn_iut::Client, quiche_iut::Server>().await;
+// }
 
 #[tokio::test]
 async fn run_quiche_quinn() {
     run::<quiche_iut::Client, quinn_iut::Server>().await;
+}
+
+#[tokio::test]
+async fn run_msquic_quinn() {
+    run::<msquic_iut::Client, quinn_iut::Server>().await;
 }

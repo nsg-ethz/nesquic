@@ -1,8 +1,7 @@
 use crate::perf::Stats;
 use anyhow::Result;
-use async_trait::async_trait;
 use clap::Parser;
-use std::net::SocketAddr;
+use std::{future::Future, net::SocketAddr};
 use url::Url;
 
 #[derive(Parser, Clone, Debug)]
@@ -67,21 +66,20 @@ impl ServerArgs {
     }
 }
 
-#[async_trait]
+// #[async_trait]
 pub trait Client
 where
     Self: Sized,
 {
     fn new(args: ClientArgs) -> Result<Self>;
-    async fn run(&mut self) -> Result<()>;
+    fn run(&mut self) -> impl Future<Output = Result<()>> + Send;
     fn stats(&self) -> &Stats;
 }
 
-#[async_trait]
 pub trait Server
 where
     Self: Sized,
 {
     fn new(args: ServerArgs) -> Result<Self>;
-    async fn listen(&mut self) -> Result<()>;
+    fn listen(&mut self) -> impl Future<Output = Result<()>> + Send;
 }

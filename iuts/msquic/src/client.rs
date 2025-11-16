@@ -1,7 +1,7 @@
 use anyhow::Result;
-use async_trait::async_trait;
 use log::info;
-use std::{future::poll_fn, net::SocketAddr};
+use msquic::{Configuration, CredentialConfig};
+use std::{future::poll_fn, net::SocketAddr, sync::Arc};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use utils::{
     bin::{self, ClientArgs},
@@ -10,29 +10,21 @@ use utils::{
 
 pub struct Client {
     args: ClientArgs,
+    config: Configuration,
+    registration: msquic::Registration,
     local_addr: SocketAddr,
     stats: Stats,
 }
 
-#[async_trait]
 impl bin::Client for Client {
     fn new(args: ClientArgs) -> Result<Self> {
         let local_addr = "0.0.0.0:0".parse()?;
         let size = parse_blob_size(&args.blob)?;
         let stats = Stats::new(size);
 
-        Ok(Client {
-            args,
-            local_addr,
-            stats,
-        })
-    }
-
-    async fn run(&mut self) -> Result<()> {
         let registration = msquic::Registration::new(&msquic::RegistrationConfig::default())?;
-
-        let alpn = [msquic::BufferRef::from("sample")];
-        let configuration = msquic::Configuration::open(
+        let alpn = [msquic::BufferRef::from("perf")];
+        let config = msquic::Configuration::open(
             &registration,
             &alpn,
             Some(
@@ -46,10 +38,20 @@ impl bin::Client for Client {
         )?;
         let cred_config = msquic::CredentialConfig::new_client()
             .set_credential_flags(msquic::CredentialFlags::NO_CERTIFICATE_VALIDATION);
-        configuration.load_credential(&cred_config)?;
+        config.load_credential(&cred_config)?;
 
-        let conn = msquic_async::Connection::new(&registration)?;
-        conn.start(&configuration, "127.0.0.1", 4567).await?;
+        Ok(Client {
+            args,
+            config,
+            registration,
+            local_addr,
+            stats,
+        })
+    }
+
+    async fn run(&mut self) -> Result<()> {
+        let conn = msquic_async::Connection::new(&self.registration)?;
+        conn.start(&self.config, "127.0.0.1", 4433).await?;
 
         let mut stream = conn
             .open_outbound_stream(msquic_async::StreamType::Bidirectional, false)

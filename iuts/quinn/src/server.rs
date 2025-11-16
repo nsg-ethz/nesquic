@@ -3,7 +3,6 @@ use crate::{
     noprotection::NoProtectionServerConfig,
 };
 use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
 use bytes::Bytes;
 use log::{error, info};
 use quinn::{ServerConfig, TokioRuntime};
@@ -15,7 +14,6 @@ pub struct Server {
     config: ServerConfig,
 }
 
-#[async_trait]
 impl bin::Server for Server {
     fn new(args: ServerArgs) -> Result<Self> {
         let certs = load_certificates_from_pem(args.cert.as_str())
