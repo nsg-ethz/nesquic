@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::info;
 use msquic::Configuration;
-use std::{future::poll_fn, net::SocketAddr, sync::Arc};
+use std::{future::poll_fn, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use utils::{
     bin::{self, ClientArgs},

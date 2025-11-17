@@ -2,8 +2,8 @@ use crate::bind_socket;
 use anyhow::{anyhow, bail, Result};
 use log::info;
 use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, TokioRuntime};
-use rustls::pki_types::CertificateDer;
-use std::{fs, net::ToSocketAddrs, sync::Arc};
+use rustls::pki_types::{pem::PemObject, CertificateDer};
+use std::{net::ToSocketAddrs, sync::Arc};
 use utils::{
     bin,
     bin::ClientArgs,
@@ -19,7 +19,7 @@ pub struct Client {
 impl bin::Client for Client {
     fn new(args: ClientArgs) -> Result<Self> {
         let mut roots = rustls::RootCertStore::empty();
-        roots.add(CertificateDer::from(fs::read(&args.cert)?))?;
+        roots.add(CertificateDer::from_pem_file(&args.cert)?)?;
 
         let mut client_crypto = rustls::ClientConfig::builder()
             .with_root_certificates(roots)
