@@ -59,6 +59,8 @@ jobs:
             - uses: Swatinem/rust-cache@v2
             - name: Build
               run: cargo build --profile=${{ matrix.profile }} --locked --verbose --workspace
+            - name: Generate certificate
+              run: cargo rcgen
             - name: Run tests
               # Skip tests which require sudo
               run: cargo test --profile=${{ matrix.profile }} --locked --verbose --workspace -- --skip ':root:'  --include-ignored
