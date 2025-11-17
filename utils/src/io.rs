@@ -1,5 +1,4 @@
 pub use anyhow::{bail, Result};
-use log::debug;
 pub use std::{io, net::SocketAddr, time};
 pub use tokio::net::UdpSocket;
 

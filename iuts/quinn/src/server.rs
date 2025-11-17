@@ -1,11 +1,9 @@
-use crate::{
-    bind_socket, load_certificates_from_pem, load_private_key_from_file,
-    noprotection::NoProtectionServerConfig,
-};
+use crate::bind_socket;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use log::{error, info};
-use quinn::{ServerConfig, TokioRuntime};
+use log::{debug, error, info};
+use quinn::{crypto::rustls::QuicServerConfig, ServerConfig, TokioRuntime};
+use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
 use utils::{bin, bin::ServerArgs, perf::process_req};
 
@@ -16,24 +14,20 @@ pub struct Server {
 
 impl bin::Server for Server {
     fn new(args: ServerArgs) -> Result<Self> {
-        let certs = load_certificates_from_pem(args.cert.as_str())
-            .context("failed to read certificate chain")?;
-        let key =
-            load_private_key_from_file(args.key.as_str()).context("failed to read private key")?;
+        let certs = CertificateDer::pem_file_iter(&args.cert)
+            .context("failed to read PEM from certificate chain file")?
+            .collect::<Result<_, _>>()
+            .context("invalid PEM-encoded certificate")?;
+        let key = PrivateKeyDer::from_pem_file(&args.key)
+            .context("failed to read PEM from private key file")?;
 
         let mut server_crypto = rustls::ServerConfig::builder()
-            .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certs, key)?;
         server_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-        let config = if args.unencrypted {
-            quinn::ServerConfig::with_crypto(Arc::new(NoProtectionServerConfig::new(Arc::new(
-                server_crypto,
-            ))))
-        } else {
-            quinn::ServerConfig::with_crypto(Arc::new(server_crypto))
-        };
+        let config =
+            quinn::ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
 
         Ok(Server { args, config })
     }
@@ -64,7 +58,7 @@ impl bin::Server for Server {
     }
 }
 
-async fn handle_connection(conn: quinn::Connecting) -> Result<()> {
+async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
         info!("established");
@@ -104,6 +98,7 @@ async fn handle_request(
 
     // Execute the request
     let blob = process_req(&req).map_err(|e| anyhow!("failed handling request: {}", e))?;
+    debug!("serving {}", blob.size);
 
     // Write the response
     send.write_chunk(Bytes::from_iter(blob))
@@ -112,7 +107,6 @@ async fn handle_request(
 
     // Gracefully terminate the stream
     send.finish()
-        .await
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
 
     info!("complete");

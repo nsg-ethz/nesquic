@@ -1,6 +1,6 @@
 use anyhow::Result;
 use log::info;
-use msquic::{Configuration, CredentialConfig};
+use msquic::Configuration;
 use std::{future::poll_fn, net::SocketAddr, sync::Arc};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use utils::{
@@ -36,8 +36,13 @@ impl bin::Client for Client {
                     .set_StreamMultiReceiveEnabled(),
             ),
         )?;
-        let cred_config = msquic::CredentialConfig::new_client()
-            .set_credential_flags(msquic::CredentialFlags::NO_CERTIFICATE_VALIDATION);
+
+        let key = format!("{}/../../res/pem/key.pem", env!("CARGO_MANIFEST_DIR"));
+        let file = msquic::CertificateFile::new(key, args.cert.clone());
+        let creds = msquic::Credential::CertificateFile(file);
+
+        let cred_config = msquic::CredentialConfig::new_client().set_credential(creds);
+        // .set_credential_flags(msquic::CredentialFlags::NO_CERTIFICATE_VALIDATION);
         config.load_credential(&cred_config)?;
 
         Ok(Client {
@@ -53,10 +58,12 @@ impl bin::Client for Client {
         let conn = msquic_async::Connection::new(&self.registration)?;
         conn.start(&self.config, "127.0.0.1", 4433).await?;
 
+        let request = create_req(&self.args.blob)?;
+
         let mut stream = conn
             .open_outbound_stream(msquic_async::StreamType::Bidirectional, false)
             .await?;
-        stream.write_all("hello".as_bytes()).await?;
+        stream.write_all(&request).await?;
         poll_fn(|cx| stream.poll_finish_write(cx)).await?;
         let mut buf = [0u8; 1024];
         let len = stream.read(&mut buf).await?;

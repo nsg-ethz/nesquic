@@ -9,9 +9,10 @@ async fn run<C: Client, S: Server + Send>() {
         assert!(res.is_ok());
     });
 
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
     let mut client = C::new(ClientArgs::test()).expect("client::new");
     let res = client.run().await;
-    println!("Client run result: {:?}", res);
     assert!(res.is_ok(), "{}", res.err().unwrap());
     assert!(client.stats().throughputs().mean() > 0.0);
 }
