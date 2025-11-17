@@ -1,11 +1,8 @@
 use anyhow::Result;
-use std::{future::poll_fn, net::SocketAddr, ops::Deref, sync::Arc};
+use std::{future::poll_fn, net::SocketAddr, ops::Deref};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info};
-use utils::{
-    bin::{self, ServerArgs},
-    perf::{Stats, parse_blob_size},
-};
+use utils::bin::{self, ServerArgs};
 
 pub struct Listener {
     inner: msquic_async::Listener,
@@ -46,16 +43,12 @@ impl AsRef<[msquic::BufferRef]> for Alpn {
 }
 
 pub struct Server {
-    args: ServerArgs,
     alpn: Alpn,
     listener: Listener,
-    local_addr: SocketAddr,
 }
 
 impl bin::Server for Server {
     fn new(args: ServerArgs) -> Result<Self> {
-        let local_addr = "0.0.0.0:0".parse()?;
-
         let registration = msquic::Registration::new(&msquic::RegistrationConfig::default())?;
         let alpn = [msquic::BufferRef::from("perf")];
         let config = msquic::Configuration::open(
@@ -72,9 +65,7 @@ impl bin::Server for Server {
         )?;
 
         let alpn = Alpn::new(alpn);
-
-        let key = format!("{}/../../res/pem/key.pem", env!("CARGO_MANIFEST_DIR"));
-        let file = msquic::CertificateFile::new(key, args.cert.clone());
+        let file = msquic::CertificateFile::new(args.key.clone(), args.cert.clone());
         let creds = msquic::Credential::CertificateFile(file);
 
         let cred_config = msquic::CredentialConfig::new_client().set_credential(creds);
@@ -84,12 +75,7 @@ impl bin::Server for Server {
         let listener = msquic_async::Listener::new(&registration, config)?;
         let listener = Listener::new(listener);
 
-        Ok(Server {
-            args,
-            alpn,
-            listener,
-            local_addr,
-        })
+        Ok(Server { alpn, listener })
     }
 
     async fn listen(&mut self) -> Result<()> {

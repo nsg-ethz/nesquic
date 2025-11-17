@@ -3,7 +3,12 @@ name = "nesquic"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "schema"
+path = "src/bin/schema.rs"
+
 [dependencies]
+async-std = { version = "1.8", features = ["attributes", "tokio1"] }
 anyhow = "1.0.95"
 clap = "4.5.23"
 msquic-iut = { path = "../iuts/msquic" }
@@ -13,3 +18,12 @@ tokio = { version = "1.42.0", features = ["full"] }
 utils = { path = "../utils" }
 tracing-subscriber = "0.3.20"
 tracing = "0.1.41"
+serde_json = { version = "1" }
+sqlx = { version = "0.8", features = ["postgres"] }
+sea-schema = { version = "0.16.0", default-features = false, features = [
+    "with-serde",
+    "sqlx-postgres",
+    "runtime-async-std",
+    "discovery",
+    "debug-print",
+] }

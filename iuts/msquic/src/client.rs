@@ -1,6 +1,6 @@
 use anyhow::Result;
 use msquic::Configuration;
-use std::{future::poll_fn, net::SocketAddr};
+use std::future::poll_fn;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, info};
 use utils::{
@@ -12,13 +12,11 @@ pub struct Client {
     args: ClientArgs,
     config: Configuration,
     registration: msquic::Registration,
-    local_addr: SocketAddr,
     stats: Stats,
 }
 
 impl bin::Client for Client {
     fn new(args: ClientArgs) -> Result<Self> {
-        let local_addr = "0.0.0.0:0".parse()?;
         let size = parse_blob_size(&args.blob)?;
         let stats = Stats::new(size);
 
@@ -45,7 +43,6 @@ impl bin::Client for Client {
             args,
             config,
             registration,
-            local_addr,
             stats,
         })
     }

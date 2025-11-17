@@ -1934,10 +1934,14 @@ name = "nesquic"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-std",
  "clap",
  "msquic-iut",
  "quiche-iut",
  "quinn-iut",
+ "sea-schema",
+ "serde_json",
+ "sqlx",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2908,17 +2912,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbc91545643bcf3a0bbb6569265615222618bdf33ce4ffbbd13c4bbd4c093534"
 dependencies = [
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "schema"
-version = "0.1.0"
-dependencies = [
- "async-std",
- "log",
- "sea-schema",
- "serde_json",
- "sqlx",
 ]
 
 [[package]]
