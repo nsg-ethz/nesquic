@@ -1,10 +1,10 @@
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
 
 async fn run<C: Client, S: Server + Send>() {
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
-        .init();
+        .try_init();
 
     tokio::spawn(async {
         let mut server = S::new(ServerArgs::test()).expect("server::new");
