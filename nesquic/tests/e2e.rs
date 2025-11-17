@@ -1,7 +1,10 @@
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
 
 async fn run<C: Client, S: Server + Send>() {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+        .init();
 
     tokio::spawn(async {
         let mut server = S::new(ServerArgs::test()).expect("server::new");
@@ -9,6 +12,7 @@ async fn run<C: Client, S: Server + Send>() {
         assert!(res.is_ok());
     });
 
+    // TODO: better health check
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     let mut client = C::new(ClientArgs::test()).expect("client::new");
@@ -18,7 +22,7 @@ async fn run<C: Client, S: Server + Send>() {
 }
 
 #[tokio::test]
-async fn run_quinn() {
+async fn run_quinn_quinn() {
     run::<quinn_iut::Client, quinn_iut::Server>().await;
 }
 
@@ -38,11 +42,11 @@ async fn run_quinn() {
 // }
 
 #[tokio::test]
-async fn run_msquic() {
+async fn run_msquic_msquic() {
     run::<msquic_iut::Client, msquic_iut::Server>().await;
 }
 
-// #[tokio::test]
-// async fn run_msquic_quinn() {
-//     run::<msquic_iut::Client, quinn_iut::Server>().await;
-// }
+#[tokio::test]
+async fn run_msquic_quinn() {
+    run::<msquic_iut::Client, quinn_iut::Server>().await;
+}

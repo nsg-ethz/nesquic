@@ -13,9 +13,10 @@ path = "src/bin/rcgen.rs"
 anyhow = "1.0.79"
 average = "0.14.1"
 clap = { version = "4.5.0", features = ["derive"] }
-log = "0.4.20"
+tracing = "0.1.41"
 mio = "1.0.3"
 rcgen = "0.14.5"
 ring = "0.17.14"
 tokio = { version = "1.44.1", features = ["full"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = "2.5.0"

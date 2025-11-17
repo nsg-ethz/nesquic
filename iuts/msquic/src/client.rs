@@ -1,8 +1,8 @@
 use anyhow::Result;
-use log::info;
 use msquic::Configuration;
 use std::{future::poll_fn, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::{debug, info};
 use utils::{
     bin::{self, ClientArgs},
     perf::{Stats, create_req, parse_blob_size},
@@ -37,12 +37,8 @@ impl bin::Client for Client {
             ),
         )?;
 
-        let key = format!("{}/../../res/pem/key.pem", env!("CARGO_MANIFEST_DIR"));
-        let file = msquic::CertificateFile::new(key, args.cert.clone());
-        let creds = msquic::Credential::CertificateFile(file);
-
-        let cred_config = msquic::CredentialConfig::new_client().set_credential(creds);
-        // .set_credential_flags(msquic::CredentialFlags::NO_CERTIFICATE_VALIDATION);
+        let cred_config =
+            msquic::CredentialConfig::new_client().set_ca_certificate_file(args.cert.clone());
         config.load_credential(&cred_config)?;
 
         Ok(Client {
@@ -55,8 +51,11 @@ impl bin::Client for Client {
     }
 
     async fn run(&mut self) -> Result<()> {
+        info!("Establishing connection");
         let conn = msquic_async::Connection::new(&self.registration)?;
         conn.start(&self.config, "127.0.0.1", 4433).await?;
+
+        info!("connected");
 
         let request = create_req(&self.args.blob)?;
 
@@ -65,9 +64,18 @@ impl bin::Client for Client {
             .await?;
         stream.write_all(&request).await?;
         poll_fn(|cx| stream.poll_finish_write(cx)).await?;
+        debug!("sent request");
         let mut buf = [0u8; 1024];
-        let len = stream.read(&mut buf).await?;
-        info!("received: {}", String::from_utf8_lossy(&buf[0..len]));
+
+        self.stats.start_measurement();
+        let _ = stream.read(&mut buf).await?;
+
+        let (duration, throughput) = self.stats.stop_measurement()?;
+        info!(
+            "response received in {:?} - {:.2} Mbit/s",
+            duration, throughput
+        );
+
         poll_fn(|cx| conn.poll_shutdown(cx, 0)).await?;
 
         Ok(())

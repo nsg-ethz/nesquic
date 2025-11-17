@@ -1,9 +1,9 @@
 use crate::{Connection, ConnectionData, ConnectionId};
 use anyhow::bail;
-use log::{error, info, warn};
 use quiche::Config;
 use ring::{hmac::Key, rand};
 use std::collections::HashMap;
+use tracing::{error, info, warn};
 use utils::{
     bin,
     bin::ServerArgs,

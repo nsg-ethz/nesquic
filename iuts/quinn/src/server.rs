@@ -1,10 +1,10 @@
 use crate::bind_socket;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use log::{debug, error, info};
 use quinn::{crypto::rustls::QuicServerConfig, ServerConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
+use tracing::{debug, error, info};
 use utils::{bin, bin::ServerArgs, perf::process_req};
 
 pub struct Server {
@@ -66,6 +66,8 @@ async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
         // Each stream initiated by the client constitutes a new request.
         loop {
             let stream = connection.accept_bi().await;
+            info!("stream accepted");
+
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
                     info!("connection closed");

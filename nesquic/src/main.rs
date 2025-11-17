@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
+use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
 use tokio::signal::unix::{signal, SignalKind};
@@ -56,7 +57,10 @@ async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
             let mut client = QuicheClient::new(args)?;
             client.run().await
         }
-        Library::Msquic => unimplemented!("msquic"),
+        Library::Msquic => {
+            let mut client = MsQuicClient::new(args)?;
+            client.run().await
+        }
         Library::Ngtcp => unimplemented!("ngtcp"),
     }
 }
@@ -71,14 +75,20 @@ async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
             let mut server = QuicheServer::new(args)?;
             server.listen().await
         }
-        Library::Msquic => unimplemented!("msquic"),
+        Library::Msquic => {
+            let mut server = MsQuicServer::new(args)?;
+            server.listen().await
+        }
         Library::Ngtcp => unimplemented!("ngtcp"),
     }
 }
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+        .init();
 
     tokio::spawn(async move {
         let mut sigterm = signal(SignalKind::terminate()).unwrap();

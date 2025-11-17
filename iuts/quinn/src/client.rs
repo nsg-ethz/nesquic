@@ -1,9 +1,9 @@
 use crate::bind_socket;
 use anyhow::{anyhow, bail, Result};
-use log::info;
 use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
 use std::{net::ToSocketAddrs, sync::Arc};
+use tracing::info;
 use utils::{
     bin,
     bin::ClientArgs,

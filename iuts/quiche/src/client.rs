@@ -1,6 +1,5 @@
 use crate::{Connection, ConnectionData, ConnectionId};
 use anyhow::{anyhow, bail, Result};
-use log::{error, info, trace, warn};
 use quiche::Config;
 use ring::{hmac::Key, rand::*};
 use std::{
@@ -12,6 +11,7 @@ use tokio_quiche::{
     socket::Socket as QuicSocket,
     ApplicationOverQuic, ConnectionParams, QuicResult,
 };
+use tracing::{error, info, trace, warn};
 use utils::{
     bin::{self, ClientArgs},
     perf::{create_req, parse_blob_size, Stats},

@@ -1,6 +1,6 @@
-use log::error;
 use quiche;
 use std::{collections::HashMap, time};
+use tracing::error;
 use utils::io::{self, SocketAddr};
 
 mod client;
