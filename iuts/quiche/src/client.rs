@@ -1,17 +1,16 @@
-use crate::{Connection, ConnectionData, ConnectionId};
 use anyhow::{anyhow, bail, Result};
 use quiche::Config;
-use ring::{hmac::Key, rand::*};
 use std::{
-    collections::HashMap,
     net::{SocketAddr, ToSocketAddrs},
+    time::Duration,
 };
+use tokio::sync::oneshot;
 use tokio_quiche::{
     quic::{self, HandshakeInfo, QuicheConnection},
     socket::Socket as QuicSocket,
     ApplicationOverQuic, ConnectionParams, QuicResult,
 };
-use tracing::{error, info, trace, warn};
+use tracing::info;
 use utils::{
     bin::{self, ClientArgs},
     perf::{create_req, parse_blob_size, Stats},
@@ -20,9 +19,6 @@ use utils::{
 pub struct Client {
     args: ClientArgs,
     local_addr: SocketAddr,
-    connections: HashMap<ConnectionId, Connection>,
-    config: Config,
-    conn_id_seed: Key,
     stats: Stats,
 }
 
@@ -44,19 +40,14 @@ impl bin::Client for Client {
         config.set_disable_active_migration(true);
         config.enable_early_data();
 
-        let rng = SystemRandom::new();
-        let conn_id_seed = ring::hmac::Key::generate(ring::hmac::HMAC_SHA256, &rng).unwrap();
-
         let local_addr = "0.0.0.0:0".parse()?;
+
         let size = parse_blob_size(&args.blob)?;
         let stats = Stats::new(size);
 
         Ok(Client {
             args,
             local_addr,
-            connections: HashMap::new(),
-            conn_id_seed,
-            config,
             stats,
         })
     }
@@ -74,13 +65,25 @@ impl bin::Client for Client {
         socket.connect(remote).await?;
 
         let socket = QuicSocket::try_from(socket)?;
-        let remote = self.args.url.as_str();
+        let host = self
+            .args
+            .url
+            .host_str()
+            .ok_or_else(|| anyhow!("no hostname specified"))?;
+
+        info!("connecting to {host} at {remote}");
+
         let mut params = ConnectionParams::default();
         params.settings.alpn = vec![b"perf".to_vec()];
-        let benchmark = Benchmark::new(self.args.clone());
-        let Ok(conn) = quic::connect_with_config(socket, None, &params, benchmark).await else {
+
+        let (done, stats) = oneshot::channel::<Stats>();
+        let benchmark = Benchmark::new(self.args.clone(), done)?;
+
+        let Ok(_) = quic::connect_with_config(socket, None, &params, benchmark).await else {
             bail!("Failed to establish connection");
         };
+
+        self.stats = stats.await?;
 
         Ok(())
     }
@@ -93,49 +96,72 @@ impl bin::Client for Client {
 struct Benchmark {
     args: ClientArgs,
     buf: [u8; 8192],
+    stats: Stats,
+    done: Option<oneshot::Sender<Stats>>,
+    num_reqs_sent: u64,
 }
 
 impl Benchmark {
-    fn new(args: ClientArgs) -> Self {
-        Benchmark {
+    fn new(args: ClientArgs, done: oneshot::Sender<Stats>) -> Result<Self> {
+        let size = parse_blob_size(&args.blob)?;
+        let stats = Stats::new(size);
+
+        Ok(Benchmark {
             args,
             buf: [0u8; 8192],
-        }
+            stats,
+            done: Some(done),
+            num_reqs_sent: 0,
+        })
     }
 }
 
 impl ApplicationOverQuic for Benchmark {
     fn on_conn_established(
         &mut self,
-        qconn: &mut QuicheConnection,
-        handshake_info: &HandshakeInfo,
+        _: &mut QuicheConnection,
+        _: &HandshakeInfo,
     ) -> QuicResult<()> {
-        trace!("on_conn_established");
         Ok(())
     }
 
     fn should_act(&self) -> bool {
-        trace!("should_act");
         true
     }
 
     fn buffer(&mut self) -> &mut [u8] {
-        trace!("buffer");
         &mut self.buf
     }
 
-    async fn wait_for_data(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        trace!("wait_for_data");
+    async fn wait_for_data(&mut self, _: &mut QuicheConnection) -> QuicResult<()> {
+        tokio::time::sleep(Duration::MAX).await;
         Ok(())
     }
 
     fn process_reads(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        trace!("process_reads");
+        let mut buf = [0u8; 8192];
+        while let Some(stream) = qconn.stream_readable_next() {
+            let (_, done) = qconn.stream_recv(stream, &mut buf)?;
+            if done {
+                self.stats.stop_measurement()?;
+
+                qconn.close(true, 0, "Done".as_bytes())?;
+
+                self.done.take().unwrap().send(self.stats.clone()).unwrap();
+            }
+        }
+
         Ok(())
     }
 
     fn process_writes(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        trace!("process_writes");
+        if self.num_reqs_sent == 0 {
+            self.num_reqs_sent += 1;
+            self.stats.start_measurement();
+            let request = create_req(&self.args.blob)?;
+            qconn.stream_send(0, &request, true)?;
+        }
+
         Ok(())
     }
 }

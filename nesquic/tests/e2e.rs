@@ -36,10 +36,10 @@ async fn run_quinn_quinn() {
 //     run::<quinn_iut::Client, quiche_iut::Server>().await;
 // }
 
-// #[tokio::test]
-// async fn run_quiche_quinn() {
-//     run::<quiche_iut::Client, quinn_iut::Server>().await;
-// }
+#[tokio::test]
+async fn run_quiche_quinn() {
+    run::<quiche_iut::Client, quinn_iut::Server>().await;
+}
 
 // #[tokio::test]
 // async fn run_msquic_msquic() {

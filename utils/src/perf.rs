@@ -29,6 +29,7 @@ impl Iterator for Blob {
 }
 
 /// Stats keep track of the measurements
+#[derive(Clone, Debug)]
 pub struct Stats {
     /// the measured time differences
     deltas: Vec<Duration>,
@@ -48,6 +49,10 @@ impl Stats {
             start: None,
             blob_size: blob_bytes,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.deltas.len()
     }
 
     /// Starts a new measurement

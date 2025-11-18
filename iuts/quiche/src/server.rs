@@ -1,19 +1,13 @@
-use crate::{Connection, ConnectionData, ConnectionId};
-use anyhow::bail;
+use anyhow::Result;
 use quiche::Config;
 use ring::{hmac::Key, rand};
 use std::collections::HashMap;
 use tracing::{error, info, warn};
-use utils::{
-    bin,
-    bin::ServerArgs,
-    io::{Connection as IoConnection, DatagramEvent, Result, SocketAddr},
-};
+use utils::{bin, bin::ServerArgs, io::SocketAddr};
 
 pub struct Server {
     args: ServerArgs,
     local_addr: SocketAddr,
-    connections: HashMap<ConnectionId, Connection>,
     config: Config,
     conn_id_seed: Key,
 }
@@ -44,7 +38,6 @@ impl bin::Server for Server {
         Ok(Server {
             args,
             local_addr,
-            connections: HashMap::new(),
             conn_id_seed,
             config,
         })

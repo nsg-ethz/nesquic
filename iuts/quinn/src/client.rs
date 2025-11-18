@@ -72,7 +72,6 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
-        // TODO: check if we do this the most performant way
         send.write_all(&request)
             .await
             .map_err(|e| anyhow!("failed to send request: {}", e))?;
