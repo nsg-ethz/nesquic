@@ -7,7 +7,7 @@ use tracing::info;
 use utils::{
     bin,
     bin::ClientArgs,
-    perf::{create_req, parse_blob_size, Stats},
+    perf::{Request, Stats},
 };
 
 pub struct Client {
@@ -29,13 +29,10 @@ impl bin::Client for Client {
 
         let config = quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
 
-        let size = parse_blob_size(&args.blob)?;
-        let stats = Stats::new(size);
-
         Ok(Client {
             args,
             config,
-            stats,
+            stats: Stats::new(),
         })
     }
 
@@ -54,7 +51,7 @@ impl bin::Client for Client {
             quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
         endpoint.set_default_client_config(self.config.clone());
 
-        let request = create_req(&self.args.blob)?;
+        let request = Request::try_from(self.args.blob.clone())?;
         let host = self
             .args
             .url
@@ -72,7 +69,7 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
-        send.write_all(&request)
+        send.write_all(&request.to_bytes())
             .await
             .map_err(|e| anyhow!("failed to send request: {}", e))?;
         send.finish()
@@ -86,6 +83,7 @@ impl bin::Client for Client {
 
         info!("received response: {}B", resp.len());
 
+        self.stats.add_bytes(resp.len())?;
         let (duration, throughput) = self.stats.stop_measurement()?;
         info!(
             "response received in {:?} - {:.2} Mbit/s",
@@ -98,12 +96,11 @@ impl bin::Client for Client {
         // Give the server a fair chance to receive the close packet
         endpoint.wait_idle().await;
 
-        let res_size = parse_blob_size(&self.args.blob)? as usize;
-        if res_size != resp.len() {
+        if request.size != resp.len() {
             bail!(
                 "received blob size ({}B) different from requested blob size ({}B)",
                 resp.len(),
-                res_size
+                request.size
             )
         }
 

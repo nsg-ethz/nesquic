@@ -5,11 +5,11 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
+bytes = "1.5.0"
 tracing = "0.1.41"
 quiche = "0.24.2"
-mio = { version = "1.0.3", features = ["net", "os-poll"] }
-ring = "0.17.14"
 url = "2.5.0"
 utils = { path = "../../utils" }
 tokio-quiche = "0.11.0"
 tokio = { version = "1.48.0", features = ["full"] }
+futures = "0.3.31"

@@ -5,7 +5,7 @@ use quinn::{crypto::rustls::QuicServerConfig, ServerConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
 use tracing::{debug, error, info};
-use utils::{bin, bin::ServerArgs, perf::process_req};
+use utils::{bin, bin::ServerArgs, perf::Blob};
 
 pub struct Server {
     args: ServerArgs,
@@ -99,7 +99,8 @@ async fn handle_request(
         .map_err(|e| anyhow!("failed reading request: {}", e))?;
 
     // Execute the request
-    let blob = process_req(&req).map_err(|e| anyhow!("failed handling request: {}", e))?;
+    let blob =
+        Blob::try_from(req.as_slice()).map_err(|e| anyhow!("failed handling request: {}", e))?;
     debug!("serving {}", blob.size);
 
     // Write the response

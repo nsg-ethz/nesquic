@@ -5,7 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, info};
 use utils::{
     bin::{self, ClientArgs},
-    perf::{Stats, create_req, parse_blob_size},
+    perf::{Request, Stats},
 };
 
 pub struct Client {
@@ -17,9 +17,6 @@ pub struct Client {
 
 impl bin::Client for Client {
     fn new(args: ClientArgs) -> Result<Self> {
-        let size = parse_blob_size(&args.blob)?;
-        let stats = Stats::new(size);
-
         let registration = msquic::Registration::new(&msquic::RegistrationConfig::default())?;
         let alpn = [msquic::BufferRef::from("perf")];
         let config = msquic::Configuration::open(
@@ -43,7 +40,7 @@ impl bin::Client for Client {
             args,
             config,
             registration,
-            stats,
+            stats: Stats::new(),
         })
     }
 
@@ -54,18 +51,18 @@ impl bin::Client for Client {
 
         info!("connected");
 
-        let request = create_req(&self.args.blob)?;
-
+        let request = Request::try_from(self.args.blob.clone())?;
         let mut stream = conn
             .open_outbound_stream(msquic_async::StreamType::Bidirectional, false)
             .await?;
-        stream.write_all(&request).await?;
+        stream.write_all(&request.to_bytes()).await?;
         poll_fn(|cx| stream.poll_finish_write(cx)).await?;
         debug!("sent request");
         let mut buf = [0u8; 1024];
 
         self.stats.start_measurement();
-        let _ = stream.read(&mut buf).await?;
+        let len = stream.read(&mut buf).await?;
+        self.stats.add_bytes(len)?;
 
         let (duration, throughput) = self.stats.stop_measurement()?;
         info!(

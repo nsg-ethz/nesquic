@@ -2479,9 +2479,9 @@ name = "quiche-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "mio",
+ "bytes",
+ "futures",
  "quiche",
- "ring",
  "tokio",
  "tokio-quiche",
  "tracing",
