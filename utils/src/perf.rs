@@ -51,12 +51,19 @@ pub struct Blob {
     pub cursor: usize,
 }
 
+impl From<[u8; 8]> for Blob {
+    fn from(data: [u8; 8]) -> Self {
+        let size = usize::from_be_bytes(data);
+
+        Blob { size, cursor: 0 }
+    }
+}
+
 impl TryFrom<&[u8]> for Blob {
     type Error = anyhow::Error;
-    fn try_from(data: &[u8]) -> Result<Self> {
-        let size = usize::from_be_bytes(data.try_into()?);
-
-        Ok(Blob { size, cursor: 0 })
+    fn try_from(value: &[u8]) -> Result<Blob> {
+        let value: [u8; 8] = value[0..8].try_into()?;
+        Ok(Blob::from(value))
     }
 }
 
@@ -191,7 +198,7 @@ mod tests {
     #[test]
     fn create_responses() {
         let req = Request::try_from(String::from("20Gbit")).expect("parse");
-        let res = Blob::try_from(req.to_bytes().as_slice()).expect("parse");
+        let res = Blob::from(req.to_bytes());
         assert_eq!(req.size, res.size);
     }
 }

@@ -4,7 +4,7 @@ use bytes::Bytes;
 use quinn::{crypto::rustls::QuicServerConfig, ServerConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 use utils::{bin, bin::ServerArgs, perf::Blob};
 
 pub struct Server {
@@ -42,10 +42,10 @@ impl bin::Server for Server {
         )
         .context("creating endpoint")?;
 
-        info!("Listening on {}", endpoint.local_addr()?);
+        debug!("Listening on {}", endpoint.local_addr()?);
 
         while let Some(conn) = endpoint.accept().await {
-            info!("connection incoming");
+            debug!("connection incoming");
             let fut = handle_connection(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
@@ -61,16 +61,16 @@ impl bin::Server for Server {
 async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
-        info!("established");
+        debug!("established");
 
         // Each stream initiated by the client constitutes a new request.
         loop {
             let stream = connection.accept_bi().await;
-            info!("stream accepted");
+            debug!("stream accepted");
 
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    info!("connection closed");
+                    debug!("connection closed");
                     return Ok(());
                 }
                 Err(e) => {
@@ -112,6 +112,6 @@ async fn handle_request(
     send.finish()
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
 
-    info!("complete");
+    debug!("complete");
     Ok(())
 }

@@ -3,7 +3,7 @@ use anyhow::{anyhow, bail, Result};
 use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
 use std::{net::ToSocketAddrs, sync::Arc};
-use tracing::info;
+use tracing::debug;
 use utils::{
     bin,
     bin::ClientArgs,
@@ -58,7 +58,7 @@ impl bin::Client for Client {
             .host_str()
             .ok_or_else(|| anyhow!("no hostname specified"))?;
 
-        info!("connecting to {host} at {remote}");
+        debug!("connecting to {host} at {remote}");
         let conn = endpoint
             .connect(remote, host)?
             .await
@@ -68,6 +68,8 @@ impl bin::Client for Client {
             .open_bi()
             .await
             .map_err(|e| anyhow!("failed to open stream: {}", e))?;
+
+        debug!("sending request");
 
         send.write_all(&request.to_bytes())
             .await
@@ -81,17 +83,17 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
-        info!("received response: {}B", resp.len());
+        debug!("received response: {}B", resp.len());
 
         self.stats.add_bytes(resp.len())?;
         let (duration, throughput) = self.stats.stop_measurement()?;
-        info!(
+        debug!(
             "response received in {:?} - {:.2} Mbit/s",
             duration, throughput
         );
 
         conn.close(0u32.into(), b"done");
-        info!("waiting for server to close connection...");
+        debug!("waiting for server to close connection...");
 
         // Give the server a fair chance to receive the close packet
         endpoint.wait_idle().await;

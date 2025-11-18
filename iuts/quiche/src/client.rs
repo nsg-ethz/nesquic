@@ -47,6 +47,7 @@ impl bin::Client for Client {
 
         info!("connecting to {host} at {remote}");
 
+        // TODO: here we have to set the CA's certificate
         let mut params = ConnectionParams::default();
         params.settings.alpn = vec![b"perf".to_vec()];
 

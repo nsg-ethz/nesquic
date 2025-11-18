@@ -5,6 +5,7 @@ use tokio_quiche::{
     quic::{HandshakeInfo, QuicheConnection},
     ApplicationOverQuic, QuicResult,
 };
+use tracing::{debug, trace};
 use utils::perf::{Blob, Request, Stats};
 
 mod client;
@@ -39,6 +40,7 @@ impl ApplicationOverQuic for Benchmark {
         _: &mut QuicheConnection,
         _: &HandshakeInfo,
     ) -> QuicResult<()> {
+        debug!("Connection established");
         Ok(())
     }
 
@@ -58,7 +60,14 @@ impl ApplicationOverQuic for Benchmark {
     fn process_reads(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
         let mut buf = [0u8; 8192];
         while let Some(stream) = qconn.stream_readable_next() {
+            trace!("stream_recv({})", stream);
             let (len, done) = qconn.stream_recv(stream, &mut buf)?;
+
+            trace!(
+                "is measuring: {}, done: {}",
+                self.stats.is_measuring(),
+                done
+            );
 
             if self.stats.is_measuring() {
                 self.stats.add_bytes(len)?;
@@ -69,7 +78,9 @@ impl ApplicationOverQuic for Benchmark {
                     self.done.take().unwrap().send(self.stats.clone()).unwrap();
                 }
             } else {
-                self.res = Some(Blob::try_from(buf.as_slice())?);
+                let blob = Blob::try_from(buf.as_ref())?;
+                debug!("Received request for {}B", blob.size);
+                self.res = Some(blob);
             }
         }
 

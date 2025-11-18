@@ -26,15 +26,15 @@ async fn run_quinn_quinn() {
     run::<quinn_iut::Client, quinn_iut::Server>().await;
 }
 
-// #[tokio::test]
-// async fn run_quiche_quiche() {
-//     run::<quiche_iut::Client, quiche_iut::Server>().await;
-// }
+#[tokio::test]
+async fn run_quiche_quiche() {
+    run::<quiche_iut::Client, quiche_iut::Server>().await;
+}
 
-// #[tokio::test]
-// async fn run_quinn_quiche() {
-//     run::<quinn_iut::Client, quiche_iut::Server>().await;
-// }
+#[tokio::test]
+async fn run_quinn_quiche() {
+    run::<quinn_iut::Client, quiche_iut::Server>().await;
+}
 
 #[tokio::test]
 async fn run_quiche_quinn() {

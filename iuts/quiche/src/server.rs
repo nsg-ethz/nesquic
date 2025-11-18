@@ -25,6 +25,7 @@ impl bin::Server for Server {
         let socket = tokio::net::UdpSocket::bind(self.args.listen).await?;
 
         let mut params = ConnectionParams::default();
+        params.settings.alpn = vec![b"perf".to_vec()];
         params.tls_cert = Some(TlsCertificatePaths {
             cert: &self.args.cert,
             private_key: &self.args.key,
