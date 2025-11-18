@@ -1,6 +1,6 @@
 use crate::bind_socket;
 use anyhow::{anyhow, bail, Result};
-use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, TokioRuntime};
+use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, Connection, Endpoint, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
 use std::{net::ToSocketAddrs, sync::Arc};
 use tracing::debug;
@@ -14,6 +14,38 @@ pub struct Client {
     args: ClientArgs,
     config: ClientConfig,
     stats: Stats,
+}
+
+impl Client {
+    pub async fn connect(&mut self) -> Result<(Connection, Endpoint)> {
+        let remote = (
+            self.args.url.host_str().unwrap(),
+            self.args.url.port().unwrap_or(4433),
+        )
+            .to_socket_addrs()?
+            .next()
+            .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
+
+        let addr = "[::]:0".parse().unwrap();
+        let socket = bind_socket(addr)?;
+        let mut endpoint =
+            quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
+        endpoint.set_default_client_config(self.config.clone());
+
+        let host = self
+            .args
+            .url
+            .host_str()
+            .ok_or_else(|| anyhow!("no hostname specified"))?;
+
+        debug!("connecting to {host} at {remote}");
+        let conn = endpoint
+            .connect(remote, host)?
+            .await
+            .map_err(|e| anyhow!("failed to connect: {}", e))?;
+
+        Ok((conn, endpoint))
+    }
 }
 
 impl bin::Client for Client {
@@ -37,33 +69,7 @@ impl bin::Client for Client {
     }
 
     async fn run(&mut self) -> Result<()> {
-        let remote = (
-            self.args.url.host_str().unwrap(),
-            self.args.url.port().unwrap_or(4433),
-        )
-            .to_socket_addrs()?
-            .next()
-            .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
-
-        let addr = "[::]:0".parse().unwrap();
-        let socket = bind_socket(addr)?;
-        let mut endpoint =
-            quinn::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
-        endpoint.set_default_client_config(self.config.clone());
-
-        let request = Request::try_from(self.args.blob.clone())?;
-        let host = self
-            .args
-            .url
-            .host_str()
-            .ok_or_else(|| anyhow!("no hostname specified"))?;
-
-        debug!("connecting to {host} at {remote}");
-        let conn = endpoint
-            .connect(remote, host)?
-            .await
-            .map_err(|e| anyhow!("failed to connect: {}", e))?;
-
+        let (conn, endpoint) = self.connect().await?;
         let (mut send, mut recv) = conn
             .open_bi()
             .await
@@ -71,6 +77,7 @@ impl bin::Client for Client {
 
         debug!("sending request");
 
+        let request = Request::try_from(self.args.blob.clone())?;
         send.write_all(&request.to_bytes())
             .await
             .map_err(|e| anyhow!("failed to send request: {}", e))?;
