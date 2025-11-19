@@ -22,13 +22,13 @@ async fn run<C: Client, S: Server + Send>() {
         assert!(res.is_ok());
     });
 
-    loop {
+    for _ in 0..30 {
         let healthy = tokio::time::timeout(Duration::from_millis(100), health_check());
         if healthy.await.is_ok() {
+            trace!("Server is healthy");
             break;
         }
     }
-    trace!("Server is healthy");
 
     let mut client = C::new(ClientArgs::test()).expect("client::new");
     let res = tokio::time::timeout(Duration::from_secs(1), client.run()).await;
