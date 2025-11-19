@@ -1,3 +1,2 @@
 [alias]     # command aliases
-schema = "run --bin schema > nesquic/src/schema.rs"
 rcgen = "run --bin rcgen"
