@@ -1,2 +1,5 @@
 [alias]     # command aliases
 rcgen = "run --bin rcgen"
+
+[env]
+RUST_TEST_THREADS = "1"
