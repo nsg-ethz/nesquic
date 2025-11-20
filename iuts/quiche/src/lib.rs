@@ -2,6 +2,7 @@ use bytes::Bytes;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio_quiche::{
+    metrics::Metrics,
     quic::{HandshakeInfo, QuicheConnection},
     ApplicationOverQuic, QuicResult,
 };
@@ -23,13 +24,13 @@ struct Benchmark {
 }
 
 impl Benchmark {
-    fn new(req: Option<Request>, done: oneshot::Sender<Stats>) -> Self {
+    fn new(req: Option<Request>, done: Option<oneshot::Sender<Stats>>) -> Self {
         Benchmark {
             buf: [0u8; 8192],
             req,
             res: None,
             stats: Stats::new(),
-            done: Some(done),
+            done,
         }
     }
 }
@@ -74,8 +75,6 @@ impl ApplicationOverQuic for Benchmark {
                 if done {
                     self.stats.stop_measurement()?;
                     qconn.close(true, 0, "Done".as_bytes())?;
-
-                    self.done.take().unwrap().send(self.stats.clone()).unwrap();
                 }
             } else {
                 let blob = Blob::try_from(buf.as_ref())?;
@@ -98,5 +97,9 @@ impl ApplicationOverQuic for Benchmark {
         }
 
         Ok(())
+    }
+
+    fn on_conn_close<M: Metrics>(&mut self, _: &mut QuicheConnection, _: &M, _: &QuicResult<()>) {
+        self.done.take().unwrap().send(self.stats.clone()).unwrap();
     }
 }

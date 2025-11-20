@@ -54,7 +54,7 @@ impl bin::Client for Client {
         let request = Request::try_from(self.args.blob.clone())?;
 
         let (done, stats) = oneshot::channel::<Stats>();
-        let benchmark = Benchmark::new(Some(request), done);
+        let benchmark = Benchmark::new(Some(request), Some(done));
 
         let Ok(_) = quic::connect_with_config(socket, None, &params, benchmark).await else {
             bail!("Failed to establish connection");

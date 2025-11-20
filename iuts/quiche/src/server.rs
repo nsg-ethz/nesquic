@@ -1,14 +1,10 @@
 use anyhow::Result;
 use futures::StreamExt as _;
-use tokio::sync::oneshot;
 use tokio_quiche::{
     metrics::DefaultMetrics, quic::SimpleConnectionIdGenerator, settings::TlsCertificatePaths,
     ConnectionParams,
 };
-use utils::{
-    bin::{self, ServerArgs},
-    perf::Stats,
-};
+use utils::bin::{self, ServerArgs};
 
 use crate::Benchmark;
 
@@ -41,11 +37,8 @@ impl bin::Server for Server {
         let accept = &mut listeners[0];
 
         while let Some(conn) = accept.next().await {
-            let (done, stats) = oneshot::channel::<Stats>();
-            let benchmark = Benchmark::new(None, done);
+            let benchmark = Benchmark::new(None, None);
             conn?.start(benchmark);
-
-            stats.await?;
         }
 
         Ok(())
