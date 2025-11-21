@@ -72,7 +72,7 @@ where
     Self: Sized,
 {
     fn new(args: ClientArgs) -> Result<Self>;
-    fn run(&mut self) -> impl Future<Output = Result<()>> + Send;
+    fn run(&mut self) -> impl Future<Output = Result<()>>;
     fn stats(&self) -> &Stats;
 }
 
@@ -81,5 +81,5 @@ where
     Self: Sized,
 {
     fn new(args: ServerArgs) -> Result<Self>;
-    fn listen(&mut self) -> impl Future<Output = Result<()>> + Send;
+    fn listen(&mut self) -> impl Future<Output = Result<()>>;
 }

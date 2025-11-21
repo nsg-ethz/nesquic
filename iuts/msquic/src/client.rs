@@ -1,5 +1,7 @@
 use anyhow::Result;
-use msquic::Configuration;
+use msquic::{
+    BufferRef, Configuration, CredentialConfig, Registration, RegistrationConfig, Settings,
+};
 use std::future::poll_fn;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{debug, info};
@@ -11,19 +13,19 @@ use utils::{
 pub struct Client {
     args: ClientArgs,
     config: Configuration,
-    registration: msquic::Registration,
+    registration: Registration,
     stats: Stats,
 }
 
 impl bin::Client for Client {
     fn new(args: ClientArgs) -> Result<Self> {
-        let registration = msquic::Registration::new(&msquic::RegistrationConfig::default())?;
-        let alpn = [msquic::BufferRef::from("perf")];
-        let config = msquic::Configuration::open(
+        let registration = Registration::new(&RegistrationConfig::default())?;
+        let alpn = [BufferRef::from("perf")];
+        let config = Configuration::open(
             &registration,
             &alpn,
             Some(
-                &msquic::Settings::new()
+                &Settings::new()
                     .set_IdleTimeoutMs(10000)
                     .set_PeerBidiStreamCount(100)
                     .set_PeerUnidiStreamCount(100)
@@ -32,8 +34,7 @@ impl bin::Client for Client {
             ),
         )?;
 
-        let cred_config =
-            msquic::CredentialConfig::new_client().set_ca_certificate_file(args.cert.clone());
+        let cred_config = CredentialConfig::new_client().set_ca_certificate_file(args.cert.clone());
         config.load_credential(&cred_config)?;
 
         Ok(Client {

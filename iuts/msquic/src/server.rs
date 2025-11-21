@@ -1,61 +1,30 @@
 use anyhow::Result;
-use std::{future::poll_fn, net::SocketAddr, ops::Deref};
+use msquic::{
+    BufferRef, CertificateFile, Configuration, Credential, CredentialConfig, Registration,
+    RegistrationConfig, Settings,
+};
+use std::{future::poll_fn, net::SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info};
 use utils::bin::{self, ServerArgs};
 
-pub struct Listener {
-    inner: msquic_async::Listener,
-}
-
-impl Listener {
-    pub fn new(inner: msquic_async::Listener) -> Self {
-        Self { inner }
-    }
-}
-
-unsafe impl Send for Listener {}
-
-impl Deref for Listener {
-    type Target = msquic_async::Listener;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-pub struct Alpn {
-    inner: [msquic::BufferRef; 1],
-}
-
-impl Alpn {
-    pub fn new(inner: [msquic::BufferRef; 1]) -> Self {
-        Self { inner }
-    }
-}
-
-unsafe impl Send for Alpn {}
-
-impl AsRef<[msquic::BufferRef]> for Alpn {
-    fn as_ref(&self) -> &[msquic::BufferRef] {
-        &self.inner
-    }
-}
-
 pub struct Server {
-    alpn: Alpn,
-    listener: Listener,
+    args: ServerArgs,
 }
 
 impl bin::Server for Server {
     fn new(args: ServerArgs) -> Result<Self> {
-        let registration = msquic::Registration::new(&msquic::RegistrationConfig::default())?;
-        let alpn = [msquic::BufferRef::from("perf")];
-        let config = msquic::Configuration::open(
+        Ok(Server { args })
+    }
+
+    async fn listen(&mut self) -> Result<()> {
+        let registration = Registration::new(&RegistrationConfig::default())?;
+        let alpn = [BufferRef::from("perf")];
+        let config = Configuration::open(
             &registration,
             &alpn,
             Some(
-                &msquic::Settings::new()
+                &Settings::new()
                     .set_IdleTimeoutMs(10000)
                     .set_PeerBidiStreamCount(100)
                     .set_PeerUnidiStreamCount(100)
@@ -64,30 +33,23 @@ impl bin::Server for Server {
             ),
         )?;
 
-        let alpn = Alpn::new(alpn);
-        let file = msquic::CertificateFile::new(args.key.clone(), args.cert.clone());
-        let creds = msquic::Credential::CertificateFile(file);
+        let file = CertificateFile::new(self.args.key.clone(), self.args.cert.clone());
+        let creds = Credential::CertificateFile(file);
 
-        let cred_config = msquic::CredentialConfig::new_client().set_credential(creds);
+        let cred_config = CredentialConfig::new().set_credential(creds);
         // .set_credential_flags(msquic::CredentialFlags::NO_CERTIFICATE_VALIDATION);
         config.load_credential(&cred_config)?;
 
         let listener = msquic_async::Listener::new(&registration, config)?;
-        let listener = Listener::new(listener);
 
-        Ok(Server { alpn, listener })
-    }
-
-    async fn listen(&mut self) -> Result<()> {
         let addr: SocketAddr = "127.0.0.1:4433".parse()?;
-        self.listener.start(&self.alpn, Some(addr))?;
-        let server_addr = self.listener.local_addr()?;
+        listener.start(&alpn, Some(addr))?;
+        let server_addr = listener.local_addr()?;
 
         info!("Listening on {}", server_addr);
 
         // handle incoming connections and streams
-        while let Ok(conn) = self.listener.accept().await {
-            info!("new connection established");
+        while let Ok(conn) = listener.accept().await {
             tokio::spawn(async move {
                 loop {
                     match conn.accept_inbound_stream().await {
