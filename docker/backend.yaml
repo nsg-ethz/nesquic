@@ -10,6 +10,7 @@ services:
         container_name: prometheus
         volumes:
             - prometheus_data:/etc/prometheus
+            - ../config/prometheus.yml:/etc/prometheus/prometheus.yml
         command:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
@@ -17,15 +18,13 @@ services:
             - "--web.console.templates=/etc/prometheus/consoles"
             - "--web.enable-lifecycle"
         restart: unless-stopped
-        expose:
-            - 9090
+        ports:
+            - "9090:9090"
 
     pushgateway:
         image: prom/pushgateway:latest
         container_name: pushgateway
         restart: unless-stopped
-        expose:
-            - 9091
         ports:
             - "9091:9091"
 
@@ -42,5 +41,5 @@ services:
             - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
             - GF_USERS_ALLOW_SIGN_UP=false
         restart: unless-stopped
-        expose:
-            - 3000
+        ports:
+            - "3000:3000"

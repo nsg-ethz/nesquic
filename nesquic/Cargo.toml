@@ -13,3 +13,7 @@ tokio = { version = "1.42.0", features = ["full"] }
 utils = { path = "../utils" }
 tracing-subscriber = "0.3.20"
 tracing = "0.1.41"
+prometheus = "0.13.4"
+prometheus_push = { version = "0.4.5", default-features = false, features = ["with_reqwest", "prometheus_crate"] }
+lazy_static = "1.5.0"
+reqwest = { version = "0.12.24", default-features = false, features = ["http2", "rustls-tls"] }
