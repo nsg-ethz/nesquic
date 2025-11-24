@@ -1,10 +1,10 @@
-use crate::metrics::*;
+use crate::metrics::MetricsCollector;
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
-use std::{collections::HashMap, env};
+use std::{collections::HashMap, env, mem::MaybeUninit};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{error, info};
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
@@ -142,16 +142,6 @@ fn labels(cli: &Cli) -> HashMap<String, String> {
     labels
 }
 
-async fn push_metrics(cli: &Cli) -> Result<()> {
-    if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
-        info!("Pushing metrics to {}", push_gateway);
-        let labels = labels(cli);
-        metrics::push_all(push_gateway, labels).await?;
-    }
-
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -160,27 +150,33 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let cmd = cli.command.clone();
+    let labels = labels(&cli);
     tokio::spawn(async move {
+        let mut open_obj = MaybeUninit::uninit();
+        let monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
+        let io_link = monitor.monitor_io();
+
+        let terminate = async move {
+            drop(io_link);
+
+            if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
+                info!("Pushing metrics to {}", push_gateway);
+                if let Err(e) = monitor.push_all(push_gateway, labels).await {
+                    error!("Error pushing metrics: {}", e);
+                }
+            }
+
+            std::process::exit(0);
+        };
+
         let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => {
-                if let Err(e) = push_metrics(&cli).await {
-                    error!("Error pushing metrics: {}", e);
-                }
-                std::process::exit(0);
-            },
-            _ = sigterm.recv() => {
-                if let Err(e) = push_metrics(&cli).await {
-                    error!("Error pushing metrics: {}", e);
-                }
-                std::process::exit(0);
-            },
+            _ = tokio::signal::ctrl_c() => terminate.await,
+            _ = sigterm.recv() => terminate.await,
         }
     });
 
-    NESQUIC_RUNS.inc();
-    match &cmd {
+    match &cli.command {
         Command::Client(args) => {
             run_client(args.lib, args.client_args.clone())
                 .await
