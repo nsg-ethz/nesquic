@@ -23,13 +23,18 @@ lazy_static! {
     // .expect("Can't create a metric");
 }
 
-pub async fn push_all<S: AsRef<str>>(gateway: S, labels: &HashMap<&str, &str>) -> Result<()> {
+pub async fn push_all<S: AsRef<str>>(gateway: S, labels: HashMap<String, String>) -> Result<()> {
     let push_gateway: Url = Url::parse(gateway.as_ref())?;
     let client = Client::new();
     let metrics_pusher = PrometheusMetricsPusher::from(client, &push_gateway)?;
 
+    let labels = labels
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect::<HashMap<&str, &str>>();
+
     metrics_pusher
-        .push_all("nesquic", labels, prometheus::gather())
+        .push_all("nesquic", &labels, prometheus::gather())
         .await?;
 
     Ok(())

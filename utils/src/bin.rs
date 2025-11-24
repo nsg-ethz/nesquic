@@ -66,7 +66,6 @@ impl ServerArgs {
     }
 }
 
-// #[async_trait]
 pub trait Client
 where
     Self: Sized,

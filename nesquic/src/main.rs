@@ -26,10 +26,29 @@ pub enum Command {
     Server(ServerLibArgs),
 }
 
+impl Command {
+    fn lib(&self) -> Library {
+        match self {
+            Command::Client(args) => args.lib.clone(),
+            Command::Server(args) => args.lib.clone(),
+        }
+    }
+
+    fn labels(&self) -> Option<Vec<String>> {
+        match self {
+            Command::Client(args) => args.labels.clone(),
+            Command::Server(args) => args.labels.clone(),
+        }
+    }
+}
+
 #[derive(Parser, Debug, Clone)]
 pub struct ClientLibArgs {
     #[clap(short, long, value_enum)]
     pub lib: Library,
+
+    #[clap(short = 'L')]
+    pub labels: Option<Vec<String>>,
 
     #[clap(flatten)]
     pub client_args: ClientArgs,
@@ -39,6 +58,9 @@ pub struct ClientLibArgs {
 pub struct ServerLibArgs {
     #[clap(short, long, value_enum)]
     pub lib: Library,
+
+    #[clap(short = 'L')]
+    pub labels: Option<Vec<String>>,
 
     #[clap(flatten)]
     pub server_args: ServerArgs,
@@ -88,27 +110,43 @@ async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
     }
 }
 
-async fn push_metrics(cli: Cli) -> Result<()> {
+fn labels(cli: &Cli) -> HashMap<String, String> {
+    fn to_string<V: std::fmt::Debug>(v: &V) -> String {
+        format!("{:?}", v).to_lowercase()
+    }
+
+    let log_level = tracing::level_filters::LevelFilter::current().to_string();
+    let mode = match cli.command {
+        Command::Client(_) => String::from("client"),
+        Command::Server(_) => String::from("server"),
+    };
+    let library = to_string(&cli.command.lib());
+
+    let run_labels = cli
+        .command
+        .labels()
+        .unwrap_or(vec![])
+        .iter()
+        .map(|h| {
+            let hs: Vec<&str> = h.split_terminator(":").map(|s| s.trim()).collect();
+            (hs[0].to_string(), hs[1].to_string())
+        })
+        .collect::<HashMap<String, String>>();
+
+    let mut labels = HashMap::new();
+    labels.insert(String::from("log_level"), log_level);
+    labels.insert(String::from("library"), library);
+    labels.insert(String::from("mode"), mode);
+    labels.extend(run_labels.into_iter());
+
+    labels
+}
+
+async fn push_metrics(cli: &Cli) -> Result<()> {
     if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
         info!("Pushing metrics to {}", push_gateway);
-
-        let log_level = tracing::level_filters::LevelFilter::current().to_string();
-        let mode = match cli.command {
-            Command::Client(_) => "client",
-            Command::Server(_) => "server",
-        };
-        let library = match cli.command {
-            Command::Client(args) => args.lib.clone(),
-            Command::Server(args) => args.lib.clone(),
-        };
-        let library = format!("{:?}", library);
-
-        let mut labels = HashMap::new();
-        labels.insert("log_level", log_level.as_str());
-        labels.insert("library", library.as_str());
-        labels.insert("mode", mode);
-
-        metrics::push_all(push_gateway, &labels).await?;
+        let labels = labels(cli);
+        metrics::push_all(push_gateway, labels).await?;
     }
 
     Ok(())
@@ -122,18 +160,18 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let term_cli = cli.clone();
+    let cmd = cli.command.clone();
     tokio::spawn(async move {
-        let mut sigterm = signal(SignalKind::terminate()).unwrap();
+        let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
-                if let Err(e) = push_metrics(term_cli).await {
+                if let Err(e) = push_metrics(&cli).await {
                     error!("Error pushing metrics: {}", e);
                 }
                 std::process::exit(0);
             },
             _ = sigterm.recv() => {
-                if let Err(e) = push_metrics(term_cli).await {
+                if let Err(e) = push_metrics(&cli).await {
                     error!("Error pushing metrics: {}", e);
                 }
                 std::process::exit(0);
@@ -142,16 +180,16 @@ async fn main() -> Result<()> {
     });
 
     NESQUIC_RUNS.inc();
-    match &cli.command {
+    match &cmd {
         Command::Client(args) => {
             run_client(args.lib, args.client_args.clone())
                 .await
-                .unwrap();
+                .expect("run_client");
         }
         Command::Server(args) => {
             run_server(args.lib, args.server_args.clone())
                 .await
-                .unwrap();
+                .expect("run_server");
         }
     }
 
