@@ -5,6 +5,8 @@ fn main() {
     let manifest_dir =
         env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set in build script");
     let manifest_dir = PathBuf::from(&manifest_dir);
+    let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR must be set in build script");
+    let out_dir = PathBuf::from(&out_dir);
 
     let log_level = std::env::var("BPF_LOG")
         .or(std::env::var("RUST_LOG"))
@@ -24,7 +26,7 @@ fn main() {
 
     let src = src_dir.clone().join("metrics.bpf.c");
     println!("cargo:rerun-if-changed={src:?}");
-    let out = src_dir.clone().join("metrics.skel.rs");
+    let out = out_dir.clone().join("metrics.skel.rs");
 
     SkeletonBuilder::new()
         .source(&src)
@@ -35,5 +37,7 @@ fn main() {
             OsStr::new("../include"),
         ])
         .build_and_generate(&out)
-        .unwrap();
+        .expect("Failed to generate eBPF skeleton");
+
+    built::write_built_file().expect("Failed to acquire build-time information");
 }

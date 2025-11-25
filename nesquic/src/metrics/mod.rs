@@ -11,10 +11,7 @@ use reqwest::{Client, Url};
 use std::{collections::HashMap, mem::MaybeUninit};
 use tracing::{debug, info, warn};
 
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/src/metrics/metrics.skel.rs"
-));
+include!(concat!(env!("OUT_DIR"), "/metrics.skel.rs"));
 
 lazy_static! {
     pub static ref RUNS: IntCounter =

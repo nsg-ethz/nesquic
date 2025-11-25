@@ -2,4 +2,3 @@ target
 res/runs
 .envrc
 .clangd
-*.skel.rs
