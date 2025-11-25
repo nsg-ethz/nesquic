@@ -1,3 +1,0 @@
-CompileFlags:
-  Add:
-    - "-I/local/home/laurinb/projs/nesquic/include"
