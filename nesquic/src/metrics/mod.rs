@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use lazy_static::lazy_static;
 use libbpf_rs::{
     set_print,
@@ -46,6 +46,11 @@ impl<'obj> MetricsCollector<'obj> {
         let skel_builder = MetricsSkelBuilder::default();
         let mut open_skel = skel_builder.open(open_obj)?;
 
+        let Some(ro_data) = open_skel.maps.rodata_data.as_mut() else {
+            bail!("Failed to load rodata");
+        };
+        ro_data.MONITORED_PID = std::process::id();
+
         if tracing::enabled!(tracing::Level::DEBUG) {
             open_skel.progs.do_writev.set_log_level(1);
         }
@@ -79,6 +84,7 @@ impl<'obj> MetricsCollector<'obj> {
     pub async fn push_all<S: AsRef<str>>(
         &self,
         gateway: S,
+        job: S,
         labels: HashMap<String, String>,
     ) -> Result<()> {
         self.update_metrics()?;
@@ -93,7 +99,7 @@ impl<'obj> MetricsCollector<'obj> {
             .collect::<HashMap<&str, &str>>();
 
         metrics_pusher
-            .push_all("nesquic", &labels, prometheus::gather())
+            .push_all(job.as_ref(), &labels, prometheus::gather())
             .await?;
 
         Ok(())

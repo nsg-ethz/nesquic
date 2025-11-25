@@ -16,11 +16,19 @@ char LICENSE[] SEC("license") = "GPL";
     #define bpf_err(...) (0)
 #endif
 
+volatile const u32 MONITORED_PID;
+
 int do_writev_num_calls = 0;
 
 SEC("kprobe/do_writev")
 int BPF_KPROBE(do_writev, unsigned long fd, const struct iovec *vec, unsigned long vlen, rwf_t flags) {
     bpf_log("do_writev(%lu, %p, %lu, %u)", fd, vec, vlen, flags);
+
+    u64 pid_tgid = bpf_get_current_pid_tgid();
+    u32 pid = pid_tgid;
+    // u32 tgid = pid_tgid >> 32;
+
+    if (pid != MONITORED_PID) return 0;
 
     do_writev_num_calls++;
 

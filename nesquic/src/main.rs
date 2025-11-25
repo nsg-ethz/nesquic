@@ -27,6 +27,13 @@ pub enum Command {
 }
 
 impl Command {
+    fn job(&self) -> Option<String> {
+        match self {
+            Command::Client(args) => args.job.clone(),
+            Command::Server(args) => args.job.clone(),
+        }
+    }
+
     fn lib(&self) -> Library {
         match self {
             Command::Client(args) => args.lib.clone(),
@@ -47,6 +54,9 @@ pub struct ClientLibArgs {
     #[clap(short, long, value_enum)]
     pub lib: Library,
 
+    #[clap(short, long, value_enum)]
+    pub job: Option<String>,
+
     #[clap(short = 'L')]
     pub labels: Option<Vec<String>>,
 
@@ -58,6 +68,9 @@ pub struct ClientLibArgs {
 pub struct ServerLibArgs {
     #[clap(short, long, value_enum)]
     pub lib: Library,
+
+    #[clap(short, long, value_enum)]
+    pub job: Option<String>,
 
     #[clap(short = 'L')]
     pub labels: Option<Vec<String>>,
@@ -151,6 +164,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let labels = labels(&cli);
+    let job = cli.command.job();
     tokio::spawn(async move {
         let mut open_obj = MaybeUninit::uninit();
         let monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
@@ -159,10 +173,12 @@ async fn main() -> Result<()> {
         let terminate = async move {
             drop(io_link);
 
-            if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
-                info!("Pushing metrics to {}", push_gateway);
-                if let Err(e) = monitor.push_all(push_gateway, labels).await {
-                    error!("Error pushing metrics: {}", e);
+            if let Some(job) = job {
+                if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
+                    info!("Pushing metrics to {}", push_gateway);
+                    if let Err(e) = monitor.push_all(push_gateway, job, labels).await {
+                        error!("Error pushing metrics: {}", e);
+                    }
                 }
             }
 
