@@ -165,31 +165,33 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let labels = labels(&cli);
     let job = cli.command.job();
+
     tokio::spawn(async move {
         let mut open_obj = MaybeUninit::uninit();
         let monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
-        let io_link = monitor.monitor_io();
-
-        let terminate = async move {
-            drop(io_link);
-
-            if let Some(job) = job {
-                if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
-                    info!("Pushing metrics to {}", push_gateway);
-                    if let Err(e) = monitor.push_all(push_gateway, job, labels).await {
-                        error!("Error pushing metrics: {}", e);
-                    }
-                }
-            }
-
-            std::process::exit(0);
-        };
+        let links = monitor.monitor_io().expect("monitor IO");
 
         let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => terminate.await,
-            _ = sigterm.recv() => terminate.await,
+            _ = tokio::signal::ctrl_c() => {},
+            _ = sigterm.recv() => {},
         }
+
+        if let Some(job) = job {
+            if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
+                info!("Pushing metrics to {}", push_gateway);
+                if let Err(e) = monitor.push_all(push_gateway, job, labels).await {
+                    error!("Error pushing metrics: {}", e);
+                }
+            }
+        } else {
+            if let Err(e) = monitor.report() {
+                error!("Error reporting metrics: {}", e);
+            }
+        }
+
+        drop(links);
+        std::process::exit(0);
     });
 
     match &cli.command {
