@@ -3078,9 +3078,9 @@ checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 
 [[package]]
 name = "task-killswitch"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23e4a7cede0e18ac7843db4dfa59ffc7823d75b374804b233db9f56743d13f80"
+checksum = "73dc630154f65447b1ee9d2d097522ac1eff991a84e18256417f33eaf3225014"
 dependencies = [
  "dashmap 6.1.0",
  "parking_lot",
@@ -3254,9 +3254,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-quiche"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3d02734a14dd4ecacad00832efe3ad35d7edd391e460c7f7dab24c1afa1e9f9"
+checksum = "e3152843e8aafb0dae1f31cb0e1223ffff010de71efca2ec2a6b5405a57001a5"
 dependencies = [
  "anyhow",
  "boring",
