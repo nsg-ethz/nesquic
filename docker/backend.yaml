@@ -8,10 +8,10 @@ services:
         container_name: prometheus
         volumes:
             - prometheus_data:/etc/prometheus
-            - ../config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
         command:
             - "--config.file=/etc/prometheus/prometheus.yml"
-            - "--storage.tsdb.path=/prometheus"
+            - "--storage.tsdb.retention.time=1y"
             - "--web.console.libraries=/etc/prometheus/console_libraries"
             - "--web.console.templates=/etc/prometheus/consoles"
             - "--web.enable-lifecycle"
@@ -31,9 +31,8 @@ services:
         container_name: grafana
         volumes:
             - grafana_data:/var/lib/grafana
+            # - ./dashboards/main.yml:/etc/grafana/provisioning/dashboards/main.yml:rw
             # - ./grafana/datasources:/etc/grafana/datasources
-            # - ./grafana/dashboards:/etc/grafana/dashboards
-            # - ./grafana/setup.sh:/setup.sh
         environment:
             - GF_SECURITY_ADMIN_USER=${ADMIN_USER:-admin}
             - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}

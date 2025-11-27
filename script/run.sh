@@ -18,6 +18,7 @@ CPU_SERVER=10
 
 WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 BIN="${WORKSPACE}/target/release/nesquic"
+RES_DIR="${WORKSPACE}/res"
 
 function may_fail {
     ($@ > /dev/null 2>&1) || true
@@ -78,16 +79,16 @@ trap teardown EXIT INT TERM
 setup
 
 echo -e "${COLOR_YELLOW}BENCHMARKING quinn->quinn${COLOR_OFF}"
-runb ${SLICE_SERVER} ${BIN} server --lib quinn --cert res/pem/cert.pem --key res/pem/key.pem
-run ${SLICE_CLIENT} ${BIN} client --lib quinn --cert res/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
+runb ${SLICE_SERVER} ${BIN} server --lib quinn --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
+run ${SLICE_CLIENT} ${BIN} client --lib quinn --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
 echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 
 echo -e "${COLOR_YELLOW}BENCHMARKING msquic->msquic${COLOR_OFF}"
-runb ${SLICE_SERVER} ${BIN} server --lib msquic --cert res/pem/cert.pem --key res/pem/key.pem
-run ${SLICE_CLIENT} ${BIN} client --lib msquic --cert res/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
+runb ${SLICE_SERVER} ${BIN} server --lib msquic --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
+run ${SLICE_CLIENT} ${BIN} client --lib msquic --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
 echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 
 echo -e "${COLOR_YELLOW}BENCHMARKING quiche->quiche${COLOR_OFF}"
-runb ${SLICE_SERVER} ${BIN} server --lib quiche --cert res/pem/cert.pem --key res/pem/key.pem
-run ${SLICE_CLIENT} ${BIN} client --lib quiche --cert res/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
+runb ${SLICE_SERVER} ${BIN} server --lib quiche --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
+run ${SLICE_CLIENT} ${BIN} client --lib quiche --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
 echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
