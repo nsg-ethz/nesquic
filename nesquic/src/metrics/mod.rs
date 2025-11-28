@@ -5,7 +5,9 @@ use libbpf_rs::{
     skel::{OpenSkel, SkelBuilder},
     Link, PrintLevel,
 };
-use prometheus::{opts, register_int_counter, IntCounter};
+use prometheus::{
+    histogram_opts, opts, register_histogram, register_int_counter, Histogram, IntCounter,
+};
 use prometheus_push::prometheus_crate::PrometheusMetricsPusher;
 use reqwest::{Client, Url};
 use std::{collections::HashMap, mem::MaybeUninit, time::Duration};
@@ -19,89 +21,31 @@ lazy_static! {
     pub static ref RUNS: IntCounter =
         register_int_counter!(opts!("nesquic_runs", "Nesquic benchmarking runs"))
             .expect("nesquic_runs");
-    pub static ref IO_WRITEV_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_writev_num_calls", "writev calls"))
-            .expect("io_writev_num_calls");
-    pub static ref IO_WRITEV_DATA_SIZE: IntCounter =
-        register_int_counter!(opts!("io_writev_data_size", "amount of data written"))
-            .expect("io_writev_data_size");
-    pub static ref IO_READV_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_readv_num_calls", "readv calls"))
-            .expect("io_readv_num_calls");
-    pub static ref IO_READV_DATA_SIZE: IntCounter =
-        register_int_counter!(opts!("io_readv_data_size", "amount of data written"))
-            .expect("io_readv_data_size");
-    pub static ref IO_WRITE_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_write_num_calls", "write calls"))
-            .expect("io_writev_num_calls");
-    pub static ref IO_WRITE_DATA_SIZE: IntCounter =
-        register_int_counter!(opts!("io_write_data_size", "amount of data written"))
-            .expect("io_write_data_size");
-    pub static ref IO_READ_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_read_num_calls", "read calls")).expect("io_read_num_calls");
-    pub static ref IO_READ_DATA_SIZE: IntCounter =
-        register_int_counter!(opts!("io_read_data_size", "amount of data written"))
-            .expect("io_read_data_size");
-    pub static ref IO_RECVFROM_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_recvfrom_num_calls", "recvfrom calls"))
-            .expect("io_recvfrom_num_calls");
-    pub static ref IO_RECVFROM_DATA_SIZE: IntCounter = register_int_counter!(opts!(
-        "io_recvfrom_data_size",
-        "amount of data received via recvfrom"
-    ))
-    .expect("io_recvfrom_data_size");
-    pub static ref IO_RECV_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_recv_num_calls", "recv calls")).expect("io_recv_num_calls");
-    pub static ref IO_RECV_DATA_SIZE: IntCounter = register_int_counter!(opts!(
-        "io_recv_data_size",
-        "amount of data received via recv"
-    ))
-    .expect("io_recv_data_size");
-    pub static ref IO_RECVMSG_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_recvmsg_num_calls", "recvmsg calls"))
-            .expect("io_recvmsg_num_calls");
-    pub static ref IO_RECVMSG_DATA_SIZE: IntCounter = register_int_counter!(opts!(
-        "io_recvmsg_data_size",
-        "amount of data received via recvmsg"
-    ))
-    .expect("io_recvmsg_data_size");
-    pub static ref IO_RECVMMSG_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_recvmmsg_num_calls", "recvmmsg calls"))
-            .expect("io_recvmmsg_num_calls");
-    pub static ref IO_RECVMMSG_DATA_SIZE: IntCounter = register_int_counter!(opts!(
-        "io_recvmmsg_data_size",
-        "amount of data received via recvmmsg"
-    ))
-    .expect("io_recvfrom_data_size");
-    pub static ref IO_SENDTO_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_sendto_num_calls", "sendto calls"))
-            .expect("io_sendto_num_calls");
-    pub static ref IO_SENDTO_DATA_SIZE: IntCounter = register_int_counter!(opts!(
-        "io_sendto_data_size",
-        "amount of data sent via sendto"
-    ))
-    .expect("io_sendto_data_size");
-    pub static ref IO_SEND_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_send_num_calls", "send calls")).expect("io_send_num_calls");
-    pub static ref IO_SEND_DATA_SIZE: IntCounter =
-        register_int_counter!(opts!("io_send_data_size", "amount of data sent via send"))
-            .expect("io_send_data_size");
-    pub static ref IO_SENDMSG_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_sendmsg_num_calls", "sendmsg calls"))
-            .expect("io_sendmsg_num_calls");
-    pub static ref IO_SENDMSG_DATA_SIZE: IntCounter = register_int_counter!(opts!(
-        "io_sendmsg_data_size",
-        "amount of data sent via sendmsg"
-    ))
-    .expect("io_sendmsg_data_size");
-    pub static ref IO_SENDMMSG_NUM_CALLS: IntCounter =
-        register_int_counter!(opts!("io_sendmmsg_num_calls", "sendmmsg calls"))
-            .expect("io_sendmmsg_num_calls");
-    pub static ref IO_SENDMMSG_DATA_SIZE: IntCounter = register_int_counter!(opts!(
-        "io_sendmmsg_data_size",
-        "amount of data sent via sendmmsg"
-    ))
-    .expect("io_sendmmsg_data_size");
+    pub static ref IO_EVENTS: Vec<(Histogram, Histogram)> = {
+        let calls = vec![
+            "write", "writev", "send", "sendto", "sendmsg", "sendmmsg", "read", "readv", "recv",
+            "recvfrom", "recvmsg", "recvmmsg",
+        ];
+
+        let evs: Vec<(Histogram, Histogram)> = calls
+            .iter()
+            .map(|name| {
+                let hist = register_histogram!(histogram_opts!(
+                    format!("io_{}_num_calls", name),
+                    format!("{} calls", name)
+                ))
+                .expect(&format!("io_{}_num_calls", name));
+                let hist2 = register_histogram!(histogram_opts!(
+                    format!("io_{}_data_size", name),
+                    format!("data volume in {}", name)
+                ))
+                .expect(&format!("io_{}_data_size", name));
+                (hist, hist2)
+            })
+            .collect();
+
+        evs
+    };
 }
 
 fn print(level: PrintLevel, msg: String) {
@@ -121,50 +65,16 @@ fn process(ev: &[u8]) -> i32 {
 
     trace!("Processing event: {:?}", ev);
 
-    if ev.syscall == 1 {
-        IO_WRITE_NUM_CALLS.inc();
-        IO_WRITE_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 2 {
-        IO_READ_NUM_CALLS.inc();
-        IO_READ_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 3 {
-        IO_WRITEV_NUM_CALLS.inc();
-        IO_WRITEV_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 4 {
-        IO_READV_NUM_CALLS.inc();
-        IO_READV_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 5 {
-        IO_RECV_NUM_CALLS.inc();
-        IO_RECV_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 6 {
-        IO_RECVFROM_NUM_CALLS.inc();
-        IO_RECVFROM_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 7 {
-        IO_RECVMSG_NUM_CALLS.inc();
-        IO_RECVMSG_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 8 {
-        IO_RECVMMSG_NUM_CALLS.inc();
-        IO_RECVMMSG_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 9 {
-        IO_SEND_NUM_CALLS.inc();
-        IO_SEND_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 10 {
-        IO_SENDTO_NUM_CALLS.inc();
-        IO_SENDTO_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 11 {
-        IO_SENDMSG_NUM_CALLS.inc();
-        IO_SENDMSG_DATA_SIZE.inc_by(ev.len as u64);
-    } else if ev.syscall == 12 {
-        IO_SENDMMSG_NUM_CALLS.inc();
-        IO_SENDMMSG_DATA_SIZE.inc_by(ev.len as u64);
-    }
+    let (ref num_calls, ref data_size) = IO_EVENTS[ev.syscall as usize];
+    num_calls.observe(1.0);
+    data_size.observe(ev.len.into());
 
     return 0;
 }
 
 pub struct MetricsCollector<'obj> {
     skel: MetricsSkel<'obj>,
-    links: Vec<Link>,
+    links: Option<Vec<Link>>,
 }
 
 impl<'obj> MetricsCollector<'obj> {
@@ -184,10 +94,7 @@ impl<'obj> MetricsCollector<'obj> {
         }
         let skel = open_skel.load()?;
 
-        Ok(Self {
-            skel,
-            links: Vec::new(),
-        })
+        Ok(Self { skel, links: None })
     }
 
     pub fn monitor_io(&mut self) -> Result<()> {
@@ -204,7 +111,7 @@ impl<'obj> MetricsCollector<'obj> {
         let sys_sendmsg = self.skel.progs.__sys_sendmsg.attach()?;
         let sys_sendmmsg = self.skel.progs.__sys_sendmmsg.attach()?;
 
-        self.links = vec![
+        self.links = Some(vec![
             ksys_read,
             ksys_write,
             do_writev,
@@ -215,27 +122,15 @@ impl<'obj> MetricsCollector<'obj> {
             sys_sendto,
             sys_sendmsg,
             sys_sendmmsg,
-        ];
+        ]);
 
         let mut builder = libbpf_rs::RingBufferBuilder::new();
         builder.add(&self.skel.maps.events, |ev| process(ev))?;
         let ringbuf = builder.build()?;
-        // let fd = AsyncFd::with_interest(ringbuf.epoll_fd(), Interest::READABLE)?;
 
         tokio::spawn(async move {
             trace!("Polling...");
             loop {
-                // let guard = fd
-                //     .readable()
-                //     .await
-                //     .expect("Failed to read from ring buffer");
-
-                // drop(guard)
-
-                // ringbuf
-                //     .poll(Duration::from_secs(0))
-                //     .expect("Failed to poll ring buffer");
-
                 if let Err(e) = ringbuf.poll(Duration::from_millis(100)) {
                     error!("Failed to poll ring buffer: {}", e);
                 }
@@ -254,7 +149,7 @@ impl<'obj> MetricsCollector<'obj> {
         labels: HashMap<String, String>,
     ) -> Result<()> {
         // this flushes the ring buffer
-        self.links = Vec::new();
+        self.links.take();
         RUNS.inc();
 
         let push_gateway: Url = Url::parse(gateway.as_ref())?;
@@ -275,7 +170,7 @@ impl<'obj> MetricsCollector<'obj> {
 
     pub fn report(&mut self) -> Result<()> {
         // this flushes the ring buffer
-        self.links = Vec::new();
+        self.links.take();
         RUNS.inc();
 
         for metric in prometheus::gather() {
