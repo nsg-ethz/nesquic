@@ -184,8 +184,8 @@ async fn main() -> Result<()> {
 
     tokio::spawn(async move {
         let mut open_obj = MaybeUninit::uninit();
-        let monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
-        let links = monitor.monitor_io().expect("monitor IO");
+        let mut monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
+        monitor.monitor_io().expect("monitor IO");
 
         let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
         tokio::select! {
@@ -206,7 +206,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        drop(links);
+        drop(monitor);
         std::process::exit(0);
     });
 
