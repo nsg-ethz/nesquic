@@ -46,6 +46,11 @@ lazy_static! {
 
         evs
     };
+    pub static ref THROUGHPUT: Histogram = register_histogram!(histogram_opts!(
+        "throughput",
+        "Average throughput throughout the benchmark"
+    ))
+    .expect("throughput");
 }
 
 fn print(level: PrintLevel, msg: String) {

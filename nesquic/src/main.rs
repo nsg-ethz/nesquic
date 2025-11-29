@@ -1,12 +1,15 @@
-use crate::metrics::MetricsCollector;
+use crate::metrics::{MetricsCollector, THROUGHPUT};
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
 use std::{collections::HashMap, env, mem::MaybeUninit};
-use tokio::signal::unix::{signal, SignalKind};
-use tracing::{error, info};
+use tokio::{
+    signal::unix::{signal, SignalKind},
+    sync::oneshot,
+};
+use tracing::{error, info, warn};
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
 
 mod metrics;
@@ -107,21 +110,27 @@ impl Library {
 }
 
 async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
-    match lib {
+    let stats = match lib {
         Library::Quinn => {
             let mut client = QuinnClient::new(args)?;
-            client.run().await
+            client.run().await?;
+            client.stats().clone()
         }
         Library::Quiche => {
             let mut client = QuicheClient::new(args)?;
-            client.run().await
+            client.run().await?;
+            client.stats().clone()
         }
         Library::Msquic => {
             let mut client = MsQuicClient::new(args)?;
-            client.run().await
+            client.run().await?;
+            client.stats().clone()
         }
         Library::Ngtcp => unimplemented!("ngtcp"),
-    }
+    };
+
+    THROUGHPUT.observe(stats.throughputs().mean());
+    Ok(())
 }
 
 async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
@@ -181,8 +190,9 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let labels = labels(&cli);
     let job = cli.command.job();
+    let (tx, rx) = oneshot::channel();
 
-    tokio::spawn(async move {
+    let monitor_handle = tokio::spawn(async move {
         let mut open_obj = MaybeUninit::uninit();
         let mut monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
         monitor.monitor_io().expect("monitor IO");
@@ -191,6 +201,7 @@ async fn main() -> Result<()> {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {},
             _ = sigterm.recv() => {},
+            _ = rx => {},
         }
 
         if let Some(job) = job {
@@ -221,6 +232,12 @@ async fn main() -> Result<()> {
                 .await
                 .expect("run_server");
         }
+    }
+
+    if tx.send(()).is_ok() {
+        monitor_handle.await?;
+    } else {
+        warn!("Pushing metrics potentially failed");
     }
 
     Ok(())
