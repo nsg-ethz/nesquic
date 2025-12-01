@@ -9,9 +9,9 @@ built = { version = "0.8" }
 clap = "4.5.23"
 libbpf-rs = "0.25.0"
 libc = "0.2.155"
-msquic-iut = { path = "../iuts/msquic" }
-quinn-iut = { path = "../iuts/quinn" }
-quiche-iut = { path = "../iuts/quiche" }
+msquic-iut = { path = "../iut/msquic" }
+quinn-iut = { path = "../iut/quinn" }
+quiche-iut = { path = "../iut/quiche" }
 tokio = { version = "1.42.0", features = ["full"] }
 utils = { path = "../utils" }
 tracing-subscriber = "0.3.20"
