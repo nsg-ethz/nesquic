@@ -8,7 +8,7 @@ services:
         container_name: prometheus
         volumes:
             - prometheus_data:/etc/prometheus
-            - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - ./prometheus/config.yml:/etc/prometheus/prometheus.yml:ro
         command:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.retention.time=1y"
@@ -31,8 +31,9 @@ services:
         container_name: grafana
         volumes:
             - grafana_data:/var/lib/grafana
-            # - ./dashboards/main.yml:/etc/grafana/provisioning/dashboards/main.yml:rw
-            # - ./grafana/datasources:/etc/grafana/datasources
+            - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/nesquic.yml:rw
+            - ./grafana/dashboard.yml:/etc/grafana/provisioning/dashboards/nesquic.yml:rw
+            - ./grafana/dashboard/main.json:/var/lib/grafana/dashboards/main.json:rw
         environment:
             - GF_SECURITY_ADMIN_USER=${ADMIN_USER:-admin}
             - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
