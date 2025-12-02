@@ -1,6 +1,5 @@
 use crate::metrics::{MetricsCollector, THROUGHPUT};
 use anyhow::Result;
-use chrono::prelude::*;
 use clap::{Parser, Subcommand, ValueEnum};
 use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
@@ -171,14 +170,12 @@ fn labels(cli: &Cli) -> HashMap<String, String> {
         .collect::<HashMap<String, String>>();
 
     let library = cli.command.lib();
-    let date = Utc::now().to_string();
 
     let mut labels = HashMap::new();
     labels.insert(String::from("log_level"), log_level);
     labels.insert(String::from("library"), library.name());
     labels.insert(String::from("mode"), mode);
     labels.insert(String::from("version"), library.version());
-    labels.insert(String::from("run_id"), date);
     labels.extend(run_labels.into_iter());
 
     labels

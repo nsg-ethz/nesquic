@@ -156,7 +156,7 @@ impl Stats {
 
     #[inline]
     fn calculate_throughput(&self, t: Duration, b: usize) -> f64 {
-        b as f64 / t.as_micros() as f64
+        (b as f64) / 1000000.0 / t.as_secs() as f64
     }
 
     /// Summarizes the measurements
