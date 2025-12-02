@@ -4,7 +4,7 @@ use bytes::Bytes;
 use quinn::{crypto::rustls::QuicServerConfig, ServerConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 use utils::{bin, bin::ServerArgs, perf::Blob};
 
 pub struct Server {
@@ -42,7 +42,7 @@ impl bin::Server for Server {
         )
         .context("creating endpoint")?;
 
-        debug!("Listening on {}", endpoint.local_addr()?);
+        info!("Listening on {}", endpoint.local_addr()?);
 
         while let Some(conn) = endpoint.accept().await {
             debug!("connection incoming");
