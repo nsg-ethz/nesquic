@@ -6,7 +6,8 @@ use libbpf_rs::{
     Link, PrintLevel,
 };
 use prometheus::{
-    histogram_opts, opts, register_histogram, register_int_counter, Histogram, IntCounter,
+    histogram_opts, opts, register_histogram, register_histogram_vec, register_int_counter,
+    Histogram, HistogramVec, IntCounter,
 };
 use prometheus_push::prometheus_crate::PrometheusMetricsPusher;
 use reqwest::{Client, Url};
@@ -18,34 +19,25 @@ include!(concat!(env!("OUT_DIR"), "/metrics.skel.rs"));
 unsafe impl plain::Plain for types::event_io {}
 
 lazy_static! {
+    pub static ref SYSCALLS: Vec<&'static str> = vec![
+        "write", "writev", "send", "sendto", "sendmsg", "sendmmsg", "read", "readv", "recv",
+        "recvfrom", "recvmsg", "recvmmsg",
+    ];
     pub static ref RUNS: IntCounter =
         register_int_counter!(opts!("nesquic_runs", "Nesquic benchmarking runs"))
             .expect("nesquic_runs");
-    pub static ref IO_EVENTS: Vec<(Histogram, Histogram)> = {
-        let calls = vec![
-            "write", "writev", "send", "sendto", "sendmsg", "sendmmsg", "read", "readv", "recv",
-            "recvfrom", "recvmsg", "recvmmsg",
-        ];
-
-        let evs: Vec<(Histogram, Histogram)> = calls
-            .iter()
-            .map(|name| {
-                let hist = register_histogram!(histogram_opts!(
-                    format!("io_{}_num_calls", name),
-                    format!("{} calls", name)
-                ))
-                .expect(&format!("io_{}_num_calls", name));
-                let hist2 = register_histogram!(histogram_opts!(
-                    format!("io_{}_data_size", name),
-                    format!("data volume in {}", name)
-                ))
-                .expect(&format!("io_{}_data_size", name));
-                (hist, hist2)
-            })
-            .collect();
-
-        evs
-    };
+    pub static ref IO_SYSCALL_DATA_VOLUME: HistogramVec = register_histogram_vec!(
+        "io_syscalls_data_volume",
+        "I/O syscall data volume",
+        &["syscall"]
+    )
+    .expect("io_syscalls_data_volume");
+    pub static ref IO_SYSCALL_INVOCATIONS: HistogramVec = register_histogram_vec!(
+        "io_syscalls_invocations",
+        "I/O syscall invocations",
+        &["syscall"]
+    )
+    .expect("io_syscalls_invocations");
     pub static ref THROUGHPUT: Histogram = register_histogram!(histogram_opts!(
         "throughput",
         "Average throughput throughout the benchmark"
@@ -70,9 +62,13 @@ fn process(ev: &[u8]) -> i32 {
 
     trace!("Processing event: {:?}", ev);
 
-    let (ref num_calls, ref data_size) = IO_EVENTS[ev.syscall as usize];
-    num_calls.observe(1.0);
-    data_size.observe(ev.len.into());
+    let syscall = SYSCALLS[ev.syscall as usize];
+    IO_SYSCALL_DATA_VOLUME
+        .with_label_values(&[syscall])
+        .observe(ev.len.into());
+    IO_SYSCALL_INVOCATIONS
+        .with_label_values(&[syscall])
+        .observe(1.0);
 
     return 0;
 }

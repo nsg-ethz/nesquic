@@ -3,7 +3,7 @@
   "annotations": {
     "list": []
   },
-  "description": "An overview dashboard for the Nesquic project",
+  "description": "An overview dashboard for the Nesquic projecgt",
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
@@ -79,15 +79,16 @@
           "calcs": [],
           "displayMode": "list",
           "placement": "bottom",
-          "showLegend": true
+          "showLegend": false
         },
-        "orientation": "auto",
+        "orientation": "vertical",
         "showValue": "auto",
         "stacking": "none",
         "tooltip": {
           "mode": "single",
           "sort": "none"
         },
+        "xField": "syscall",
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 0
       },
@@ -96,31 +97,17 @@
       "span": null,
       "targets": [
         {
+          "alias": "",
           "datasource": null,
-          "expr": "io_send_data_size_count",
-          "format": "time_series",
+          "expr": "io_syscalls_data_volume_sum{library=\"quinn\"}",
+          "format": "table",
           "hide": false,
-          "instant": false,
+          "instant": true,
           "interval": "",
           "intervalFactor": 2,
           "legendFormat": "",
           "metric": "",
-          "query": "io_send_data_size_count",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        },
-        {
-          "datasource": null,
-          "expr": "io_sendto_data_size_count",
-          "format": "time_series",
-          "hide": false,
-          "instant": false,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_sendto_data_size_count",
+          "query": "io_syscalls_data_volume_sum{library=\"quinn\"}",
           "refId": "",
           "step": 10,
           "target": ""
@@ -128,7 +115,7 @@
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "I/O Overview",
+      "title": "Quinn I/O",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
