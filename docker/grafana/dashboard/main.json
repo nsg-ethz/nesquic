@@ -3,7 +3,7 @@
   "annotations": {
     "list": []
   },
-  "description": "An overview dashboard for the Nesquic projecgt",
+  "description": "",
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
@@ -26,7 +26,12 @@
           }
         }
       },
-      "gridPos": null,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "height": null,
       "hideTimeOverride": false,
       "id": 1,
@@ -42,7 +47,157 @@
       "targets": [],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Quinn",
+      "title": "Overview",
+      "transformations": [],
+      "transparent": false,
+      "type": "row"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Mbps",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 2,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "exported_job",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "throughput_sum{}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "throughput_sum{}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Throughput",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "collapsed": false,
+      "datasource": null,
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          }
+        }
+      },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 3,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "panels": [],
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Unbounded",
       "transformations": [],
       "transparent": false,
       "type": "row"
@@ -97,11 +252,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 0
+        "y": 32
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 2,
+      "id": 4,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -135,7 +290,7 @@
         {
           "alias": "",
           "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{library=\"quinn\", mode=\"server\"}",
+          "expr": "io_syscalls_data_volume_sum{mode='server', library='quinn', exported_job='test'}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -143,7 +298,7 @@
           "intervalFactor": 2,
           "legendFormat": "",
           "metric": "",
-          "query": "io_syscalls_data_volume_sum{library=\"quinn\", mode=\"server\"}",
+          "query": "io_syscalls_data_volume_sum{mode='server', library='quinn', exported_job='test'}",
           "refId": "",
           "step": 10,
           "target": ""
@@ -206,11 +361,11 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 0
+        "y": 24
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 3,
+      "id": 5,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -244,7 +399,7 @@
         {
           "alias": "",
           "datasource": null,
-          "expr": "io_syscalls_invocations_sum{library=\"quinn\", mode=\"server\"}",
+          "expr": "io_syscalls_invocations_sum{mode='server', library='quinn', exported_job='test'}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -252,7 +407,7 @@
           "intervalFactor": 2,
           "legendFormat": "",
           "metric": "",
-          "query": "io_syscalls_invocations_sum{library=\"quinn\", mode=\"server\"}",
+          "query": "io_syscalls_invocations_sum{mode='server', library='quinn', exported_job='test'}",
           "refId": "",
           "step": 10,
           "target": ""
@@ -315,11 +470,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 8
+        "y": 48
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 4,
+      "id": 6,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -353,7 +508,7 @@
         {
           "alias": "",
           "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{library=\"quinn\", mode=\"client\"}",
+          "expr": "io_syscalls_data_volume_sum{mode='client', library='quinn', exported_job='test'}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -361,7 +516,7 @@
           "intervalFactor": 2,
           "legendFormat": "",
           "metric": "",
-          "query": "io_syscalls_data_volume_sum{library=\"quinn\", mode=\"client\"}",
+          "query": "io_syscalls_data_volume_sum{mode='client', library='quinn', exported_job='test'}",
           "refId": "",
           "step": 10,
           "target": ""
@@ -424,11 +579,11 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 8
+        "y": 40
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 5,
+      "id": 7,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -462,7 +617,7 @@
         {
           "alias": "",
           "datasource": null,
-          "expr": "io_syscalls_invocations_sum{library=\"quinn\", mode=\"client\"}",
+          "expr": "io_syscalls_invocations_sum{mode='client', library='quinn', exported_job='test'}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -470,7 +625,7 @@
           "intervalFactor": 2,
           "legendFormat": "",
           "metric": "",
-          "query": "io_syscalls_invocations_sum{library=\"quinn\", mode=\"client\"}",
+          "query": "io_syscalls_invocations_sum{mode='client', library='quinn', exported_job='test'}",
           "refId": "",
           "step": 10,
           "target": ""
@@ -482,6 +637,47 @@
       "transformations": [],
       "transparent": false,
       "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "collapsed": false,
+      "datasource": null,
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          }
+        }
+      },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 8,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "panels": [],
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "50ms Delay",
+      "transformations": [],
+      "transparent": false,
+      "type": "row"
     },
     {
       "cacheTimeout": null,
@@ -498,7 +694,7 @@
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "Mbps",
+            "axisLabel": "Bytes",
             "axisPlacement": "auto",
             "fillOpacity": 80,
             "gradientMode": "none",
@@ -531,13 +727,13 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 16
+        "w": 12.0,
+        "x": 12.0,
+        "y": 72
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 6,
+      "id": 9,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -560,7 +756,7 @@
           "mode": "single",
           "sort": "none"
         },
-        "xField": "job",
+        "xField": "syscall",
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 0
       },
@@ -571,7 +767,7 @@
         {
           "alias": "",
           "datasource": null,
-          "expr": "throughput_sum{library=\"quinn\"}",
+          "expr": "io_syscalls_data_volume_sum{mode='server', library='quinn', exported_job='delay50'}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -579,7 +775,7 @@
           "intervalFactor": 2,
           "legendFormat": "",
           "metric": "",
-          "query": "throughput_sum{library=\"quinn\"}",
+          "query": "io_syscalls_data_volume_sum{mode='server', library='quinn', exported_job='delay50'}",
           "refId": "",
           "step": 10,
           "target": ""
@@ -587,7 +783,334 @@
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Throughput",
+      "title": "Server I/O Data Volume",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Invocations",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 0,
+        "y": 64
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 10,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "io_syscalls_invocations_sum{mode='server', library='quinn', exported_job='delay50'}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "io_syscalls_invocations_sum{mode='server', library='quinn', exported_job='delay50'}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Server I/O Syscalls",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Bytes",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 12.0,
+        "y": 88
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 11,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "io_syscalls_data_volume_sum{mode='client', library='quinn', exported_job='delay50'}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "io_syscalls_data_volume_sum{mode='client', library='quinn', exported_job='delay50'}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Data Volume",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Invocations",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 0,
+        "y": 80
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 12,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "io_syscalls_invocations_sum{mode='client', library='quinn', exported_job='delay50'}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "io_syscalls_invocations_sum{mode='client', library='quinn', exported_job='delay50'}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Syscalls",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
@@ -598,7 +1121,7 @@
   "schemaVersion": 12,
   "sharedCrosshair": false,
   "style": "dark",
-  "tags": [],
+  "tags": "nesquic",
   "templating": {
     "list": []
   },
@@ -634,7 +1157,7 @@
     ]
   },
   "timezone": "browser",
-  "title": "Nesquic",
+  "title": "Quinn",
   "uid": null,
   "version": 0
 }
