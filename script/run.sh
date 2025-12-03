@@ -23,12 +23,27 @@ function may_fail {
     ($@ > /dev/null 2>&1) || true
 }
 
-function wait_for_pid {
+function wait_for_launch {
     local pid=""
+    local printed=false
     while true; do
         pid=$(pgrep $1 | head -n1)
         if [[ -n "$pid" ]]; then
             echo "$pid"
+            return 0
+        fi
+        if [[ ! $printed ]]; then
+            echo "Waiting for $1..."
+            printed=true
+        fi
+        sleep 0.1
+    done
+}
+
+function wait_for_term {
+    while true; do
+        pid=$(pgrep $1 | head -n1)
+        if [[ -z "$pid" ]]; then
             return 0
         fi
         sleep 0.1
@@ -36,20 +51,16 @@ function wait_for_pid {
 }
 
 function run_server {
-    echo -e "${COLOR_YELLOW}Starting $1 server${COLOR_OFF}"
     GATEWAY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' pushgateway)
-    PR_PUSH_GATEWAY=http://${GATEWAY_IP}:9091 mm-delay $3 systemd-run -q --scope --slice ${SLICE_SERVER} ${BIN} server -j $2 --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 &
-
-    echo -e "${COLOR_YELLOW}Add metrics link${COLOR_OFF}"
-    SERVER_PID=$(wait_for_pid nesquic)
-    sudo ip link set ${VETH_METRICS} netns ${SERVER_PID}
-    sudo nsenter -t ${SERVER_PID} -n ip addr add ${DK_SUBNET} dev ${VETH_METRICS}
-    sudo nsenter -t ${SERVER_PID} -n ip link set ${VETH_METRICS} up
+    PR_PUSH_GATEWAY=http://${GATEWAY_IP}:9091 mm-delay ${EXP_DELAY} systemd-run -q --scope --slice ${SLICE_SERVER} ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 &
 }
 
 function run_client {
-    echo -e "${COLOR_YELLOW}Starting $1 client${COLOR_OFF}"
-    systemd-run -q --scope --slice ${SLICE_CLIENT} ${BIN} client -j $2 --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob $3 http://${SERVER_ADDR}
+    systemd-run -q --scope --slice ${SLICE_CLIENT} ${BIN} client -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} http://${SERVER_ADDR}
+}
+
+function kill_nesquic {
+    may_fail sudo killall -s ${1:-SIGINT} nesquic
 }
 
 function cpu_governor {
@@ -59,8 +70,8 @@ function cpu_governor {
 
 # removes namespace upon failure or end of script
 function teardown {
-    may_fail sudo killall -s SIGINT nesquic
-    may_fail sudo ip link ip link delete ${VETH_MM}
+    kill_nesquic
+    may_fail sudo ip link del ${VETH_MM}
     sudo chmod u-s $(which systemd-run)
 
     cpu_governor "schedutil"
@@ -72,8 +83,8 @@ function teardown {
 }
 
 function setup {
-    may_fail sudo ip link ip link delete ${VETH_MM}
-    may_fail sudo killall nesquic
+    kill_nesquic SIGKILL
+    may_fail sudo ip link del ${VETH_MM}
     sudo chmod u+s $(which systemd-run)
 
     # compile IUTs in release mode
@@ -81,10 +92,6 @@ function setup {
     cargo build --release --bin nesquic
 
     cpu_governor "performance"
-
-    sudo ip link add ${VETH_MM} type veth peer name veth-metrics
-    sudo ip link set ${VETH_MM} up
-    sudo brctl addif ${DK_BRIDGE} ${VETH_MM}
 
     echo -e "${COLOR_YELLOW}Isolating CPUs${COLOR_OFF}"
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_SYSTEM}
@@ -94,20 +101,65 @@ function setup {
     sudo systemctl set-property --runtime ${SLICE_SERVER} AllowedCPUs=${CPU_SERVER}
 }
 
+function config_exp_unbounded {
+    EXP_NAME="unbounded"
+    EXP_DELAY=0
+    EXP_BLOB="50Mbit"
+}
+
+function config_exp_short_delay {
+    EXP_NAME="5ms delay"
+    EXP_DELAY=5
+    EXP_BLOB="50Mbit"
+}
+
+function config_exp_long_delay {
+    EXP_NAME="20ms delay"
+    EXP_DELAY=20
+    EXP_BLOB="50Mbit"
+}
+
+function run_experiment {
+    echo -ne "run ${EXP_NAME}... "
+
+    sudo ip link add ${VETH_MM} type veth peer name ${VETH_METRICS}
+    sudo ip link set ${VETH_MM} up
+    sudo brctl addif ${DK_BRIDGE} ${VETH_MM}
+
+    run_server $1
+
+    # wait for the server to start and then add the metrics interface
+    # this allows the server to push its metrics without loss/delay
+    SERVER_PID=$(wait_for_launch nesquic)
+    sudo ip link set ${VETH_METRICS} netns ${SERVER_PID}
+    sudo nsenter -t ${SERVER_PID} -n ip addr add ${DK_SUBNET} dev ${VETH_METRICS}
+    sudo nsenter -t ${SERVER_PID} -n ip link set ${VETH_METRICS} up
+
+    run_client $1
+
+    # kill nesquic and give it time to upload its metrics
+    kill_nesquic
+    wait_for_term nesquic
+
+    echo -e "${COLOR_GREEN}ok${COLOR_OFF}"
+}
+
+function run_library_experiments {
+    echo -e "${COLOR_YELLOW}Benchmarking $1->$1${COLOR_OFF}"
+
+    config_exp_unbounded
+    run_experiment $1
+
+    config_exp_short_delay
+    run_experiment $1
+
+    config_exp_long_delay
+    run_experiment $1
+
+    echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
+}
+
 trap teardown EXIT INT TERM
 setup
 
-echo -e "${COLOR_YELLOW}Benchmarking quinn->quinn${COLOR_OFF}"
-run_server quinn unbounded 0 0 0
-run_client quinn unbounded 10Mbit
-echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
-
-# echo -e "${COLOR_YELLOW}Benchmarking msquic->msquic${COLOR_OFF}"
-# runb ${SLICE_SERVER} ${BIN} server --lib msquic --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
-# run ${SLICE_CLIENT} ${BIN} client --lib msquic --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
-# echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
-
-# echo -e "${COLOR_YELLOW}Benchmarking quiche->quiche${COLOR_OFF}"
-# runb ${SLICE_SERVER} ${BIN} server --lib quiche --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
-# run ${SLICE_CLIENT} ${BIN} client --lib quiche --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
-# echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
+run_library_experiments quinn
