@@ -1,6 +1,7 @@
 use crate::metrics::{MetricsCollector, THROUGHPUT};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use core_affinity::{self, CoreId};
 use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
@@ -9,7 +10,7 @@ use tokio::{
     signal::unix::{signal, SignalKind},
     sync::oneshot,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
 
 mod metrics;
@@ -34,56 +35,48 @@ pub enum Command {
 }
 
 impl Command {
-    fn job(&self) -> Option<String> {
+    fn args(&self) -> &CommonArgs {
         match self {
-            Command::Client(args) => args.job.clone(),
-            Command::Server(args) => args.job.clone(),
+            Command::Client(args) => &args.common,
+            Command::Server(args) => &args.common,
         }
     }
+}
 
-    fn lib(&self) -> Library {
-        match self {
-            Command::Client(args) => args.lib.clone(),
-            Command::Server(args) => args.lib.clone(),
-        }
-    }
+#[derive(Parser, Debug, Clone)]
+pub struct CommonArgs {
+    #[clap(short, long, value_enum)]
+    pub lib: Library,
 
-    fn labels(&self) -> Option<Vec<String>> {
-        match self {
-            Command::Client(args) => args.labels.clone(),
-            Command::Server(args) => args.labels.clone(),
-        }
-    }
+    #[clap(short, long, value_enum)]
+    pub job: Option<String>,
+
+    #[clap(short = 'L')]
+    pub labels: Option<Vec<String>>,
+
+    #[clap(long)]
+    pub quic_cpu: Option<usize>,
+
+    #[clap(long)]
+    pub metric_cpu: Option<usize>,
 }
 
 #[derive(Parser, Debug, Clone)]
 pub struct ClientLibArgs {
-    #[clap(short, long, value_enum)]
-    pub lib: Library,
-
-    #[clap(short, long, value_enum)]
-    pub job: Option<String>,
-
-    #[clap(short = 'L')]
-    pub labels: Option<Vec<String>>,
+    #[clap(flatten)]
+    pub common: CommonArgs,
 
     #[clap(flatten)]
-    pub client_args: ClientArgs,
+    pub client: ClientArgs,
 }
 
 #[derive(Parser, Debug, Clone)]
 pub struct ServerLibArgs {
-    #[clap(short, long, value_enum)]
-    pub lib: Library,
-
-    #[clap(short, long, value_enum)]
-    pub job: Option<String>,
-
-    #[clap(short = 'L')]
-    pub labels: Option<Vec<String>>,
+    #[clap(flatten)]
+    pub common: CommonArgs,
 
     #[clap(flatten)]
-    pub server_args: ServerArgs,
+    pub server: ServerArgs,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -160,7 +153,9 @@ fn labels(cli: &Cli) -> HashMap<String, String> {
 
     let run_labels = cli
         .command
-        .labels()
+        .args()
+        .labels
+        .clone()
         .unwrap_or(vec![])
         .iter()
         .map(|h| {
@@ -169,7 +164,7 @@ fn labels(cli: &Cli) -> HashMap<String, String> {
         })
         .collect::<HashMap<String, String>>();
 
-    let library = cli.command.lib();
+    let library = cli.command.args().lib;
 
     let mut labels = HashMap::new();
     labels.insert(String::from("log_level"), log_level);
@@ -181,6 +176,17 @@ fn labels(cli: &Cli) -> HashMap<String, String> {
     labels
 }
 
+fn get_core_id(idx: usize) -> Result<CoreId> {
+    let cores = core_affinity::get_core_ids();
+    let Some(cores) = cores else {
+        return Err(anyhow!("Core {idx} not available"));
+    };
+    if idx >= cores.len() {
+        return Err(anyhow!("Core {idx} not available"));
+    }
+    Ok(cores[idx])
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -190,10 +196,28 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let labels = labels(&cli);
-    let job = cli.command.job();
+    let job = cli.command.args().job.clone();
     let (tx, rx) = oneshot::channel();
 
+    let quic_core = cli
+        .command
+        .args()
+        .quic_cpu
+        .map(|idx| get_core_id(idx))
+        .transpose()?;
+    let metric_core = cli
+        .command
+        .args()
+        .metric_cpu
+        .map(|idx| get_core_id(idx))
+        .transpose()?;
+
     let monitor_handle = tokio::spawn(async move {
+        if let Some(core) = metric_core {
+            debug!("Set metric core to {}", core.id);
+            core_affinity::set_for_current(core);
+        }
+
         let mut open_obj = MaybeUninit::uninit();
         let mut monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
         monitor.monitor_io().expect("monitor IO");
@@ -222,14 +246,19 @@ async fn main() -> Result<()> {
         std::process::exit(0);
     });
 
+    if let Some(core) = quic_core {
+        debug!("Set metric core to {}", core.id);
+        core_affinity::set_for_current(core);
+    }
+
     match &cli.command {
         Command::Client(args) => {
-            run_client(args.lib, args.client_args.clone())
+            run_client(args.common.lib, args.client.clone())
                 .await
                 .expect("run_client");
         }
         Command::Server(args) => {
-            run_server(args.lib, args.server_args.clone())
+            run_server(args.common.lib, args.server.clone())
                 .await
                 .expect("run_server");
         }

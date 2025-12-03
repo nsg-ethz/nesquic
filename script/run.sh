@@ -5,15 +5,11 @@ COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
-SLICE_CLIENT="nesquic-client.slice"
-SLICE_SERVER="nesquic-server.slice"
 SERVER_ADDR="10.0.0.2:4433"
 VETH_MM="veth-mm"
 VETH_METRICS="veth-metrics"
 CPU_ALL=0-39
-CPU_SYSTEM=0-9,11-39
-CPU_CLIENT=9
-CPU_SERVER=10
+CPU_SYSTEM=0-7,12-39
 
 WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 BIN="${WORKSPACE}/target/release/nesquic"
@@ -52,15 +48,15 @@ function wait_for_term {
 
 function run_server {
     GATEWAY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' pushgateway)
-    PR_PUSH_GATEWAY=http://${GATEWAY_IP}:9091 mm-delay ${EXP_DELAY} systemd-run -q --scope --slice ${SLICE_SERVER} ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 &
+    PR_PUSH_GATEWAY=http://${GATEWAY_IP}:9091 mm-delay ${EXP_DELAY} ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
 }
 
 function run_client {
-    systemd-run -q --scope --slice ${SLICE_CLIENT} ${BIN} client -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} http://${SERVER_ADDR}
+    ${BIN} client -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 http://${SERVER_ADDR}
 }
 
 function kill_nesquic {
-    may_fail sudo killall -s ${1:-SIGINT} nesquic
+    may_fail sudo killall -s ${1:-INT} nesquic
 }
 
 function cpu_governor {
@@ -68,11 +64,9 @@ function cpu_governor {
     echo $1 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 }
 
-# removes namespace upon failure or end of script
 function teardown {
     kill_nesquic
     may_fail sudo ip link del ${VETH_MM}
-    sudo chmod u-s $(which systemd-run)
 
     cpu_governor "schedutil"
 
@@ -83,13 +77,14 @@ function teardown {
 }
 
 function setup {
-    kill_nesquic SIGKILL
+    kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}
-    sudo chmod u+s $(which systemd-run)
 
     # compile IUTs in release mode
     echo -e "${COLOR_YELLOW}Compile Nesquic${COLOR_OFF}"
     cargo build --release --bin nesquic
+    sudo chown root:root ${BIN}
+    sudo chmod u+s,o+rx ${BIN}
 
     cpu_governor "performance"
 
@@ -97,8 +92,6 @@ function setup {
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_SYSTEM}
     sudo systemctl set-property --runtime system.slice AllowedCPUs=${CPU_SYSTEM}
     sudo systemctl set-property --runtime init.scope AllowedCPUs=${CPU_SYSTEM}
-    sudo systemctl set-property --runtime ${SLICE_CLIENT} AllowedCPUs=${CPU_CLIENT}
-    sudo systemctl set-property --runtime ${SLICE_SERVER} AllowedCPUs=${CPU_SERVER}
 }
 
 function config_exp_unbounded {
@@ -159,7 +152,7 @@ function run_library_experiments {
     echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 }
 
-trap teardown EXIT INT TERM
 setup
+trap teardown EXIT INT TERM
 
 run_library_experiments quinn
