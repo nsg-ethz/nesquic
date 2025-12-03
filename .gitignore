@@ -1,5 +1,4 @@
 target
-res/runs
 .envrc
 .clangd
 __pycache__

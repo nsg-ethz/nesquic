@@ -5,12 +5,11 @@ COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
-BANDWIDTH="20mbit"
-IFACE="lo"
-NETNS="nesquic"
-
 SLICE_CLIENT="nesquic-client.slice"
 SLICE_SERVER="nesquic-server.slice"
+SERVER_ADDR="10.0.0.2:4433"
+VETH_MM="veth-mm"
+VETH_METRICS="veth-metrics"
 CPU_ALL=0-39
 CPU_SYSTEM=0-9,11-39
 CPU_CLIENT=9
@@ -24,12 +23,33 @@ function may_fail {
     ($@ > /dev/null 2>&1) || true
 }
 
-function runb {
-    sudo -b -E systemd-run -q --scope --slice $1 ip netns exec ${NETNS} ${@:2}
+function wait_for_pid {
+    local pid=""
+    while true; do
+        pid=$(pgrep $1 | head -n1)
+        if [[ -n "$pid" ]]; then
+            echo "$pid"
+            return 0
+        fi
+        sleep 0.1
+    done
 }
 
-function run {
-    sudo -E systemd-run -q --scope --slice $1 ip netns exec ${NETNS} ${@:2}
+function run_server {
+    echo -e "${COLOR_YELLOW}Starting $1 server${COLOR_OFF}"
+    GATEWAY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' pushgateway)
+    PR_PUSH_GATEWAY=http://${GATEWAY_IP}:9091 mm-delay $3 systemd-run -q --scope --slice ${SLICE_SERVER} ${BIN} server -j $2 --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 &
+
+    echo -e "${COLOR_YELLOW}Add metrics link${COLOR_OFF}"
+    SERVER_PID=$(wait_for_pid nesquic)
+    sudo ip link set ${VETH_METRICS} netns ${SERVER_PID}
+    sudo nsenter -t ${SERVER_PID} -n ip addr add ${DK_SUBNET} dev ${VETH_METRICS}
+    sudo nsenter -t ${SERVER_PID} -n ip link set ${VETH_METRICS} up
+}
+
+function run_client {
+    echo -e "${COLOR_YELLOW}Starting $1 client${COLOR_OFF}"
+    systemd-run -q --scope --slice ${SLICE_CLIENT} ${BIN} client -j $2 --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob $3 http://${SERVER_ADDR}
 }
 
 function cpu_governor {
@@ -39,12 +59,11 @@ function cpu_governor {
 
 # removes namespace upon failure or end of script
 function teardown {
-    may_fail sudo killall nesquic
+    may_fail sudo killall -s SIGINT nesquic
+    may_fail sudo ip link ip link delete ${VETH_MM}
+    sudo chmod u-s $(which systemd-run)
 
     cpu_governor "schedutil"
-
-    echo -e "${COLOR_YELLOW}Remove network namespace${COLOR_OFF}"
-    sudo ip netns del ${NETNS}
 
     echo -e "${COLOR_YELLOW}Resetting CPU isolation${COLOR_OFF}"
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_ALL}
@@ -53,19 +72,19 @@ function teardown {
 }
 
 function setup {
+    may_fail sudo ip link ip link delete ${VETH_MM}
     may_fail sudo killall nesquic
-
-    echo -e "${COLOR_YELLOW}Setup benchmarking network${COLOR_OFF}"
-    may_fail sudo ip netns del ${NETNS}
-    sudo ip netns add ${NETNS}
-    sudo ip netns exec ${NETNS} ip link set dev ${IFACE} up
-    # nsexec tc qdisc add dev ${IFACE} root netem rate ${BANDWIDTH} delay 50ms
+    sudo chmod u+s $(which systemd-run)
 
     # compile IUTs in release mode
     echo -e "${COLOR_YELLOW}Compile Nesquic${COLOR_OFF}"
     cargo build --release --bin nesquic
 
     cpu_governor "performance"
+
+    sudo ip link add ${VETH_MM} type veth peer name veth-metrics
+    sudo ip link set ${VETH_MM} up
+    sudo brctl addif ${DK_BRIDGE} ${VETH_MM}
 
     echo -e "${COLOR_YELLOW}Isolating CPUs${COLOR_OFF}"
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_SYSTEM}
@@ -78,17 +97,17 @@ function setup {
 trap teardown EXIT INT TERM
 setup
 
-echo -e "${COLOR_YELLOW}BENCHMARKING quinn->quinn${COLOR_OFF}"
-runb ${SLICE_SERVER} ${BIN} server --lib quinn --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
-run ${SLICE_CLIENT} ${BIN} client --lib quinn --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
+echo -e "${COLOR_YELLOW}Benchmarking quinn->quinn${COLOR_OFF}"
+run_server quinn unbounded 0 0 0
+run_client quinn unbounded 10Mbit
 echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 
-echo -e "${COLOR_YELLOW}BENCHMARKING msquic->msquic${COLOR_OFF}"
-runb ${SLICE_SERVER} ${BIN} server --lib msquic --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
-run ${SLICE_CLIENT} ${BIN} client --lib msquic --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
-echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
+# echo -e "${COLOR_YELLOW}Benchmarking msquic->msquic${COLOR_OFF}"
+# runb ${SLICE_SERVER} ${BIN} server --lib msquic --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
+# run ${SLICE_CLIENT} ${BIN} client --lib msquic --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
+# echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 
-echo -e "${COLOR_YELLOW}BENCHMARKING quiche->quiche${COLOR_OFF}"
-runb ${SLICE_SERVER} ${BIN} server --lib quiche --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
-run ${SLICE_CLIENT} ${BIN} client --lib quiche --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
-echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
+# echo -e "${COLOR_YELLOW}Benchmarking quiche->quiche${COLOR_OFF}"
+# runb ${SLICE_SERVER} ${BIN} server --lib quiche --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem
+# run ${SLICE_CLIENT} ${BIN} client --lib quiche --cert ${RES_DIR}/pem/cert.pem --blob 1Mbit http://127.0.0.1:4433
+# echo -e "${COLOR_GREEN}Done${COLOR_OFF}"

@@ -3,4 +3,9 @@ name = "nesquic"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "grafanalib",
+]
+
+[tool.uv.sources]
+grafanalib = { git = "https://github.com/lbrndnr/grafanalib", rev = "main" }
