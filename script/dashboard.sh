@@ -8,7 +8,14 @@ function generate_dashboard {
     chmod o+r ${OUT}
 }
 
-generate_dashboard quinn
-generate_dashboard quiche
+if [ "$#" -eq 0 ]; then
+    LIBS=(${NQ_LIBS})
+else
+    LIBS=("$@")
+fi
+
+for LIB in "${LIBS[@]}"; do
+    generate_dashboard ${LIB}
+done
 
 docker compose -f ${WORKSPACE}/docker/backend.yml restart grafana

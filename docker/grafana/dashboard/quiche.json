@@ -140,7 +140,7 @@
         {
           "alias": "",
           "datasource": null,
-          "expr": "throughput_sum{}",
+          "expr": "throughput_sum{library='quiche'}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -148,7 +148,7 @@
           "intervalFactor": 2,
           "legendFormat": "",
           "metric": "",
-          "query": "throughput_sum{}",
+          "query": "throughput_sum{library='quiche'}",
           "refId": "",
           "step": 10,
           "target": ""

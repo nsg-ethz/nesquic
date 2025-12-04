@@ -155,5 +155,12 @@ function run_library_experiments {
 setup
 trap teardown EXIT INT TERM
 
-run_library_experiments quinn
-# run_library_experiments quiche
+if [ "$#" -eq 0 ]; then
+    LIBS=(${NQ_LIBS})
+else
+    LIBS=("$@")
+fi
+
+for LIB in "${LIBS[@]}"; do
+    run_library_experiments ${LIB}
+done

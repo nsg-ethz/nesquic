@@ -100,16 +100,23 @@ def experiments_panels(title, **labels):
     ]
 
 
+def display_name(library):
+    if library == "msquic":
+        return "MsQuic"
+
+    return library.capitalize()
+
+
 library = os.environ.get("LIBRARY")
 if library is None:
     raise ValueError("LIBRARY environment variable is not set")
 
 dashboard = Dashboard(
-    title=library.capitalize(),
+    title=display_name(library),
     tags="nesquic",
     timezone="browser",
     panels=[
-        *overview_panels(),
+        *overview_panels(library=library),
         *experiments_panels("Unbounded", library=library, exported_job="unbounded"),
         *experiments_panels("5ms Delay", library=library, exported_job="5ms delay"),
         *experiments_panels("20ms Delay", library=library, exported_job="20ms delay"),
