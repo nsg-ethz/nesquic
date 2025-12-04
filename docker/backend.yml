@@ -47,9 +47,9 @@ services:
             - nesquic
         volumes:
             - grafana_data:/var/lib/grafana
-            - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/nesquic.yml:rw
-            - ./grafana/dashboard.yml:/etc/grafana/provisioning/dashboards/nesquic.yml:rw
-            - ./grafana/dashboard/main.json:/var/lib/grafana/dashboards/main.json:rw
+            - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/nesquic.yml:ro
+            - ./grafana/dashboard.yml:/etc/grafana/provisioning/dashboards/nesquic.yml:ro
+            - ./grafana/dashboard:/var/lib/grafana/dashboards:ro
         environment:
             - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER:-admin}
             - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-admin}

@@ -1,14 +1,6 @@
-#!/usr/bin/env -S uv tool run --from git+https://github.com/lbrndnr/grafanalib@main generate-dashboard -o docker/grafana/dashboard/main.json
-
 import os
 
-from grafanalib.core import (
-    BarChart,
-    Dashboard,
-    GridPos,
-    RowPanel,
-    Target,
-)
+from grafanalib.core import BarChart, Dashboard, GridPos, RowPanel, Target
 
 PANEL_HEIGHT = 8
 DASHBOARD_WIDTH = 24
@@ -118,7 +110,8 @@ dashboard = Dashboard(
     timezone="browser",
     panels=[
         *overview_panels(),
-        *experiments_panels("Unbounded", library=library, exported_job="test"),
-        *experiments_panels("50ms Delay", library=library, exported_job="delay50"),
+        *experiments_panels("Unbounded", library=library, exported_job="unbounded"),
+        *experiments_panels("5ms Delay", library=library, exported_job="5ms delay"),
+        *experiments_panels("20ms Delay", library=library, exported_job="20ms delay"),
     ],
 ).auto_panel_ids()

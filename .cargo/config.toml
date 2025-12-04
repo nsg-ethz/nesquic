@@ -1,5 +1,9 @@
-[alias]     # command aliases
+[alias]
 rcgen = "run --bin rcgen"
+quinn-server = "run --bin nesquic server --lib quinn --cert res/pem/cert.pem --key res/pem/key.pem"
+quinn-client = "run --bin nesquic client --lib quinn --cert res/pem/cert.pem --blob 1Mbit"
+quiche-server = "run --bin nesquic server --lib quiche --cert res/pem/cert.pem --key res/pem/key.pem"
+quiche-client = "run --bin nesquic client --lib quiche --cert res/pem/cert.pem --blob 1Mbit"
 
 [env]
 RUST_TEST_THREADS = "1"

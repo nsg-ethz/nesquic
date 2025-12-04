@@ -138,7 +138,7 @@ function run_experiment {
 }
 
 function run_library_experiments {
-    echo -e "${COLOR_YELLOW}Benchmarking $1->$1${COLOR_OFF}"
+    echo -e "${COLOR_YELLOW}Benchmarking $1${COLOR_OFF}"
 
     config_exp_unbounded
     run_experiment $1
@@ -156,3 +156,4 @@ setup
 trap teardown EXIT INT TERM
 
 run_library_experiments quinn
+# run_library_experiments quiche
