@@ -1,3 +1,4 @@
+# pyright: reportCallIssue=none
 import os
 
 from grafanalib.core import BarChart, Dashboard, GridPos, RowPanel, Target
