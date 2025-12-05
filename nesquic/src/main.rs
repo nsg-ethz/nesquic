@@ -10,7 +10,7 @@ use tokio::{
     signal::unix::{signal, SignalKind},
     sync::oneshot,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 use utils::bin::{Client, ClientArgs, Server, ServerArgs};
 
 mod metrics;
@@ -197,7 +197,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let labels = labels(&cli);
     let job = cli.command.args().job.clone();
-    let (tx, rx) = oneshot::channel();
+
+    // we use this to make sure the metrics are installed before starting the job
+    let (cmd_start_tx, cmd_start_rx) = oneshot::channel();
+
+    // this is used to push the metrics once the job is done
+    let (cmd_done_tx, cmd_done_rx) = oneshot::channel();
 
     let quic_core = cli
         .command
@@ -214,7 +219,7 @@ async fn main() -> Result<()> {
 
     let monitor_handle = tokio::spawn(async move {
         if let Some(core) = metric_core {
-            debug!("Set metric core to {}", core.id);
+            trace!("Set metric core to {}", core.id);
             core_affinity::set_for_current(core);
         }
 
@@ -222,11 +227,13 @@ async fn main() -> Result<()> {
         let mut monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
         monitor.monitor_io().expect("monitor IO");
 
+        cmd_start_tx.send(()).expect("Failed to start job");
+
         let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {},
             _ = sigterm.recv() => {},
-            _ = rx => {},
+            _ = cmd_done_rx => {},
         }
 
         if let Some(job) = job {
@@ -247,9 +254,11 @@ async fn main() -> Result<()> {
     });
 
     if let Some(core) = quic_core {
-        debug!("Set metric core to {}", core.id);
+        trace!("Set metric core to {}", core.id);
         core_affinity::set_for_current(core);
     }
+
+    cmd_start_rx.await.expect("Failed to start job");
 
     match &cli.command {
         Command::Client(args) => {
@@ -264,7 +273,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    if tx.send(()).is_ok() {
+    if cmd_done_tx.send(()).is_ok() {
         monitor_handle.await?;
     } else {
         warn!("Pushing metrics potentially failed");
