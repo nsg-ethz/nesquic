@@ -112,14 +112,16 @@ library = os.environ.get("LIBRARY")
 if library is None:
     raise ValueError("LIBRARY environment variable is not set")
 
+labels = {"library": library, "log_level": "error"}
+
 dashboard = Dashboard(
     title=display_name(library),
     tags="nesquic",
     timezone="browser",
     panels=[
-        *overview_panels(library=library),
-        *experiments_panels("Unbounded", library=library, exported_job="unbounded"),
-        *experiments_panels("5ms Delay", library=library, exported_job="5ms delay"),
-        *experiments_panels("20ms Delay", library=library, exported_job="20ms delay"),
+        *overview_panels(**labels),
+        *experiments_panels("Unbounded", exported_job="unbounded", **labels),
+        *experiments_panels("5ms Delay", exported_job="5ms delay", **labels),
+        *experiments_panels("20ms Delay", exported_job="20ms delay", **labels),
     ],
 ).auto_panel_ids()
