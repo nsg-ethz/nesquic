@@ -3,11 +3,13 @@ use anyhow::{anyhow, bail, Result};
 use std::net::{SocketAddr, ToSocketAddrs};
 use tokio::sync::oneshot;
 use tokio_quiche::{quic, socket::Socket as QuicSocket, ConnectionParams};
-use tracing::info;
+use tracing::trace;
 use utils::{
     bin::{self, ClientArgs},
     perf::{Request, Stats},
 };
+
+const TARGET: &str = "quiche::client";
 
 pub struct Client {
     args: ClientArgs,
@@ -45,7 +47,7 @@ impl bin::Client for Client {
             .host_str()
             .ok_or_else(|| anyhow!("no hostname specified"))?;
 
-        info!("connecting to {host} at {remote}");
+        trace!(target: TARGET, "connecting to {host} at {remote}");
 
         // TODO: here we have to set the CA's certificate
         let mut params = ConnectionParams::default();

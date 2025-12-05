@@ -4,8 +4,10 @@ use bytes::Bytes;
 use quinn::{crypto::rustls::QuicServerConfig, ServerConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{error, info, trace};
 use utils::{bin, bin::ServerArgs, perf::Blob};
+
+const TARGET: &str = "quinn::server";
 
 pub struct Server {
     args: ServerArgs,
@@ -42,14 +44,14 @@ impl bin::Server for Server {
         )
         .context("creating endpoint")?;
 
-        info!("Listening on {}", endpoint.local_addr()?);
+        info!(target: TARGET, "Listening on {}", endpoint.local_addr()?);
 
         while let Some(conn) = endpoint.accept().await {
-            debug!("connection incoming");
+            trace!(target: TARGET, "connection incoming");
             let fut = handle_connection(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!("connection failed: {reason}", reason = e.to_string())
+                    error!(target: TARGET, "connection failed: {reason}", reason = e.to_string())
                 }
             });
         }
@@ -61,16 +63,16 @@ impl bin::Server for Server {
 async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
-        debug!("established");
+        trace!(target: TARGET, "established");
 
         // Each stream initiated by the client constitutes a new request.
         loop {
             let stream = connection.accept_bi().await;
-            debug!("stream accepted");
+            trace!(target: TARGET, "stream accepted");
 
             let stream = match stream {
                 Err(quinn::ConnectionError::ApplicationClosed { .. }) => {
-                    debug!("connection closed");
+                    trace!(target: TARGET, "connection closed");
                     return Ok(());
                 }
                 Err(e) => {
@@ -81,7 +83,7 @@ async fn handle_connection(conn: quinn::Incoming) -> Result<()> {
             let fut = handle_request(stream);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!("failed: {reason}", reason = e.to_string());
+                    error!(target: TARGET, "failed: {reason}", reason = e.to_string());
                 }
             });
         }
@@ -101,7 +103,7 @@ async fn handle_request(
     // Execute the request
     let blob =
         Blob::try_from(req.as_slice()).map_err(|e| anyhow!("failed handling request: {}", e))?;
-    debug!("serving {}", blob.size);
+    trace!(target: TARGET, "serving {}", blob.size);
 
     // Write the response
     send.write_chunk(Bytes::from_iter(blob))
@@ -112,6 +114,6 @@ async fn handle_request(
     send.finish()
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
 
-    debug!("complete");
+    trace!(target: TARGET, "complete");
     Ok(())
 }

@@ -1,11 +1,11 @@
 [alias]
 rcgen = "run --bin rcgen"
 quinn-server = "run --bin nesquic server --lib quinn --cert res/pem/cert.pem --key res/pem/key.pem"
-quinn-client = "run --bin nesquic client --lib quinn --cert res/pem/cert.pem --blob 1Mbit"
+quinn-client = "run --bin nesquic client --lib quinn --cert res/pem/cert.pem --blob 50Mbit"
 quiche-server = "run --bin nesquic server --lib quiche --cert res/pem/cert.pem --key res/pem/key.pem"
-quiche-client = "run --bin nesquic client --lib quiche --cert res/pem/cert.pem --blob 1Mbit"
+quiche-client = "run --bin nesquic client --lib quiche --cert res/pem/cert.pem --blob 50Mbit"
 msquic-server = "run --bin nesquic server --lib msquic --cert res/pem/cert.pem --key res/pem/key.pem"
-msquic-client = "run --bin nesquic client --lib msquic --cert res/pem/cert.pem --blob 1Mbit"
+msquic-client = "run --bin nesquic client --lib msquic --cert res/pem/cert.pem --blob 50Mbit"
 
 [env]
 RUST_TEST_THREADS = "1"

@@ -32,7 +32,7 @@ impl ClientArgs {
             url: Url::parse("https://127.0.0.1:4433").unwrap(),
             unencrypted: false,
             cert: format!("{}/../res/pem/cert.pem", env!("CARGO_MANIFEST_DIR")),
-            blob: "128bit".to_string(),
+            blob: "50Mbit".to_string(),
             reps: 1,
         }
     }

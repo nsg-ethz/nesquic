@@ -1,12 +1,12 @@
-use bytes::Bytes;
-use std::time::Duration;
+use bytes::{Buf, Bytes};
+use std::{io::Cursor, time::Duration};
 use tokio::sync::oneshot;
 use tokio_quiche::{
     metrics::Metrics,
     quic::{HandshakeInfo, QuicheConnection},
     ApplicationOverQuic, QuicResult,
 };
-use tracing::{debug, trace};
+use tracing::{error, trace, warn};
 use utils::perf::{Blob, Request, Stats};
 
 mod client;
@@ -16,9 +16,9 @@ pub use client::Client;
 pub use server::Server;
 
 struct Benchmark {
-    buf: [u8; 8192],
+    buf: [u8; 16384],
     req: Option<Request>,
-    res: Option<Blob>,
+    res: Option<Cursor<Bytes>>,
     stats: Stats,
     done: Option<oneshot::Sender<Stats>>,
 }
@@ -26,7 +26,7 @@ struct Benchmark {
 impl Benchmark {
     fn new(req: Option<Request>, done: Option<oneshot::Sender<Stats>>) -> Self {
         Benchmark {
-            buf: [0u8; 8192],
+            buf: [0u8; 16384],
             req,
             res: None,
             stats: Stats::new(),
@@ -41,7 +41,7 @@ impl ApplicationOverQuic for Benchmark {
         _: &mut QuicheConnection,
         _: &HandshakeInfo,
     ) -> QuicResult<()> {
-        debug!("Connection established");
+        trace!("Connection established");
         Ok(())
     }
 
@@ -54,32 +54,35 @@ impl ApplicationOverQuic for Benchmark {
     }
 
     async fn wait_for_data(&mut self, _: &mut QuicheConnection) -> QuicResult<()> {
+        trace!("wait for data");
         tokio::time::sleep(Duration::MAX).await;
         Ok(())
     }
 
     fn process_reads(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        let mut buf = [0u8; 8192];
-        while let Some(stream) = qconn.stream_readable_next() {
+        let mut buf = [0u8; 16384];
+        for stream in qconn.readable() {
             trace!("stream_recv({})", stream);
-            let (len, done) = qconn.stream_recv(stream, &mut buf)?;
+            while let Ok((len, done)) = qconn.stream_recv(stream, &mut buf) {
+                trace!(
+                    "len: {}, is measuring: {}, done: {}",
+                    len,
+                    self.stats.is_measuring(),
+                    done
+                );
 
-            trace!(
-                "is measuring: {}, done: {}",
-                self.stats.is_measuring(),
-                done
-            );
-
-            if self.stats.is_measuring() {
-                self.stats.add_bytes(len)?;
-                if done {
-                    self.stats.stop_measurement()?;
-                    qconn.close(true, 0, "Done".as_bytes())?;
+                if self.stats.is_measuring() {
+                    self.stats.add_bytes(len)?;
+                    if done {
+                        trace!("Closing connection");
+                        self.stats.stop_measurement()?;
+                        qconn.close(true, 0, "Done".as_bytes())?;
+                    }
+                } else {
+                    let blob = Blob::try_from(buf.as_ref())?;
+                    trace!("Received request for {}B", blob.size);
+                    self.res = Some(Cursor::new(Bytes::from_iter(blob)));
                 }
-            } else {
-                let blob = Blob::try_from(buf.as_ref())?;
-                debug!("Received request for {}B", blob.size);
-                self.res = Some(blob);
             }
         }
 
@@ -88,18 +91,36 @@ impl ApplicationOverQuic for Benchmark {
 
     fn process_writes(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
         if let Some(req) = self.req.take() {
+            trace!("Writing request");
             self.stats.start_measurement();
             qconn.stream_send(0, &req.to_bytes(), true)?;
         }
-        if let Some(res) = self.res.take() {
-            let res = Bytes::from_iter(res);
-            qconn.stream_send(0, &res, true)?;
+        if let Some(ref mut res) = self.res {
+            trace!("Writing response");
+
+            if let Ok(len) = qconn.stream_send(0, res.chunk(), true) {
+                res.advance(len);
+                if !res.has_remaining() {
+                    self.res.take();
+                }
+            }
         }
 
         Ok(())
     }
 
-    fn on_conn_close<M: Metrics>(&mut self, _: &mut QuicheConnection, _: &M, _: &QuicResult<()>) {
-        self.done.take().unwrap().send(self.stats.clone()).unwrap();
+    fn on_conn_close<M: Metrics>(&mut self, _: &mut QuicheConnection, _: &M, res: &QuicResult<()>) {
+        if let Err(e) = res {
+            warn!("connection closed with error: {}", e);
+            return;
+        }
+
+        trace!("connection closed");
+
+        if let Some(done) = self.done.take() {
+            if let Err(err) = done.send(self.stats.clone()) {
+                error!("failed to send stats: {:?}", err);
+            }
+        }
     }
 }

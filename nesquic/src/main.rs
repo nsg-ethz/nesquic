@@ -239,8 +239,15 @@ async fn main() -> Result<()> {
         if let Some(job) = job {
             if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
                 info!("Pushing metrics to {}", push_gateway);
-                if let Err(e) = monitor.push_all(push_gateway, job, labels).await {
-                    error!("Error pushing metrics: {}", e);
+
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {},
+                    _ = sigterm.recv() => {},
+                    res = monitor.push_all(push_gateway.clone(), job, labels) => {
+                        if let Err(e) = res {
+                            error!("Error pushing metrics to {}: {}", push_gateway, e);
+                        }
+                    },
                 }
             }
         } else {
@@ -272,6 +279,8 @@ async fn main() -> Result<()> {
                 .expect("run_server");
         }
     }
+
+    trace!("Job completed");
 
     if cmd_done_tx.send(()).is_ok() {
         monitor_handle.await?;

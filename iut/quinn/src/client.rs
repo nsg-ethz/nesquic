@@ -3,12 +3,14 @@ use anyhow::{anyhow, bail, Result};
 use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, Connection, Endpoint, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
 use std::{net::ToSocketAddrs, sync::Arc};
-use tracing::debug;
+use tracing::trace;
 use utils::{
     bin,
     bin::ClientArgs,
     perf::{Request, Stats},
 };
+
+const TARGET: &str = "quinn::client";
 
 pub struct Client {
     args: ClientArgs,
@@ -38,7 +40,7 @@ impl Client {
             .host_str()
             .ok_or_else(|| anyhow!("no hostname specified"))?;
 
-        debug!("connecting to {host} at {remote}");
+        trace!(target: TARGET, "connecting to {host} at {remote}");
         let conn = endpoint
             .connect(remote, host)?
             .await
@@ -75,7 +77,9 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
-        debug!("sending request");
+        trace!(target: TARGET, "sending request");
+
+        self.stats.start_measurement();
 
         let request = Request::try_from(self.args.blob.clone())?;
         send.write_all(&request.to_bytes())
@@ -84,23 +88,23 @@ impl bin::Client for Client {
         send.finish()
             .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
 
-        self.stats.start_measurement();
         let resp = recv
             .read_to_end(usize::max_value())
             .await
             .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
-        debug!("received response: {}B", resp.len());
+        trace!(target: TARGET, "received response: {}B", resp.len());
 
         self.stats.add_bytes(resp.len())?;
         let (duration, throughput) = self.stats.stop_measurement()?;
-        debug!(
+        trace!(target: TARGET,
             "response received in {:?} - {:.2} Mbit/s",
-            duration, throughput
+            duration,
+            throughput
         );
 
         conn.close(0u32.into(), b"done");
-        debug!("waiting for server to close connection...");
+        trace!(target: TARGET, "waiting for server to close connection...");
 
         // Give the server a fair chance to receive the close packet
         endpoint.wait_idle().await;

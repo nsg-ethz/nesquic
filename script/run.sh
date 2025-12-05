@@ -46,13 +46,18 @@ function wait_for_term {
     done
 }
 
-function run_server {
+function push_gateway {
     GATEWAY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' pushgateway)
-    PR_PUSH_GATEWAY=http://${GATEWAY_IP}:9091 mm-delay ${EXP_DELAY} ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
+    echo http://${GATEWAY_IP}:9091
+    return 0
+}
+
+function run_server {
+    PR_PUSH_GATEWAY=$(push_gateway) mm-delay ${EXP_DELAY} ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
 }
 
 function run_client {
-    ${BIN} client -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 http://${SERVER_ADDR}
+    PR_PUSH_GATEWAY=$(push_gateway) ${BIN} client -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 https://${SERVER_ADDR}
 }
 
 function kill_nesquic {
@@ -65,7 +70,7 @@ function cpu_governor {
 }
 
 function teardown {
-    kill_nesquic
+    kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}
 
     cpu_governor "schedutil"
@@ -74,6 +79,8 @@ function teardown {
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_ALL}
     sudo systemctl set-property --runtime system.slice AllowedCPUs=${CPU_ALL}
     sudo systemctl set-property --runtime init.scope AllowedCPUs=${CPU_ALL}
+
+    exit 0
 }
 
 function setup {
@@ -153,7 +160,7 @@ function run_library_experiments {
 }
 
 setup
-trap teardown EXIT INT TERM
+trap teardown INT TERM
 
 if [ "$#" -eq 0 ]; then
     LIBS=(${NQ_LIBS})
@@ -164,3 +171,5 @@ fi
 for LIB in "${LIBS[@]}"; do
     run_library_experiments ${LIB}
 done
+
+teardown
