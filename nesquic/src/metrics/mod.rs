@@ -65,7 +65,7 @@ fn process(ev: &[u8]) -> i32 {
     let syscall = SYSCALLS[ev.syscall as usize];
     IO_SYSCALL_DATA_VOLUME
         .with_label_values(&[syscall])
-        .observe(ev.len.into());
+        .observe(ev.len as f64 / 1000.0);
     IO_SYSCALL_INVOCATIONS
         .with_label_values(&[syscall])
         .observe(1.0);

@@ -55,7 +55,7 @@ def io_panels(**labels):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=DASHBOARD_MID, y=y_offset()),
         xField="syscall",
-        axisLabel="Bytes",
+        axisLabel="Data Volume [kB]",
     )
 
     return [vol, num]
@@ -63,7 +63,7 @@ def io_panels(**labels):
 
 def throughput_panel(**labels):
     return BarChart(
-        title="Throughput",
+        title="Throughput With Varying Connection Delay",
         dataSource="prometheus",
         orientation="vertical",
         targets=[
@@ -76,7 +76,7 @@ def throughput_panel(**labels):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
         xField="exported_job",
-        axisLabel="Mbps",
+        axisLabel="Throughput [Mbps]",
     )
 
 
