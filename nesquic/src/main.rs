@@ -256,8 +256,6 @@ async fn main() -> Result<()> {
                 error!("Error reporting metrics: {}", e);
             }
         }
-
-        drop(monitor);
     });
 
     if let Some(core) = quic_core {
