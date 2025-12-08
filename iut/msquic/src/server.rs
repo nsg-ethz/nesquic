@@ -1,12 +1,14 @@
 use anyhow::Result;
-use msquic::{
+use msquic_async::msquic::{
     BufferRef, CertificateFile, Configuration, Credential, CredentialConfig, Registration,
     RegistrationConfig, Settings,
 };
-use std::{future::poll_fn, net::SocketAddr};
+use std::future::poll_fn;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{error, info};
+use tracing::{error, info, trace};
 use utils::bin::{self, ServerArgs};
+
+const TARGET: &str = "msquic::server";
 
 pub struct Server {
     args: ServerArgs,
@@ -42,11 +44,10 @@ impl bin::Server for Server {
 
         let listener = msquic_async::Listener::new(&registration, config)?;
 
-        let addr: SocketAddr = "127.0.0.1:4433".parse()?;
-        listener.start(&alpn, Some(addr))?;
+        listener.start(&alpn, Some(self.args.listen))?;
         let server_addr = listener.local_addr()?;
 
-        info!("Listening on {}", server_addr);
+        info!(target: TARGET, "Listening on {}", server_addr);
 
         // handle incoming connections and streams
         while let Ok(conn) = listener.accept().await {
@@ -54,10 +55,10 @@ impl bin::Server for Server {
                 loop {
                     match conn.accept_inbound_stream().await {
                         Ok(mut stream) => {
-                            info!("new stream id: {}", stream.id().expect("stream id"));
+                            trace!(target: TARGET, "new stream id: {}", stream.id().expect("stream id"));
                             let mut buf = [0u8; 1024];
                             let len = stream.read(&mut buf).await?;
-                            info!(
+                            trace!(target: TARGET,
                                 "reading from stream: {}",
                                 String::from_utf8_lossy(&buf[0..len])
                             );
@@ -66,7 +67,7 @@ impl bin::Server for Server {
                             drop(stream);
                         }
                         Err(err) => {
-                            error!("error on accept stream: {}", err);
+                            error!(target: TARGET, "error on accept stream: {}", err);
                             break;
                         }
                     }

@@ -1714,7 +1714,6 @@ name = "msquic-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "msquic",
  "msquic-async",
  "tokio",
  "tracing",
@@ -1754,6 +1753,7 @@ dependencies = [
  "built",
  "clap",
  "core_affinity",
+ "futures",
  "lazy_static",
  "libbpf-cargo",
  "libbpf-rs",

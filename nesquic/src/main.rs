@@ -2,10 +2,11 @@ use crate::metrics::{MetricsCollector, THROUGHPUT};
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use core_affinity::{self, CoreId};
+use futures::future::Either::*;
 use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
-use std::{collections::HashMap, env, mem::MaybeUninit};
+use std::{collections::HashMap, env, future::Future, mem::MaybeUninit};
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::oneshot,
@@ -187,6 +188,15 @@ fn get_core_id(idx: usize) -> Result<CoreId> {
     Ok(cores[idx])
 }
 
+async fn select_with_term_signals<T>(future: impl Future<Output = T>) -> Option<T> {
+    let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => None,
+        _ = sigterm.recv() => None,
+        res = future => Some(res),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -199,10 +209,10 @@ async fn main() -> Result<()> {
     let job = cli.command.args().job.clone();
 
     // we use this to make sure the metrics are installed before starting the job
-    let (cmd_start_tx, cmd_start_rx) = oneshot::channel();
+    let (job_start_tx, job_start_rx) = oneshot::channel();
 
     // this is used to push the metrics once the job is done
-    let (cmd_done_tx, cmd_done_rx) = oneshot::channel();
+    let (job_done_tx, job_done_rx) = oneshot::channel();
 
     let quic_core = cli
         .command
@@ -227,27 +237,18 @@ async fn main() -> Result<()> {
         let mut monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
         monitor.monitor_io().expect("monitor IO");
 
-        cmd_start_tx.send(()).expect("Failed to start job");
-
-        let mut sigterm = signal(SignalKind::terminate()).expect("sigterm");
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {},
-            _ = sigterm.recv() => {},
-            _ = cmd_done_rx => {},
-        }
+        job_start_tx.send(()).expect("Failed to start job");
+        job_done_rx.await.expect("Failed to wait for job");
 
         if let Some(job) = job {
             if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
                 info!("Pushing metrics to {}", push_gateway);
 
-                tokio::select! {
-                    _ = tokio::signal::ctrl_c() => {},
-                    _ = sigterm.recv() => {},
-                    res = monitor.push_all(push_gateway.clone(), job, labels) => {
-                        if let Err(e) = res {
-                            error!("Error pushing metrics to {}: {}", push_gateway, e);
-                        }
-                    },
+                if let Some(Err(e)) =
+                    select_with_term_signals(monitor.push_all(push_gateway.clone(), job, labels))
+                        .await
+                {
+                    error!("Error pushing metrics to {}: {}", push_gateway, e);
                 }
             }
         } else {
@@ -257,7 +258,6 @@ async fn main() -> Result<()> {
         }
 
         drop(monitor);
-        std::process::exit(0);
     });
 
     if let Some(core) = quic_core {
@@ -265,24 +265,18 @@ async fn main() -> Result<()> {
         core_affinity::set_for_current(core);
     }
 
-    cmd_start_rx.await.expect("Failed to start job");
+    job_start_rx.await.expect("Failed to start job");
 
-    match &cli.command {
-        Command::Client(args) => {
-            run_client(args.common.lib, args.client.clone())
-                .await
-                .expect("run_client");
-        }
-        Command::Server(args) => {
-            run_server(args.common.lib, args.server.clone())
-                .await
-                .expect("run_server");
-        }
+    let job = match &cli.command {
+        Command::Client(args) => Left(run_client(args.common.lib, args.client.clone())),
+        Command::Server(args) => Right(run_server(args.common.lib, args.server.clone())),
+    };
+
+    if let Some(Ok(())) = select_with_term_signals(job).await {
+        trace!("Job completed");
     }
 
-    trace!("Job completed");
-
-    if cmd_done_tx.send(()).is_ok() {
+    if job_done_tx.send(()).is_ok() {
         monitor_handle.await?;
     } else {
         warn!("Pushing metrics potentially failed");

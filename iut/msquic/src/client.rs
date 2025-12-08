@@ -1,14 +1,16 @@
 use anyhow::Result;
-use msquic::{
+use msquic_async::msquic::{
     BufferRef, Configuration, CredentialConfig, Registration, RegistrationConfig, Settings,
 };
 use std::future::poll_fn;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{debug, info};
+use tracing::trace;
 use utils::{
     bin::{self, ClientArgs},
     perf::{Request, Stats},
 };
+
+const TARGET: &str = "msquic::client";
 
 pub struct Client {
     args: ClientArgs,
@@ -46,11 +48,12 @@ impl bin::Client for Client {
     }
 
     async fn run(&mut self) -> Result<()> {
-        info!("Establishing connection");
+        trace!(target: TARGET, "Establishing connection");
         let conn = msquic_async::Connection::new(&self.registration)?;
-        conn.start(&self.config, "127.0.0.1", 4433).await?;
+        conn.start(&self.config, self.args.url.host_str().unwrap(), 4433)
+            .await?;
 
-        info!("connected");
+        trace!(target: TARGET, "connected");
 
         let request = Request::try_from(self.args.blob.clone())?;
         let mut stream = conn
@@ -58,7 +61,7 @@ impl bin::Client for Client {
             .await?;
         stream.write_all(&request.to_bytes()).await?;
         poll_fn(|cx| stream.poll_finish_write(cx)).await?;
-        debug!("sent request");
+        trace!(target: TARGET, "sent request");
         let mut buf = [0u8; 1024];
 
         self.stats.start_measurement();
@@ -66,7 +69,7 @@ impl bin::Client for Client {
         self.stats.add_bytes(len)?;
 
         let (duration, throughput) = self.stats.stop_measurement()?;
-        info!(
+        trace!(target: TARGET,
             "response received in {:?} - {:.2} Mbit/s",
             duration, throughput
         );

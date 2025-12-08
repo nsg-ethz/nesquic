@@ -20,7 +20,7 @@ async fn run<C: Client, S: Server + Send>() {
     local.spawn_local(async {
         let mut server = S::new(ServerArgs::test()).expect("server::new");
         let res = server.listen().await;
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "{}", res.err().unwrap());
     });
 
     local
