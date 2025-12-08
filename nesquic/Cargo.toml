@@ -8,7 +8,7 @@ anyhow = "1.0.95"
 built = { version = "0.8" }
 clap = "4.5.23"
 libbpf-rs = "0.25.0"
-libc = "0.2.155"
+libc = "0.2.178"
 msquic-iut = { path = "../iut/msquic" }
 quinn-iut = { path = "../iut/quinn" }
 quiche-iut = { path = "../iut/quiche" }
