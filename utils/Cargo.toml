@@ -13,7 +13,7 @@ path = "src/bin/rcgen.rs"
 anyhow = "1.0.79"
 average = "0.16.0"
 clap = { version = "4.5.0", features = ["derive"] }
-tracing = "0.1.41"
+tracing = "0.1.43"
 mio = "1.0.3"
 rcgen = "0.14.5"
 ring = "0.17.14"

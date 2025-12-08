@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.79"
-tracing = "0.1.41"
+tracing = "0.1.43"
 msquic-async = { version = "0.3.0" }
 tokio = "1.48.0"
 utils = { path = "../../utils" }
