@@ -1,25 +1,40 @@
 use crate::bind_socket;
 use anyhow::{anyhow, bail, Result};
-use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, Connection, Endpoint, TokioRuntime};
+use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, Connection, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
 use std::{net::ToSocketAddrs, sync::Arc};
 use tracing::trace;
-use utils::{
-    bin,
-    bin::ClientArgs,
-    perf::{Request, Stats},
-};
+use utils::{bin, bin::ClientArgs, perf::Request};
 
 const TARGET: &str = "quinn::client";
 
 pub struct Client {
     args: ClientArgs,
+    conn: Option<Connection>,
     config: ClientConfig,
-    stats: Stats,
 }
 
-impl Client {
-    pub async fn connect(&mut self) -> Result<(Connection, Endpoint)> {
+impl bin::Client for Client {
+    fn new(args: ClientArgs) -> Result<Self> {
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(CertificateDer::from_pem_file(&args.cert)?)?;
+
+        let mut client_crypto = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+
+        client_crypto.alpn_protocols = vec![b"perf".to_vec()];
+
+        let config = quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
+
+        Ok(Client {
+            args,
+            conn: None,
+            config,
+        })
+    }
+
+    async fn connect(&mut self) -> Result<()> {
         let remote = (
             self.args.url.host_str().unwrap(),
             self.args.url.port().unwrap_or(4433),
@@ -40,46 +55,28 @@ impl Client {
             .host_str()
             .ok_or_else(|| anyhow!("no hostname specified"))?;
 
-        trace!(target: TARGET, "connecting to {host} at {remote}");
         let conn = endpoint
             .connect(remote, host)?
             .await
             .map_err(|e| anyhow!("failed to connect: {}", e))?;
+        self.conn = Some(conn);
 
-        Ok((conn, endpoint))
-    }
-}
+        trace!(target: TARGET, "connected");
 
-impl bin::Client for Client {
-    fn new(args: ClientArgs) -> Result<Self> {
-        let mut roots = rustls::RootCertStore::empty();
-        roots.add(CertificateDer::from_pem_file(&args.cert)?)?;
-
-        let mut client_crypto = rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-
-        client_crypto.alpn_protocols = vec![b"perf".to_vec()];
-
-        let config = quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
-
-        Ok(Client {
-            args,
-            config,
-            stats: Stats::new(),
-        })
+        Ok(())
     }
 
     async fn run(&mut self) -> Result<()> {
-        let (conn, endpoint) = self.connect().await?;
+        let Some(conn) = self.conn.as_mut() else {
+            bail!("not connected");
+        };
+
         let (mut send, mut recv) = conn
             .open_bi()
             .await
             .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
         trace!(target: TARGET, "sending request");
-
-        self.stats.start_measurement();
 
         let request = Request::try_from(self.args.blob.clone())?;
         send.write_all(&request.to_bytes())
@@ -95,20 +92,6 @@ impl bin::Client for Client {
 
         trace!(target: TARGET, "received response: {}B", resp.len());
 
-        self.stats.add_bytes(resp.len())?;
-        let (duration, throughput) = self.stats.stop_measurement()?;
-        trace!(target: TARGET,
-            "response received in {:?} - {:.2} Mbit/s",
-            duration,
-            throughput
-        );
-
-        conn.close(0u32.into(), b"done");
-        trace!(target: TARGET, "waiting for server to close connection...");
-
-        // Give the server a fair chance to receive the close packet
-        endpoint.wait_idle().await;
-
         if request.size != resp.len() {
             bail!(
                 "received blob size ({}B) different from requested blob size ({}B)",
@@ -118,9 +101,5 @@ impl bin::Client for Client {
         }
 
         Ok(())
-    }
-
-    fn stats(&self) -> &Stats {
-        &self.stats
     }
 }

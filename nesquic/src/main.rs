@@ -1,5 +1,5 @@
 use crate::metrics::{MetricsCollector, THROUGHPUT};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use core_affinity::{self, CoreId};
 use futures::future::Either::*;
@@ -12,7 +12,10 @@ use tokio::{
     sync::oneshot,
 };
 use tracing::{error, info, trace, warn};
-use utils::bin::{Client, ClientArgs, Server, ServerArgs};
+use utils::{
+    bin::{Client, ClientArgs, Server, ServerArgs},
+    perf::{Request, Stats},
+};
 
 mod metrics;
 
@@ -104,22 +107,26 @@ impl Library {
 }
 
 async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
+    async fn run<C: Client>(args: ClientArgs) -> Result<Stats> {
+        let req = Request::try_from(args.blob.clone())?;
+        let mut client = C::new(args)?;
+        client.connect().await?;
+
+        let mut stats = Stats::new();
+
+        stats.start_measurement();
+
+        client.run().await?;
+        stats.add_bytes(req.size)?;
+
+        stats.stop_measurement()?;
+        Ok(stats)
+    }
+
     let stats = match lib {
-        Library::Quinn => {
-            let mut client = QuinnClient::new(args)?;
-            client.run().await?;
-            client.stats().clone()
-        }
-        Library::Quiche => {
-            let mut client = QuicheClient::new(args)?;
-            client.run().await?;
-            client.stats().clone()
-        }
-        Library::Msquic => {
-            let mut client = MsQuicClient::new(args)?;
-            client.run().await?;
-            client.stats().clone()
-        }
+        Library::Quinn => run::<QuinnClient>(args).await?,
+        Library::Quiche => run::<QuicheClient>(args).await?,
+        Library::Msquic => run::<MsQuicClient>(args).await?,
         Library::Ngtcp => unimplemented!("ngtcp"),
     };
 
@@ -237,8 +244,8 @@ async fn main() -> Result<()> {
         let mut monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
         monitor.monitor_io().expect("monitor IO");
 
-        job_start_tx.send(()).expect("Failed to start job");
-        job_done_rx.await.expect("Failed to wait for job");
+        _ = job_start_tx.send(());
+        _ = job_done_rx.await;
 
         if let Some(job) = job {
             if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
@@ -270,8 +277,10 @@ async fn main() -> Result<()> {
         Command::Server(args) => Right(run_server(args.common.lib, args.server.clone())),
     };
 
-    if let Some(Ok(())) = select_with_term_signals(job).await {
-        trace!("Job completed");
+    match select_with_term_signals(job).await {
+        Some(Ok(())) => info!("Job completed"),
+        Some(Err(e)) => bail!(e),
+        _ => trace!("Job cancelled"),
     }
 
     if job_done_tx.send(()).is_ok() {

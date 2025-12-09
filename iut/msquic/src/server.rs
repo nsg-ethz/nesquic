@@ -1,4 +1,5 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
+use bytes::Bytes;
 use msquic_async::msquic::{
     BufferRef, CertificateFile, Configuration, Credential, CredentialConfig, Registration,
     RegistrationConfig, Settings,
@@ -6,7 +7,10 @@ use msquic_async::msquic::{
 use std::future::poll_fn;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info, trace};
-use utils::bin::{self, ServerArgs};
+use utils::{
+    bin::{self, ServerArgs},
+    perf::Blob,
+};
 
 const TARGET: &str = "msquic::server";
 
@@ -56,13 +60,14 @@ impl bin::Server for Server {
                     match conn.accept_inbound_stream().await {
                         Ok(mut stream) => {
                             trace!(target: TARGET, "new stream id: {}", stream.id().expect("stream id"));
-                            let mut buf = [0u8; 1024];
-                            let len = stream.read(&mut buf).await?;
-                            trace!(target: TARGET,
-                                "reading from stream: {}",
-                                String::from_utf8_lossy(&buf[0..len])
-                            );
-                            stream.write_all(&buf[0..len]).await?;
+
+                            let mut req = [0u8; 64 * 1024];
+                            stream.read(&mut req).await?;
+                            let blob = Blob::try_from(req.as_slice())
+                                .map_err(|e| anyhow!("failed handling request: {}", e))?;
+                            let blob = Bytes::from_iter(blob);
+
+                            stream.write_all(&blob).await?;
                             poll_fn(|cx| stream.poll_finish_write(cx)).await?;
                             drop(stream);
                         }

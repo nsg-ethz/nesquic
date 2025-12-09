@@ -1,4 +1,3 @@
-use crate::perf::Stats;
 use anyhow::Result;
 use clap::Parser;
 use std::{future::Future, net::SocketAddr};
@@ -21,9 +20,6 @@ pub struct ClientArgs {
 
     #[clap(short, long)]
     pub blob: String,
-
-    #[clap(short, long, default_value = "1")]
-    pub reps: u16,
 }
 
 impl ClientArgs {
@@ -33,7 +29,6 @@ impl ClientArgs {
             unencrypted: false,
             cert: format!("{}/../res/pem/cert.pem", env!("CARGO_MANIFEST_DIR")),
             blob: "50Mbit".to_string(),
-            reps: 1,
         }
     }
 }
@@ -71,8 +66,8 @@ where
     Self: Sized,
 {
     fn new(args: ClientArgs) -> Result<Self>;
+    fn connect(&mut self) -> impl Future<Output = Result<()>>;
     fn run(&mut self) -> impl Future<Output = Result<()>>;
-    fn stats(&self) -> &Stats;
 }
 
 pub trait Server

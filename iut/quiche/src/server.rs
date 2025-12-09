@@ -37,7 +37,7 @@ impl bin::Server for Server {
         let accept = &mut listeners[0];
 
         while let Some(conn) = accept.next().await {
-            let benchmark = Benchmark::new(None, None);
+            let (benchmark, _) = Benchmark::new();
             conn?.start(benchmark);
         }
 
