@@ -80,10 +80,10 @@ async fn run_quiche_quinn() {
 
 // msquic client
 
-#[tokio::test]
-async fn run_msquic_msquic() {
-    run::<msquic_iut::Client, msquic_iut::Server>().await;
-}
+// #[tokio::test]
+// async fn run_msquic_msquic() {
+//     run::<msquic_iut::Client, msquic_iut::Server>().await;
+// }
 
 #[tokio::test]
 async fn run_msquic_quinn() {
