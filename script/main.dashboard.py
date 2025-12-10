@@ -1,7 +1,8 @@
 # pyright: reportCallIssue=none
 import os
 
-from grafanalib.core import BarChart, Dashboard, GridPos, RowPanel, Target
+import yaml
+from grafanalib.core import BarChart, Dashboard, GridPos, RowPanel, Target, Text
 
 PANEL_HEIGHT = 8
 DASHBOARD_WIDTH = 24
@@ -90,11 +91,15 @@ def overview_panels(**labels):
     ]
 
 
-def experiments_panels(title, **labels):
+def experiments_panels(experiment, **labels):
     return [
         RowPanel(
-            title=title,
+            title=experiment["title"],
             gridPos=GridPos(h=1, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
+        ),
+        Text(
+            content=experiment["description"],
+            gridPos=GridPos(h=1.2, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
         ),
         *io_panels(mode="server", **labels),
         *io_panels(mode="client", **labels),
@@ -114,14 +119,22 @@ if library is None:
 
 labels = {"library": library, "log_level": "error"}
 
+exps = os.environ.get("EXPERIMENTS")
+if exps is None:
+    raise ValueError("EXPERIMENTS environment variable is not set")
+
+with open(exps, "r") as file:
+    exps = yaml.safe_load(file)
+
+exp_panels = [
+    p
+    for (j, e) in exps.items()
+    for p in experiments_panels(e, exported_job=j, **labels)
+]
+
 dashboard = Dashboard(
     title=display_name(library),
     tags="nesquic",
     timezone="browser",
-    panels=[
-        *overview_panels(**labels),
-        *experiments_panels("Unbounded", exported_job="unbounded", **labels),
-        *experiments_panels("5ms Delay", exported_job="5ms delay", **labels),
-        *experiments_panels("20ms Delay", exported_job="20ms delay", **labels),
-    ],
+    panels=[*overview_panels(**labels), *exp_panels],
 ).auto_panel_ids()

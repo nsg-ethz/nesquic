@@ -58,13 +58,13 @@ function run_client {
         CMD+="mm-link ${EXP_LINK}.up ${EXP_LINK}.down -- "
     fi
 
-    CMD+="${BIN} client -j \"${EXP_NAME}\" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 https://${MAHIMAHI_BASE}:4433"
+    CMD+="${BIN} client -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 https://${MAHIMAHI_BASE}:4433"
 
     eval ${CMD}
 }
 
 function run_server {
-    ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
+    ${BIN} server -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
 }
 
 function kill_nesquic {
@@ -128,14 +128,14 @@ function config_exp_unbounded {
 
 function config_exp_short_delay {
     reset_exp
-    EXP_NAME="5ms delay"
+    EXP_NAME="delay5"
     EXP_DELAY=5
     EXP_BLOB="50Mbit"
 }
 
 function config_exp_long_delay {
     reset_exp
-    EXP_NAME="20ms delay"
+    EXP_NAME="delay20"
     EXP_DELAY=20
     EXP_BLOB="50Mbit"
 }

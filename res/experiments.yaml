@@ -1,0 +1,12 @@
+unbounded:
+    title: Unbounded
+    description: "This experiment runs the client and server in a separate network namespace, but does alter their traffic in any way."
+driving:
+    title: Driving
+    description: "This experiment simulates a cell phone that is connected to an LTE network while driving. 50ms delay are applied to the traffic."
+delay5:
+    title: 5ms Delay
+    description: "This experiment delays all traffic by 5ms."
+delay20:
+    title: 20ms Delay
+    description: "This experiment delays all traffic by 20ms."

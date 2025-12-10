@@ -4,7 +4,7 @@ set -e
 
 function generate_dashboard {
     OUT=${WORKSPACE}/docker/grafana/dashboard/$1.json
-    LIBRARY=$1 uv tool run --from git+https://github.com/lbrndnr/grafanalib@main generate-dashboard -o ${OUT} ${WORKSPACE}/script/main.dashboard.py
+    LIBRARY=$1 EXPERIMENTS=${WORKSPACE}/res/experiments.yaml uv tool run --with pyyaml --from git+https://github.com/lbrndnr/grafanalib@main generate-dashboard -o ${OUT} ${WORKSPACE}/script/main.dashboard.py
     chmod o+r ${OUT}
 }
 
