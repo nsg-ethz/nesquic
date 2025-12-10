@@ -92,6 +92,7 @@ def overview_panels(**labels):
 
 
 def experiments_panels(experiment, **labels):
+    job = experiment["job"]
     return [
         RowPanel(
             title=experiment["title"],
@@ -101,8 +102,8 @@ def experiments_panels(experiment, **labels):
             content=experiment["description"],
             gridPos=GridPos(h=1.2, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
         ),
-        *io_panels(mode="server", **labels),
-        *io_panels(mode="client", **labels),
+        *io_panels(mode="server", exported_job=job, **labels),
+        *io_panels(mode="client", exported_job=job, **labels),
     ]
 
 
@@ -126,15 +127,12 @@ if exps is None:
 with open(exps, "r") as file:
     exps = yaml.safe_load(file)
 
-exp_panels = [
-    p
-    for (j, e) in exps.items()
-    for p in experiments_panels(e, exported_job=j, **labels)
-]
+overview_panels = overview_panels(**labels)
+exp_panels = [p for e in exps for p in experiments_panels(e, **labels)]
 
 dashboard = Dashboard(
     title=display_name(library),
     tags="nesquic",
     timezone="browser",
-    panels=[*overview_panels(**labels), *exp_panels],
+    panels=[*overview_panels, *exp_panels],
 ).auto_panel_ids()

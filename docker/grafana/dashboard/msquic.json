@@ -30,7 +30,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 192
+        "y": 0
       },
       "height": null,
       "hideTimeOverride": false,
@@ -102,7 +102,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 200
+        "y": 8
       },
       "height": null,
       "hideTimeOverride": false,
@@ -180,7 +180,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 16
       },
       "height": null,
       "hideTimeOverride": false,
@@ -220,7 +220,7 @@
         "h": 1.2,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 24
       },
       "height": null,
       "hideTimeOverride": false,
@@ -295,7 +295,7 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 24
+        "y": 40
       },
       "height": null,
       "hideTimeOverride": false,
@@ -404,7 +404,7 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 16
+        "y": 32
       },
       "height": null,
       "hideTimeOverride": false,
@@ -513,7 +513,7 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 40
+        "y": 56
       },
       "height": null,
       "hideTimeOverride": false,
@@ -622,7 +622,7 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 32
+        "y": 48
       },
       "height": null,
       "hideTimeOverride": false,
@@ -700,531 +700,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 48
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 9,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "panels": [],
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Driving",
-      "transformations": [],
-      "transparent": false,
-      "type": "row"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": null,
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": []
-          }
-        }
-      },
-      "gridPos": {
-        "h": 1.2,
-        "w": 24,
-        "x": 0,
-        "y": 56
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 10,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "content": "This experiment simulates a cell phone that is connected to an LTE network while driving. 50ms delay are applied to the traffic.",
-        "mode": "markdown"
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "",
-      "transformations": [],
-      "transparent": false,
-      "type": "text"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Data Volume [kB]",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 12.0,
-        "y": 72
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 11,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Server I/O Data Volume",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Invocations",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 0,
         "y": 64
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 12,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Server I/O Syscalls",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Data Volume [kB]",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 12.0,
-        "y": 88
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 13,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Client I/O Data Volume",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Invocations",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 0,
-        "y": 80
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 14,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Client I/O Syscalls",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "collapsed": false,
-      "datasource": null,
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "thresholds": {
-            "mode": "absolute",
-            "steps": []
-          }
-        }
-      },
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 96
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 15,
+      "id": 9,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1260,11 +740,11 @@
         "h": 1.2,
         "w": 24,
         "x": 0,
-        "y": 104
+        "y": 72
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 16,
+      "id": 10,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1335,11 +815,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 120
+        "y": 88
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 17,
+      "id": 11,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1444,11 +924,11 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 112
+        "y": 80
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 18,
+      "id": 12,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1553,11 +1033,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 136
+        "y": 104
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 19,
+      "id": 13,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1662,11 +1142,11 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 128
+        "y": 96
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 20,
+      "id": 14,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1740,11 +1220,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 144
+        "y": 112
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 21,
+      "id": 15,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1780,11 +1260,11 @@
         "h": 1.2,
         "w": 24,
         "x": 0,
-        "y": 152
+        "y": 120
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 22,
+      "id": 16,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1855,11 +1335,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 168
+        "y": 136
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 23,
+      "id": 17,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1964,11 +1444,11 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 160
+        "y": 128
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 24,
+      "id": 18,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -2073,11 +1553,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 184
+        "y": 152
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 25,
+      "id": 19,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -2182,11 +1662,11 @@
         "h": 8,
         "w": 12.0,
         "x": 0,
-        "y": 176
+        "y": 144
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 26,
+      "id": 20,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -2229,6 +1709,526 @@
           "legendFormat": "",
           "metric": "",
           "query": "io_syscalls_invocations_sum{mode='client', exported_job='delay20', library='msquic', log_level='error'}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Syscalls",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "collapsed": false,
+      "datasource": null,
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          }
+        }
+      },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 160
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 21,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "panels": [],
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Driving",
+      "transformations": [],
+      "transparent": false,
+      "type": "row"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": null,
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          }
+        }
+      },
+      "gridPos": {
+        "h": 1.2,
+        "w": 24,
+        "x": 0,
+        "y": 168
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 22,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "content": "This experiment simulates a cell phone that is connected to an LTE network while driving. 50ms delay are applied to the traffic.",
+        "mode": "markdown"
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "",
+      "transformations": [],
+      "transparent": false,
+      "type": "text"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Data Volume [kB]",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 12.0,
+        "y": 184
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 23,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "io_syscalls_data_volume_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "io_syscalls_data_volume_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Server I/O Data Volume",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Invocations",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 0,
+        "y": 176
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 24,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "io_syscalls_invocations_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "io_syscalls_invocations_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Server I/O Syscalls",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Data Volume [kB]",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 12.0,
+        "y": 200
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 25,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "io_syscalls_data_volume_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "io_syscalls_data_volume_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
+          "refId": "",
+          "step": 10,
+          "target": ""
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Data Volume",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "prometheus",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Invocations",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 0,
+        "y": 192
+      },
+      "height": null,
+      "hideTimeOverride": false,
+      "id": 26,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "alias": "",
+          "datasource": null,
+          "expr": "io_syscalls_invocations_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "interval": "",
+          "intervalFactor": 2,
+          "legendFormat": "",
+          "metric": "",
+          "query": "io_syscalls_invocations_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
           "refId": "",
           "step": 10,
           "target": ""
