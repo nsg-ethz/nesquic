@@ -2,10 +2,7 @@ networks:
     nesquic:
         driver: bridge
         driver_opts:
-            com.docker.network.bridge.name: ${DK_BRIDGE:-nesquic}
-        ipam:
-            config:
-                - subnet: ${DK_SUBNET:-172.18.0.0/16}
+            com.docker.network.bridge.name: nesquic
 
 volumes:
     grafana_data:

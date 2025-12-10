@@ -5,7 +5,6 @@ COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
-SERVER_ADDR="10.0.0.2:4433"
 VETH_MM="veth-mm"
 VETH_METRICS="veth-metrics"
 CPU_ALL=0-39
@@ -46,18 +45,26 @@ function wait_for_term {
     done
 }
 
-function push_gateway {
-    GATEWAY_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' pushgateway)
-    echo http://${GATEWAY_IP}:9091
-    return 0
+function run_client {
+    MAHIMAHI_BASE="10.0.0.1"
+    CMD="PR_PUSH_GATEWAY=http://${MAHIMAHI_BASE}:9091 "
+    CMD+="mm-delay ${EXP_DELAY} "
+
+    if [ "${EXP_LOSS}" -gt 0 ]; then
+        CMD+="mm-loss uplink ${EXP_LOSS} "
+    fi
+
+    if [ -n "${EXP_LINK}" ]; then
+        CMD+="mm-link ${EXP_LINK}.up ${EXP_LINK}.down -- "
+    fi
+
+    CMD+="${BIN} client -j \"${EXP_NAME}\" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 https://${MAHIMAHI_BASE}:4433"
+
+    eval ${CMD}
 }
 
 function run_server {
-    PR_PUSH_GATEWAY=$(push_gateway) mm-delay ${EXP_DELAY} ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
-}
-
-function run_client {
-    PR_PUSH_GATEWAY=$(push_gateway) ${BIN} client -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 https://${SERVER_ADDR}
+    ${BIN} server -j "${EXP_NAME}" --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
 }
 
 function kill_nesquic {
@@ -93,6 +100,10 @@ function setup {
     sudo chown root:root ${BIN}
     sudo chmod u+s,o+rx ${BIN}
 
+    echo -e "${COLOR_YELLOW}Setting up firewall${COLOR_OFF}"
+    sudo ufw allow from 10.0.0.0/24 to any port 9901
+    sudo ufw allow from 10.0.0.0/24 to any port 4433
+
     cpu_governor "performance"
 
     echo -e "${COLOR_YELLOW}Isolating CPUs${COLOR_OFF}"
@@ -101,40 +112,47 @@ function setup {
     sudo systemctl set-property --runtime init.scope AllowedCPUs=${CPU_SYSTEM}
 }
 
-function config_exp_unbounded {
-    EXP_NAME="unbounded"
+function reset_exp {
+    EXP_NAME=""
     EXP_DELAY=0
+    EXP_LOSS=0
+    EXP_LINK=""
+    EXP_BLOB=""
+}
+
+function config_exp_unbounded {
+    reset_exp
+    EXP_NAME="unbounded"
     EXP_BLOB="50Mbit"
 }
 
 function config_exp_short_delay {
+    reset_exp
     EXP_NAME="5ms delay"
     EXP_DELAY=5
     EXP_BLOB="50Mbit"
 }
 
 function config_exp_long_delay {
+    reset_exp
     EXP_NAME="20ms delay"
     EXP_DELAY=20
     EXP_BLOB="50Mbit"
 }
 
+function config_exp_driving {
+    reset_exp
+    EXP_NAME="driving"
+    EXP_DELAY=50
+    EXP_LINK="${WORKSPACE}/res/traces/TMobile-LTE-driving"
+    EXP_BLOB="10Mbit"
+}
+
 function run_experiment {
     echo -ne "run ${EXP_NAME}... "
 
-    sudo ip link add ${VETH_MM} type veth peer name ${VETH_METRICS}
-    sudo ip link set ${VETH_MM} up
-    sudo brctl addif ${DK_BRIDGE} ${VETH_MM}
-
     run_server $1
-
-    # wait for the server to start and then add the metrics interface
-    # this allows the server to push its metrics without loss/delay
-    SERVER_PID=$(wait_for_launch nesquic)
-    sudo ip link set ${VETH_METRICS} netns ${SERVER_PID}
-    sudo nsenter -t ${SERVER_PID} -n ip addr add ${DK_SUBNET} dev ${VETH_METRICS}
-    sudo nsenter -t ${SERVER_PID} -n ip link set ${VETH_METRICS} up
-
+    wait_for_launch nesquic > /dev/null 2>&1
     run_client $1
 
     # kill nesquic and give it time to upload its metrics
@@ -156,8 +174,18 @@ function run_library_experiments {
     config_exp_long_delay
     run_experiment $1
 
+    config_exp_driving
+    run_experiment $1
+
     echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 }
+
+# check if the pushgateway is running
+docker ps --filter "name=pushgateway" --filter "status=running" --format '{{.Names}}' | grep -wq pushgateway
+if [ $? -ne 0 ]; then
+  echo -e "${COLOR_RED}Pushgateway is not running${COLOR_OFF}"
+  exit 1
+fi
 
 setup
 trap teardown INT TERM
