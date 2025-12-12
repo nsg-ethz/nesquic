@@ -46,7 +46,7 @@ pub struct ServerArgs {
     #[clap(short, long, requires = "key")]
     pub cert: String,
     /// Address to listen on
-    #[clap(default_value = "127.0.0.1:4433")]
+    #[clap(default_value = "0.0.0.0:4433")]
     pub listen: SocketAddr,
 }
 
