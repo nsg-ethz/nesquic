@@ -165,14 +165,14 @@ function run_experiment {
 function run_library_experiments {
     echo -e "${COLOR_YELLOW}Benchmarking $1${COLOR_OFF}"
 
-    # config_exp_unbounded
-    # run_experiment $1
+    config_exp_unbounded
+    run_experiment $1
 
-    # config_exp_short_delay
-    # run_experiment $1
+    config_exp_short_delay
+    run_experiment $1
 
-    # config_exp_long_delay
-    # run_experiment $1
+    config_exp_long_delay
+    run_experiment $1
 
     config_exp_driving
     run_experiment $1
