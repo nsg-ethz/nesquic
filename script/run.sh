@@ -55,7 +55,7 @@ function run_client {
     fi
 
     if [ -n "${EXP_LINK}" ]; then
-        CMD+="mm-link ${EXP_LINK}.up ${EXP_LINK}.down -- "
+        CMD+="mm-link ${RES_DIR}/traces/${EXP_LINK}.up ${RES_DIR}/traces/${EXP_LINK}.down -- "
     fi
 
     CMD+="${BIN} client -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 https://${MAHIMAHI_BASE}:4433"
@@ -144,8 +144,8 @@ function config_exp_driving {
     reset_exp
     EXP_NAME="driving"
     EXP_DELAY=50
-    EXP_LINK="${WORKSPACE}/res/traces/TMobile-LTE-driving"
-    EXP_BLOB="10Mbit"
+    EXP_LINK="TMobile-LTE-driving"
+    EXP_BLOB="50Mbit"
 }
 
 function run_experiment {
@@ -165,14 +165,14 @@ function run_experiment {
 function run_library_experiments {
     echo -e "${COLOR_YELLOW}Benchmarking $1${COLOR_OFF}"
 
-    config_exp_unbounded
-    run_experiment $1
+    # config_exp_unbounded
+    # run_experiment $1
 
-    config_exp_short_delay
-    run_experiment $1
+    # config_exp_short_delay
+    # run_experiment $1
 
-    config_exp_long_delay
-    run_experiment $1
+    # config_exp_long_delay
+    # run_experiment $1
 
     config_exp_driving
     run_experiment $1

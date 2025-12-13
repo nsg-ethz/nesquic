@@ -55,32 +55,48 @@ impl bin::Server for Server {
 
         // handle incoming connections and streams
         while let Ok(conn) = listener.accept().await {
+            let fut = handle_request(conn);
             tokio::spawn(async move {
-                loop {
-                    match conn.accept_inbound_stream().await {
-                        Ok(mut stream) => {
-                            trace!(target: TARGET, "new stream id: {}", stream.id().expect("stream id"));
-
-                            let mut req = [0u8; 64 * 1024];
-                            stream.read(&mut req).await?;
-                            let blob = Blob::try_from(req.as_slice())
-                                .map_err(|e| anyhow!("failed handling request: {}", e))?;
-                            let blob = Bytes::from_iter(blob);
-
-                            stream.write_all(&blob).await?;
-                            poll_fn(|cx| stream.poll_finish_write(cx)).await?;
-                            drop(stream);
-                        }
-                        Err(err) => {
-                            error!(target: TARGET, "error on accept stream: {}", err);
-                            break;
-                        }
-                    }
+                if let Err(e) = fut.await {
+                    error!(target: TARGET, "failed: {reason}", reason = e.to_string());
                 }
-                Ok::<_, anyhow::Error>(())
             });
         }
 
         Ok(())
     }
+}
+
+async fn handle_request(conn: msquic_async::Connection) -> Result<(), anyhow::Error> {
+    loop {
+        error!("accepting inbound stream");
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            conn.accept_inbound_stream(),
+        )
+        .await
+        {
+            Ok(Ok(mut stream)) => {
+                trace!(target: TARGET, "new stream id: {}", stream.id().expect("stream id"));
+
+                let mut req = [0u8; 64 * 1024];
+                stream.read(&mut req).await?;
+                let blob = Blob::try_from(req.as_slice())
+                    .map_err(|e| anyhow!("failed handling request: {}", e))?;
+                let blob = Bytes::from_iter(blob);
+
+                stream.write_all(&blob).await?;
+                poll_fn(|cx| stream.poll_finish_write(cx)).await?;
+            }
+            Ok(Err(err)) => {
+                error!(target: TARGET, "error on accept stream: {}", err);
+                break;
+            }
+            Err(err) => {
+                error!(target: TARGET, "timeout on accept stream: {}", err);
+                break;
+            }
+        }
+    }
+    Ok(())
 }
