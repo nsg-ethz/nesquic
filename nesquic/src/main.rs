@@ -1,27 +1,15 @@
-use crate::metrics::{MetricsCollector, THROUGHPUT};
 use anyhow::{anyhow, bail, Result};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use core_affinity::{self, CoreId};
 use futures::future::Either::*;
-use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
-use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
-use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
+use nesquic::{metrics::MetricsCollector, run_client, run_server, Library};
 use std::{collections::HashMap, env, future::Future, mem::MaybeUninit};
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::oneshot,
 };
 use tracing::{error, info, trace, warn};
-use utils::{
-    bin::{Client, ClientArgs, Server, ServerArgs},
-    perf::{Request, Stats},
-};
-
-mod metrics;
-
-mod built_info {
-    include!(concat!(env!("OUT_DIR"), "/built.rs"));
-}
+use utils::bin::{ClientArgs, ServerArgs};
 
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about)]
@@ -81,75 +69,6 @@ pub struct ServerLibArgs {
 
     #[clap(flatten)]
     pub server: ServerArgs,
-}
-
-#[derive(Copy, Clone, Debug, ValueEnum)]
-pub enum Library {
-    Quinn,
-    Quiche,
-    Msquic,
-    Ngtcp,
-}
-
-impl Library {
-    fn name(&self) -> String {
-        format!("{:?}", self).to_lowercase()
-    }
-
-    fn version(&self) -> String {
-        built_info::INDIRECT_DEPENDENCIES
-            .iter()
-            .find(|(name, _)| name == &self.name())
-            .expect(format!("Failed to find version of {}", self.name()).as_str())
-            .1
-            .to_string()
-    }
-}
-
-async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
-    async fn run<C: Client>(args: ClientArgs) -> Result<Stats> {
-        let req = Request::try_from(args.blob.clone())?;
-        let mut client = C::new(args)?;
-        client.connect().await?;
-
-        let mut stats = Stats::new();
-
-        stats.start_measurement();
-
-        client.run().await?;
-        stats.add_bytes(req.size)?;
-
-        stats.stop_measurement()?;
-        Ok(stats)
-    }
-
-    let stats = match lib {
-        Library::Quinn => run::<QuinnClient>(args).await?,
-        Library::Quiche => run::<QuicheClient>(args).await?,
-        Library::Msquic => run::<MsQuicClient>(args).await?,
-        Library::Ngtcp => unimplemented!("ngtcp"),
-    };
-
-    THROUGHPUT.observe(stats.throughputs().mean());
-    Ok(())
-}
-
-async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
-    match lib {
-        Library::Quinn => {
-            let mut server = QuinnServer::new(args)?;
-            server.listen().await
-        }
-        Library::Quiche => {
-            let mut server = QuicheServer::new(args)?;
-            server.listen().await
-        }
-        Library::Msquic => {
-            let mut server = MsQuicServer::new(args)?;
-            server.listen().await
-        }
-        Library::Ngtcp => unimplemented!("ngtcp"),
-    }
 }
 
 fn labels(cli: &Cli) -> HashMap<String, String> {

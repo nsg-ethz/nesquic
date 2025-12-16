@@ -3,6 +3,10 @@ name = "nesquic"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "nesquic"
+version = "0.1.0"
+
 [dependencies]
 anyhow = "1.0.95"
 built = { version = "0.8" }
@@ -27,3 +31,6 @@ futures = "0.3.31"
 [build-dependencies]
 libbpf-cargo = "0.25.0"
 built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }
+
+[dev-dependencies]
+test-case = "3.3.1"
