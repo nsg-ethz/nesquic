@@ -16,7 +16,7 @@ libc = "0.2.178"
 msquic-iut = { path = "../iut/msquic" }
 quinn-iut = { path = "../iut/quinn" }
 quiche-iut = { path = "../iut/quiche" }
-tokio = { version = "1.42.0", features = ["signal", "sync"] }
+tokio = { version = "1.49.0", features = ["signal", "sync"] }
 utils = { path = "../utils" }
 tracing-subscriber = "0.3.22"
 tracing = "0.1.44"
