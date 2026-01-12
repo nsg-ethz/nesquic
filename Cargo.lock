@@ -680,12 +680,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "debug_panic"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9377eb110cece2e9431deb8d7d2ec8c116510b896741f9f2bf02b352147aa2a6"
-
-[[package]]
 name = "der-parser"
 version = "10.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1931,9 +1925,9 @@ dependencies = [
 
 [[package]]
 name = "octets"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4df8e8352f73465f015867c7ab24d2c46511bb8148e7177fe823e88f4f1f9765"
+checksum = "2ba5d98c13e549f6f26f7d70808688ab85c6b42eb350ba2524d96c24ebde27e9"
 
 [[package]]
 name = "oid-registry"
@@ -2326,13 +2320,12 @@ dependencies = [
 
 [[package]]
 name = "quiche"
-version = "0.24.6"
+version = "0.24.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "187c95c7080b7e9e0202b428acdd24f97eaa9cc65e023673b307d5f171e17a7a"
+checksum = "8d1f2a6de780807c776efd108d1f9b9970496a49bf602103d62645df246e204c"
 dependencies = [
  "boring",
  "cmake",
- "debug_panic",
  "either",
  "enum_dispatch",
  "foreign-types-shared",
@@ -3414,9 +3407,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-quiche"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3152843e8aafb0dae1f31cb0e1223ffff010de71efca2ec2a6b5405a57001a5"
+checksum = "994bbd5a3b5bbe8da209eb67338cdecfa4605e18d3dd081e1bbc4c7ef8824a2c"
 dependencies = [
  "anyhow",
  "boring",
