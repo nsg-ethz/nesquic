@@ -9,7 +9,7 @@ bytes = "1.5.0"
 tracing = "0.1.44"
 quinn = { version = "0.11.9", features = ["rustls"] }
 quinn-proto = "0.11.13"
-rustls = { version = "0.23.35", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
 socket2 = "0.6.1"
 tokio = { version = "1.49.0", features = ["macros", "full"] }
 url = "2.5.0"
