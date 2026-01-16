@@ -12,5 +12,5 @@ quinn-proto = "0.11.13"
 rustls = { version = "0.23.36", default-features = false, features = ["ring"] }
 socket2 = "0.6.1"
 tokio = { version = "1.49.0", features = ["macros", "full"] }
-url = "2.5.0"
+url = "2.5.8"
 utils = { path = "../../utils" }
