@@ -14,7 +14,7 @@ anyhow = "1.0.79"
 average = "0.16.0"
 clap = { version = "4.5.54", features = ["derive"] }
 tracing = "0.1.44"
-rcgen = "0.14.6"
+rcgen = "0.14.7"
 ring = "0.17.14"
 tokio = { version = "1.49.0", features = ["full"] }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
