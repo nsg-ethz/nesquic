@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1.0.79"
 bytes = "1.5.0"
 tracing = "0.1.44"
-quiche = "0.24.7"
+quiche = "0.24.8"
 url = "2.5.8"
 utils = { path = "../../utils" }
 tokio-quiche = "0.13.0"
