@@ -1747,12 +1747,13 @@ dependencies = [
 
 [[package]]
 name = "msquic-async"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c94beeb6b379ea73fc33b554003390119a5a1c93b1958f54088c248de6bf3d14"
+checksum = "a18da17f10ee9e154ebd52e29f0b1ad44a326b56cdccbe91bb7b73c0f02e9cec"
 dependencies = [
  "bytes",
  "futures-io",
+ "hex",
  "libc",
  "msquic",
  "rangemap",
