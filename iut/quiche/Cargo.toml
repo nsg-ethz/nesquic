@@ -10,6 +10,6 @@ tracing = "0.1.44"
 quiche = "0.24.8"
 url = "2.5.8"
 utils = { path = "../../utils" }
-tokio-quiche = "0.13.0"
+tokio-quiche = "0.15.0"
 tokio = { version = "1.49.0", features = ["full"] }
 futures = "0.3.31"
