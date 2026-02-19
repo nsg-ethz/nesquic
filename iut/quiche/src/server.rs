@@ -1,9 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt as _;
-use tokio_quiche::{
-    metrics::DefaultMetrics, quic::SimpleConnectionIdGenerator, settings::TlsCertificatePaths,
-    ConnectionParams,
-};
+use tokio_quiche::{metrics::DefaultMetrics, settings::TlsCertificatePaths, ConnectionParams};
 use utils::bin::{self, ServerArgs};
 
 use crate::Benchmark;
@@ -28,12 +25,7 @@ impl bin::Server for Server {
             kind: tokio_quiche::settings::CertificateKind::X509,
         });
 
-        let mut listeners = tokio_quiche::listen(
-            [socket],
-            params,
-            SimpleConnectionIdGenerator,
-            DefaultMetrics,
-        )?;
+        let mut listeners = tokio_quiche::listen([socket], params, DefaultMetrics)?;
         let accept = &mut listeners[0];
 
         while let Some(conn) = accept.next().await {

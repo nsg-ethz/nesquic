@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.79"
-bytes = "1.5.0"
+anyhow = "1.0.101"
+bytes = "1.11.1"
 tracing = "0.1.44"
-quiche = "0.24.8"
+quiche = "0.25.0"
 url = "2.5.8"
 utils = { path = "../../utils" }
-tokio-quiche = "0.13.0"
+tokio-quiche = "0.15.0"
 tokio = { version = "1.49.0", features = ["full"] }
-futures = "0.3.31"
+futures = "0.3.32"
