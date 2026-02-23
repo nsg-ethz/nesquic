@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 bytes = "1.11.1"
 tracing = "0.1.44"
 quiche = "0.25.0"

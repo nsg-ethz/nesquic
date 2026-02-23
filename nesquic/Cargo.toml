@@ -7,7 +7,7 @@ edition = "2021"
 name = "nesquic"
 
 [dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 built = { version = "0.8" }
 clap = "4.5.59"
 libbpf-rs = "0.26.0"
