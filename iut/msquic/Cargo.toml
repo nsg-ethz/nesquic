@@ -7,6 +7,6 @@ edition = "2024"
 anyhow = "1.0.102"
 bytes = "1.11.1"
 msquic-async = { version = "0.4.0" }
-tokio = "1.49.0"
+tokio = "1.50.0"
 tracing = "0.1.44"
 utils = { path = "../../utils" }

@@ -11,5 +11,5 @@ quiche = "0.26.0"
 url = "2.5.8"
 utils = { path = "../../utils" }
 tokio-quiche = "0.16.0"
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.50.0", features = ["full"] }
 futures = "0.3.32"
