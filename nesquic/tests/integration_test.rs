@@ -14,7 +14,7 @@ async fn health_check() -> Result<()> {
 #[test_case::test_matrix(
     [
         Library::Quinn,
-        // Library::Quiche,
+        Library::Quiche,
         // Library::Msquic,
     ],
     [

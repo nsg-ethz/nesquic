@@ -7,9 +7,9 @@ edition = "2021"
 anyhow = "1.0.102"
 bytes = "1.11.1"
 tracing = "0.1.44"
-quiche = "0.26.0"
+quiche = "0.26.1"
 url = "2.5.8"
 utils = { path = "../../utils" }
-tokio-quiche = "0.16.0"
-tokio = { version = "1.49.0", features = ["full"] }
+tokio-quiche = "0.16.1"
+tokio = { version = "1.50.0", features = ["full"] }
 futures = "0.3.32"
