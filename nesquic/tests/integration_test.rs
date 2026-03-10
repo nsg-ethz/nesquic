@@ -15,7 +15,7 @@ async fn health_check() -> Result<()> {
     [
         Library::Quinn,
         // Library::Quiche,
-        Library::Msquic,
+        // Library::Msquic,
     ],
     [
         Library::Quinn,

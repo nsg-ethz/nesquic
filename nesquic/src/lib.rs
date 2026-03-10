@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::ValueEnum;
 use metrics::THROUGHPUT;
-use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
+// use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
 use utils::{
@@ -58,7 +58,7 @@ pub async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
     let stats = match lib {
         Library::Quinn => run::<QuinnClient>(args).await?,
         Library::Quiche => run::<QuicheClient>(args).await?,
-        Library::Msquic => run::<MsQuicClient>(args).await?,
+        Library::Msquic => unimplemented!("msquic"),
         Library::Ngtcp => unimplemented!("ngtcp"),
     };
 
@@ -77,8 +77,9 @@ pub async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
             server.listen().await
         }
         Library::Msquic => {
-            let mut server = MsQuicServer::new(args)?;
-            server.listen().await
+            // let mut server = MsQuicServer::new(args)?;
+            // server.listen().await
+            unimplemented!("msquic")
         }
         Library::Ngtcp => unimplemented!("ngtcp"),
     }
