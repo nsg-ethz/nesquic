@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 bytes = "1.11.1"
-msquic-async = { version = "0.4.0" }
+msquic-async = { version = "0.4.0", features = ["tokio", "msquic-2-5-static"] }
 tokio = "1.49.0"
 tracing = "0.1.44"
 utils = { path = "../../utils" }

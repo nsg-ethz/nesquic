@@ -4,8 +4,8 @@ Nesquic is a testing infrastructure for QUIC libraries. It leverages eBPF to mon
 
 ## Status
 
-This project is work in progress! As of now, only [quinn](https://github.com/quinn-rs/quinn) and [MsQuic](https://github.com/microsoft/msquic) are supported. Also, only one test case and a handful of metrics are implemented. In the future, we will extend the support for more libraries, metrics and test cases.
-
-## IUTs
-* quinn: [perf implementation](https://github.com/quinn-rs/quinn/tree/main/perf)
-* msquic: `gcc -I /home/laurinb/projs/msquic/src/inc/ iuts/msquic/lib.c /home/laurinb/projs/msquic/build/bin/Release/libmsquic.so -o target/release/msquic-server`
+| Library          | Status                                  |
+|------------------|-----------------------------------------|
+| [Quinn](https://github.com/quinn-rs/quinn)        | ✅     |
+| [Quiche](https://github.com/cloudflare/quiche)    | ✅     |
+| [MsQuic](https://github.com/microsoft/msquic)     | WIP    |

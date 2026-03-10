@@ -12,7 +12,7 @@ built = { version = "0.8" }
 clap = "4.5.60"
 libbpf-rs = "0.26.1"
 libc = "0.2.183"
-# msquic-iut = { path = "../iut/msquic" }
+msquic-iut = { path = "../iut/msquic" }
 quinn-iut = { path = "../iut/quinn" }
 quiche-iut = { path = "../iut/quiche" }
 tokio = { version = "1.50.0", features = ["signal", "sync"] }
