@@ -8,7 +8,7 @@ Nesquic provides multiple QUIC client and server implementations (see [status](#
 
 First, install [Mahimahi](https://github.com/ravinet/mahimahi), along with some other Nesquic dependencies:
 ```
-sudo apt install -y apache2-bin apache2-dev cmake libcairo2-dev libpango1.0-dev libnuma-dev libxcb-present-dev 
+sudo apt install -y apache2-bin apache2-dev cmake libcairo2-dev libpango1.0-dev libnuma-dev libxcb-present-dev dnsmasq-base protobuf-compiler ssl-cert libssl-dev binutils-dev libpcap-dev
 git clone https://github.com/ravinet/mahimahi
 cd mahimahi
 ./autogen.sh
