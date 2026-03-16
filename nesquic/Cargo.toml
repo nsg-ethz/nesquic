@@ -9,7 +9,7 @@ name = "nesquic"
 [dependencies]
 anyhow = "1.0.102"
 built = { version = "0.8" }
-clap = "4.5.60"
+clap = "4.6.0"
 libbpf-rs = "0.26.1"
 libc = "0.2.183"
 # msquic-iut = { path = "../iut/msquic" }
