@@ -4,6 +4,7 @@ use metrics::THROUGHPUT;
 // use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
+use neqo_iut::{Client as NeqoClient, Server as NeqoServer};
 use utils::{
     bin::{Client, ClientArgs, Server, ServerArgs},
     perf::{Request, Stats},
@@ -21,6 +22,7 @@ pub enum Library {
     Quiche,
     Msquic,
     Ngtcp,
+    Neqo
 }
 
 impl Library {
@@ -60,6 +62,7 @@ pub async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
         Library::Quiche => run::<QuicheClient>(args).await?,
         Library::Msquic => unimplemented!("msquic"),
         Library::Ngtcp => unimplemented!("ngtcp"),
+        Library::Neqo => run::<NeqoClient>(args).await?,
     };
 
     THROUGHPUT.observe(stats.throughputs().mean());
@@ -82,5 +85,9 @@ pub async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
             unimplemented!("msquic")
         }
         Library::Ngtcp => unimplemented!("ngtcp"),
+        Library::Neqo => {
+            let mut server = NeqoServer::new(args)?;
+            server.listen().await
+        }
     }
 }
