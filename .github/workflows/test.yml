@@ -23,7 +23,7 @@ jobs:
                     - rust: nightly
                       profile: release
         # Anything nightly is treated as informational-only.
-        continue-on-error: ${{ matrix.rust == 'nightly' || matrix.library == 'neqo' }}
+        continue-on-error: ${{ matrix.rust == 'nightly' }}
         steps:
             - name: "Set environmental variables"
               shell: bash
@@ -77,4 +77,8 @@ jobs:
             - name: Build nesquic for library ${{ matrix.library }}
               run: cargo build --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
             - name: Run tests
-              run: cargo test --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
+              run: |
+                  if [[ "${{ matrix.library }}" == "neqo" ]]; then
+                      echo ${{ github.workspace }}/static_dependencies/neqo_dependencies/dist/Release/lib | sudo tee /etc/ld.so.conf.d/neqo.conf && sudo ldconfig
+                  fi
+                  cargo test --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
