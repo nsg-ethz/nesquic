@@ -1,0 +1,7 @@
+-Ddisable_tests=1
+-Ddisable_dbm=1
+-Ddisable_libpkix=1
+-Ddisable_ckbi=1
+-Ddisable_fips=1
+--opt
+--static

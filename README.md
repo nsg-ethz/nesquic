@@ -20,6 +20,39 @@ rm -rf mahimahi
 cargo install --locked uv
 ```
 
+For Neqo, the following additional dependencies are needed: `libnss3`. While the distributed versions are not up to date, we will use a static version in `static_dependencies/neqo_dependencies`.
+In order to use it, you need to set the following environment variables: 
+```shell
+export LD_LIBRARY_PATH=echo $(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
+export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
+export NSS_PREBUILT=1
+```
+
+In order to create those libraries, the following process which follows Neqo's README was used:
+```shell
+apt install ninja-build mercurial
+uv tool install gyp-next
+mkdir ~/neqo_dependencies
+cd neqo_dependencies
+hg clone https://hg-edge.mozilla.org/projects/nss
+hg clone https://hg-edge.mozilla.org/projects/nspr
+export NSS_DIR=$HOME/neqo_dependencies/nss
+cd ~/nesquic
+cargo build
+
+# after first successful build, the source files for nss and nspr are not needed anymore
+cd ~/nesquic
+mkdir -p ~/nesquic/static_dependencies/neqo_dependencies
+cp -r ~/neqo_depencencies/dist ~/nesquic/static_dependencies/neqo_dependencies/
+mdkir -p ~/nesquic/static_dependencies/neqo_dependencies/nss
+mdkir -p ~/nesquic/static_dependencies/neqo_dependencies/nspr
+touch ~/nesquic/static_dependencies/neqo_dependencies/nss/.gitkeep
+touch ~/nesquic/static_dependencies/neqo_dependencies/nspr/.gitkeep
+export LD_LIBRARY_PATH=echo $(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
+export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
+export NSS_PREBUILT=1
+```
+
 Now you can run a performance test as follows:
 ```
 # sanity check that all client and server implementations work
