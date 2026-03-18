@@ -9,7 +9,7 @@ name = "nesquic"
 [dependencies]
 anyhow = "1.0.102"
 built = { version = "0.8" }
-clap = "4.5.60"
+clap = "4.6.0"
 libbpf-rs = "0.26.1"
 libc = "0.2.183"
 # msquic-iut = { path = "../iut/msquic" }
@@ -17,7 +17,7 @@ quinn-iut = { path = "../iut/quinn" }
 quiche-iut = { path = "../iut/quiche" }
 tokio = { version = "1.50.0", features = ["signal", "sync"] }
 utils = { path = "../utils" }
-tracing-subscriber = "0.3.22"
+tracing-subscriber = "0.3.23"
 tracing = "0.1.44"
 prometheus = "0.14.0"
 prometheus_push = { version = "0.4.6", default-features = false, features = ["with_reqwest", "prometheus_crate"] }
