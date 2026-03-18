@@ -62,10 +62,15 @@ export NSS_PREBUILT=1
 
 Now you can run a performance test as follows:
 ```
-# sanity check that all client and server implementations work
-cargo test
+# sanity check that all client and server implementations work within one library
+cargo test -p nesquic --features quinn
+cargo test -p nesquic --features quiche
+cargo test -p nesquic --features neqo
 # start the metric collection services (prometheus and grafana)
 docker compose -f docker/backend.yml up -d
+# set up the dashboards
+export NQ_LIBS="quinn quiche neqo"
+script/dashboard.sh
 # run the test scenarios for a given library
 script/run.sh quinn quiche
 ```
