@@ -11,18 +11,19 @@ on:
 
 jobs:
     test:
-        name: Test [${{ matrix.rust }}, ${{ matrix.profile }}]
+        name: Test [${{ matrix.rust }}, ${{ matrix.profile }} - ${{ matrix.library }}]
         runs-on: ubuntu-24.04
         strategy:
             fail-fast: false
             matrix:
                 rust: [stable, nightly]
-                profile: [dev]
-                include:
-                    - rust: stable
+                profile: [dev, release]
+                library: [quinn, quiche, neqo]
+                exclude:
+                    - rust: nightly
                       profile: release
         # Anything nightly is treated as informational-only.
-        continue-on-error: ${{ matrix.rust == 'nightly' }}
+        continue-on-error: ${{ matrix.rust == 'nightly' || matrix.library == 'neqo' }}
         steps:
             - name: "Set environmental variables"
               shell: bash
@@ -40,6 +41,12 @@ jobs:
                     var="${1}_$(echo ${{ matrix.rust }} | tr . _)"
                     echo "${1}=${!var}" >> ${GITHUB_ENV}
                   }
+                  # if we are trying to build neqo, we need to set some env vars
+                  if [[ "${{ matrix.library }}" == "neqo" ]]; then
+                    echo "LD_LIBRARY_PATH=${{ github.workspace }}/static_dependencies/neqo_dependencies/dist/Release/lib" >> ${GITHUB_ENV}
+                    echo "NSS_DIR=${{ github.workspace }}/static_dependencies/neqo_dependencies/nss" >> ${GITHUB_ENV}
+                    echo "NSS_PREBUILT=1" >> ${GITHUB_ENV}
+                  fi
 
                   tc_var RUST_BACKTRACE
                   tc_var RUSTFLAGS
@@ -63,9 +70,11 @@ jobs:
                   mkdir -p include
                   bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
             - uses: Swatinem/rust-cache@v2
-            - name: Build
-              run: cargo build --profile=${{ matrix.profile }} --locked --verbose --workspace
+            - name: Build rcgen
+              run: cargo build --profile=${{ matrix.profile }} --locked --verbose --bin rcgen
             - name: Generate certificate
               run: cargo rcgen
+            - name: Build nesquic for library ${{ matrix.library }}
+              run: cargo build --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
             - name: Run tests
-              run: cargo test --profile=${{ matrix.profile }} --locked --verbose --workspace
+              run: cargo test --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
