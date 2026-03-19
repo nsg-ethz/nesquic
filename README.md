@@ -71,6 +71,8 @@ docker compose -f docker/backend.yml up -d
 # set up the dashboards
 export NQ_LIBS="quinn quiche neqo"
 script/dashboard.sh
+# update run.sh to the correct CPU-range; if you are running a bare-metal
+# benchmark, enable NESQUIC_BENACHMARK=1.
 # run the test scenarios for a given library
 script/run.sh quinn quiche
 ```

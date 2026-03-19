@@ -7,8 +7,13 @@ COLOR_OFF='\033[0m' # No Color
 
 VETH_MM="veth-mm"
 VETH_METRICS="veth-metrics"
+
 CPU_ALL=0-39
 CPU_SYSTEM=0-7,12-39
+NUM_CPU=8
+
+NESQUIC_BENCHMARK=0
+
 
 WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 BIN="${WORKSPACE}/target/release/nesquic"
@@ -58,15 +63,13 @@ function run_client {
         CMD+="mm-link ${RES_DIR}/traces/${EXP_LINK}.up ${RES_DIR}/traces/${EXP_LINK}.down -- "
     fi
 
-
-    CMD+="${BIN}-$1 client -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu 8 --metric-cpu 9 https://${MAHIMAHI_BASE}:4433"
-
+    CMD+="${BIN}-$1 client -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu $((NUM_CPU - 4)) --metric-cpu $((NUM_CPU - 3)) https://${MAHIMAHI_BASE}:4433"
 
     eval ${CMD}
 }
 
 function run_server {
-    ${BIN}-$1 server -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu 10 --metric-cpu 11 &
+    ${BIN}-$1 server -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu $((NUM_CPU - 2)) --metric-cpu $((NUM_CPU - 1)) &
 }
 
 function kill_nesquic {
@@ -82,7 +85,9 @@ function teardown {
     kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}
 
-    cpu_governor "schedutil"
+    if [ ${NESQUIC_BENCHMARK} -eq 1 ]; then
+        cpu_governor "schedutil"
+    fi
 
     echo -e "${COLOR_YELLOW}Resetting CPU isolation${COLOR_OFF}"
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_ALL}
@@ -111,7 +116,9 @@ function setup {
     sudo ufw allow from 10.0.0.0/24 to any port 9901
     sudo ufw allow from 10.0.0.0/24 to any port 4433
 
-    cpu_governor "performance"
+    if [ ${NESQUIC_BENCHMARK} -eq 1 ]; then
+        cpu_governor "performance"
+    fi
 
     echo -e "${COLOR_YELLOW}Isolating CPUs${COLOR_OFF}"
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_SYSTEM}
@@ -156,7 +163,7 @@ function config_exp_driving {
 }
 
 function run_experiment {
-    echo -ne "run ${EXP_NAME}... "
+    echo -e "run ${EXP_NAME}... "
 
     run_server $1
     wait_for_launch nesquic > /dev/null 2>&1
