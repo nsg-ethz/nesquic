@@ -1,4 +1,5 @@
-target
+/target
+/include
 .envrc
 .clangd
 __pycache__

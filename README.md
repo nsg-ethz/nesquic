@@ -20,6 +20,13 @@ rm -rf mahimahi
 cargo install --locked uv
 ```
 
+Next, install [libbpf](https://github.com/libbpf/libbpf) and [bpftool](https://github.com/libbpf/bpftool) from source.
+
+Then, generate a new vmlinux file as follows:
+```
+bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
+```
+
 Now you can run a performance test as follows:
 ```
 # sanity check that all client and server implementations work
