@@ -60,6 +60,7 @@ jobs:
                   cd bpftool/src && make && sudo make install
             - name: Dump BTF
               run: |
+                  mkdir -p include
                   bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
             - uses: Swatinem/rust-cache@v2
             - name: Build
