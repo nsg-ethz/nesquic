@@ -55,7 +55,12 @@ jobs:
                   sudo apt-get update
                   sudo apt-get install --yes --no-install-recommends clang-18 libelf-dev zlib1g-dev linux-headers-$(uname -r) libnuma-dev
                   sudo ln -s /usr/include/asm-generic /usr/include/asm
-                  sudo rm -f /bin/clang && sudo ln -s /usr/bin/clang-18 /bin/clang
+                  sudo rm -f /bin/clang && sudo ln -s /usr/bin/clang-18 /bin/clang && sudo ln -s /usr/bin/llvm-strip-18 /bin/llvm-strip
+                  git clone --recurse-submodules https://github.com/libbpf/bpftool.git
+                  cd bpftool/src && make && sudo make install
+            - name: Dump BTF
+              run: |
+                  bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
             - uses: Swatinem/rust-cache@v2
             - name: Build
               run: cargo build --profile=${{ matrix.profile }} --locked --verbose --workspace
