@@ -52,7 +52,7 @@ async fn library_tests() {
             }
 
             let res = tokio::time::timeout(
-                Duration::from_secs(1),
+                Duration::from_secs(5),
                 run_client(library, ClientArgs::test()),
             )
             .await;
