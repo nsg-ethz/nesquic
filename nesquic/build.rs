@@ -12,11 +12,11 @@ fn main() {
         .or(std::env::var("RUST_LOG"))
         .map(|s| s.to_lowercase());
     let log_level = match log_level.as_deref() {
-        Ok("debug") => 2,
-        Ok("trace") => 2,
-        Ok("info") => 1,
-        Ok("warn") => 1,
         Ok("error") => 1,
+        Ok("warn") => 2,
+        Ok("info") => 3,
+        Ok("debug") => 4,
+        Ok("trace") => 5,
         _ => 0,
     };
     println!("cargo:rerun-if-env-changed=RUST_LOG");
@@ -32,9 +32,11 @@ fn main() {
         .source(&src)
         .clang_args([
             OsStr::new("-D"),
-            OsStr::new(format!("LOG_LEVEL={log_level}").as_str()),
+            OsStr::new(format!("BPF_LOG_LEVEL={log_level}").as_str()),
             OsStr::new("-I"),
             OsStr::new("../include"),
+            OsStr::new("-I"),
+            OsStr::new(&bpf_tracing_include::create_include_dir()),
         ])
         .build_and_generate(&out)
         .expect("Failed to generate eBPF skeleton");

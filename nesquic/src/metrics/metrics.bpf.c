@@ -5,17 +5,6 @@
 
 char LICENSE[] SEC("license") = "GPL";
 
-#if LOG_LEVEL == 1
-    #define bpf_log(...) (0)
-    #define bpf_err(...) bpf_printk(__VA_ARGS__)
-#elif LOG_LEVEL == 2
-    #define bpf_log(...) bpf_printk(__VA_ARGS__)
-    #define bpf_err(...) bpf_printk(__VA_ARGS__)
-#else
-    #define bpf_log(...) (0)
-    #define bpf_err(...) (0)
-#endif
-
 volatile const u32 MONITORED_PID;
 #define pid_guard(...) if ((bpf_get_current_pid_tgid() >> 32) != MONITORED_PID) return 0
 
@@ -49,13 +38,13 @@ struct event_io noevent = {};
 __always_inline void _submit_event(void *event, u32 len) {
     struct bpf_dynptr ptr;
     if (bpf_ringbuf_reserve_dynptr(&events, len, 0, &ptr) != 0) {
-        bpf_err("ERROR: _submit_event failed to reserve dynptr");
+        bpf_error("ERROR: _submit_event failed to reserve dynptr");
         bpf_ringbuf_discard_dynptr(&ptr, 0);
         return;
     }
 
     if (bpf_dynptr_write(&ptr, 0, event, len, 0) != 0) {
-        bpf_err("ERROR: _submit_event failed to write dynptr");
+        bpf_error("ERROR: _submit_event failed to write dynptr");
         bpf_ringbuf_discard_dynptr(&ptr, 0);
         return;
     }
@@ -77,7 +66,7 @@ __always_inline u32 count_iovec_len(struct iovec *vec, u32 vlen) {
     bpf_for(i, 0, vlen) {
         struct iovec iov;
         if (bpf_probe_read_user(&iov, sizeof(struct iovec), vec + i) < 0) {
-            bpf_err("ERROR: count_iovec_len failed to read iov[%u]", i);
+            bpf_error("ERROR: count_iovec_len failed to read iov[%u]", i);
             return 0;
         }
 
@@ -96,7 +85,7 @@ __always_inline void _submit_event_user_msghdr(u16 syscall, struct user_msghdr *
     u32 i = 0, k = 0;
     struct user_msghdr msg;
     if (bpf_probe_read_user(&msg, sizeof(struct user_msghdr), msg_ptr) < 0) {
-        bpf_err("ERROR: _submit_event_user_msghdr failed to read msg");
+        bpf_error("ERROR: _submit_event_user_msghdr failed to read msg");
         return;
     }
 
@@ -112,7 +101,7 @@ __always_inline void _submit_event_msghdr(u16 syscall, struct mmsghdr *mmsg, u32
     bpf_for(i, 0, vlen) {
         struct mmsghdr msg;
         if (bpf_probe_read_user(&msg, sizeof(struct mmsghdr), mmsg + i) < 0) {
-            bpf_err("ERROR: _submit_event_msghdr failed to read mmsg[%u]", i);
+            bpf_error("ERROR: _submit_event_msghdr failed to read mmsg[%u]", i);
             return;
         }
 
