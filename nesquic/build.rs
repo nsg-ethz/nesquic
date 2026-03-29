@@ -36,7 +36,7 @@ fn main() {
             OsStr::new("-I"),
             OsStr::new("../include"),
             OsStr::new("-I"),
-            OsStr::new(&bpf_tracing_include::create_include_dir()),
+            OsStr::new(&bpf_tracing_include::include_path_root()),
         ])
         .build_and_generate(&out)
         .expect("Failed to generate eBPF skeleton");

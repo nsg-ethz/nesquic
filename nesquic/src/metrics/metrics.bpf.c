@@ -115,7 +115,7 @@ __always_inline void _submit_event_msghdr(u16 syscall, struct mmsghdr *mmsg, u32
 SEC("kprobe/do_writev")
 int BPF_KPROBE(do_writev, unsigned long fd, struct iovec *vec, unsigned long vlen, rwf_t flags) {
     pid_guard();
-    bpf_log("do_writev(%lu, %p, %lu, %u)", fd, vec, vlen, flags);
+    bpf_trace("do_writev(%lu, %p, %lu, %u)", fd, vec, vlen, flags);
     _submit_event_iovec(EVENT_IO_SYSCALL_WRITEV, vec, vlen);
 
     return 0;
@@ -124,7 +124,7 @@ int BPF_KPROBE(do_writev, unsigned long fd, struct iovec *vec, unsigned long vle
 SEC("kprobe/do_readv")
 int BPF_KPROBE(do_readv, unsigned long fd, struct iovec* vec, unsigned long vlen) {
     pid_guard();
-    bpf_log("do_readv(%lu, %p, %lu)", fd, vec, vlen);
+    bpf_trace("do_readv(%lu, %p, %lu)", fd, vec, vlen);
     _submit_event_iovec(EVENT_IO_SYSCALL_READV, vec, vlen);
 
     return 0;
@@ -133,7 +133,7 @@ int BPF_KPROBE(do_readv, unsigned long fd, struct iovec* vec, unsigned long vlen
 SEC("kprobe/ksys_write")
 int BPF_KPROBE(ksys_write, int fd, char *buf, size_t len) {
     pid_guard();
-    // bpf_log("ksys_write(%d, %p, %lu)", fd, buf, len);
+    bpf_trace("ksys_write(%d, %p, %lu)", fd, buf, len);
     // _submit_event_io(EVENT_IO_SYSCALL_WRITE, len);
 
     return 0;
@@ -142,7 +142,7 @@ int BPF_KPROBE(ksys_write, int fd, char *buf, size_t len) {
 SEC("kprobe/ksys_read")
 int BPF_KPROBE(ksys_read, int fd, char *buf, size_t len) {
     pid_guard();
-    bpf_log("ksys_read(%d, %p, %lu)", fd, buf, len);
+    bpf_trace("ksys_read(%d, %p, %lu)", fd, buf, len);
     _submit_event_io(EVENT_IO_SYSCALL_READ, len);
 
     return 0;
@@ -151,7 +151,7 @@ int BPF_KPROBE(ksys_read, int fd, char *buf, size_t len) {
 SEC("kprobe/__sys_recvmsg")
 int BPF_KPROBE(__sys_recvmsg, int fd, struct user_msghdr *msg, unsigned int flags, bool forbid_cmsg_compat) {
     pid_guard();
-    bpf_log("__sys_recvmsg(%u, %p, %u, %u)", fd, msg, flags, forbid_cmsg_compat);
+    bpf_trace("__sys_recvmsg(%u, %p, %u, %u)", fd, msg, flags, forbid_cmsg_compat);
     _submit_event_user_msghdr(EVENT_IO_SYSCALL_RECVMSG, msg);
 
     return 0;
@@ -160,7 +160,7 @@ int BPF_KPROBE(__sys_recvmsg, int fd, struct user_msghdr *msg, unsigned int flag
 SEC("kprobe/__sys_recvmmsg")
 int BPF_KPROBE(__sys_recvmmsg, int fd, struct mmsghdr *mmsg, unsigned int vlen, unsigned int flags, struct timespec64 *timeout) {
     pid_guard();
-    bpf_log("__sys_recvmmsg(%u, %p, %u, %u, %p)", fd, mmsg, vlen, flags, timeout);
+    bpf_trace("__sys_recvmmsg(%u, %p, %u, %u, %p)", fd, mmsg, vlen, flags, timeout);
     _submit_event_msghdr(EVENT_IO_SYSCALL_RECVMMSG, mmsg, vlen);
 
     return 0;
@@ -169,7 +169,7 @@ int BPF_KPROBE(__sys_recvmmsg, int fd, struct mmsghdr *mmsg, unsigned int vlen, 
 SEC("kprobe/__sys_recvfrom")
 int BPF_KPROBE(__sys_recvfrom, int fd, void *buf, size_t size, unsigned int flags, struct sockaddr *addr, int *addr_len) {
     pid_guard();
-    bpf_log("__sys_recvfrom(%u, %p, %lu, %u, %p, %p)", fd, buf, size, flags, addr, addr_len);
+    bpf_trace("__sys_recvfrom(%u, %p, %lu, %u, %p, %p)", fd, buf, size, flags, addr, addr_len);
     _submit_event_io(EVENT_IO_SYSCALL_RECVFROM, size);
 
     return 0;
@@ -178,7 +178,7 @@ int BPF_KPROBE(__sys_recvfrom, int fd, void *buf, size_t size, unsigned int flag
 SEC("kprobe/__sys_sendto")
 int BPF_KPROBE(__sys_sendto, int fd, void *buf, size_t len, unsigned int flags, struct sockaddr *addr,  int addr_len) {
     pid_guard();
-    bpf_log("__sys_sendto(%u, %p, %lu, %u, %p, %p)", fd, buf, len, flags, addr, addr_len);
+    bpf_trace("__sys_sendto(%u, %p, %lu, %u, %p, %d)", fd, buf, len, flags, addr, addr_len);
     _submit_event_io(EVENT_IO_SYSCALL_SENDTO, len);
 
     return 0;
@@ -187,7 +187,7 @@ int BPF_KPROBE(__sys_sendto, int fd, void *buf, size_t len, unsigned int flags, 
 SEC("kprobe/__sys_sendmsg")
 int BPF_KPROBE(__sys_sendmsg, int fd, struct user_msghdr *msg, unsigned int flags, bool forbid_cmsg_compat) {
     pid_guard();
-    bpf_log("__sys_sendmsg(%u, %p, %u, %u)", fd, msg, flags, forbid_cmsg_compat);
+    bpf_trace("__sys_sendmsg(%u, %p, %u, %u)", fd, msg, flags, forbid_cmsg_compat);
     _submit_event_user_msghdr(EVENT_IO_SYSCALL_SENDMSG, msg);
 
     return 0;
@@ -196,7 +196,7 @@ int BPF_KPROBE(__sys_sendmsg, int fd, struct user_msghdr *msg, unsigned int flag
 SEC("kprobe/__sys_sendmmsg")
 int BPF_KPROBE(__sys_sendmmsg, int fd, struct mmsghdr *mmsg, unsigned int vlen, unsigned int flags, bool forbid_cmsg_compat) {
     pid_guard();
-    bpf_log("__sys_sendmmsg(%u, %p, %u, %u, %u)", fd, mmsg, vlen, flags, forbid_cmsg_compat);
+    bpf_trace("__sys_sendmmsg(%u, %p, %u, %u, %u)", fd, mmsg, vlen, flags, forbid_cmsg_compat);
     _submit_event_msghdr(EVENT_IO_SYSCALL_SENDMMSG, mmsg, vlen);
 
     return 0;

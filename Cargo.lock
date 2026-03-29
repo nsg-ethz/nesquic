@@ -242,22 +242,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "bpf-tracing"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a08d2dc0f9dda1c238848fd6a049359eb1a21e7dd3db7b1275b247a1f46d798"
+dependencies = [
+ "bpf-tracing-include 0.0.1",
+ "libbpf-cargo",
+ "nix 0.31.2",
+ "tracing",
+]
+
+[[package]]
 name = "bpf-tracing-include"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23725bca5b95406267bb578989a33465266531e82b674d510d60c39189fde0fb"
 
 [[package]]
-name = "bpf_tracing"
-version = "0.0.1"
+name = "bpf-tracing-include"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "273f99dea6e72b2875911436ed671f31c9f5bb30e0339e89d15bca12d27d5618"
-dependencies = [
- "bpf-tracing-include",
- "libbpf-cargo",
- "nix 0.31.2",
- "tracing",
-]
+checksum = "0989c41c4a2b0e755d84c9ff0b7b5f8f9b4b493d6c48785d5410357f6fc5cb46"
 
 [[package]]
 name = "buffer-pool"
@@ -1773,8 +1779,8 @@ name = "nesquic"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bpf-tracing-include",
- "bpf_tracing",
+ "bpf-tracing",
+ "bpf-tracing-include 0.0.2",
  "built",
  "clap",
  "core_affinity",
