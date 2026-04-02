@@ -3,3 +3,4 @@
 .envrc
 .clangd
 __pycache__
+static_dependencies/

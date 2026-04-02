@@ -101,4 +101,11 @@ touch ~/nesquic/static_dependencies/neqo_dependencies/nspr/.gitkeep
 export LD_LIBRARY_PATH=$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
 export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
 export NSS_PREBUILT=1
+
+# for running with the custom built dependencies, need to install them first
+cd ~/nesquic
+echo "$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib" | sudo tee /etc/ld.so.conf.d/nesquic.conf
+sudo ldconfig
+ldconfig -p | grep static_dependencies/neqo_dependencies/dist/Release/lib/libnss3.so
+
 ```
