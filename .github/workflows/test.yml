@@ -41,12 +41,6 @@ jobs:
                     var="${1}_$(echo ${{ matrix.rust }} | tr . _)"
                     echo "${1}=${!var}" >> ${GITHUB_ENV}
                   }
-                  # if we are trying to build neqo, we need to set some env vars
-                  if [[ "${{ matrix.library }}" == "neqo" ]]; then
-                    echo "LD_LIBRARY_PATH=${{ github.workspace }}/static_dependencies/neqo_dependencies/dist/Release/lib" >> ${GITHUB_ENV}
-                    echo "NSS_DIR=${{ github.workspace }}/static_dependencies/neqo_dependencies/nss" >> ${GITHUB_ENV}
-                    echo "NSS_PREBUILT=1" >> ${GITHUB_ENV}
-                  fi
 
                   tc_var RUST_BACKTRACE
                   tc_var RUSTFLAGS
@@ -74,11 +68,27 @@ jobs:
               run: cargo build --profile=${{ matrix.profile }} --locked --verbose --bin rcgen
             - name: Generate certificate
               run: cargo rcgen
+            - name: Build static dependencies for neqo
+              if: matrix.library == 'neqo'
+              run: |
+                  sudo apt-get install --yes --no-install-recommends ninja-build mercurial
+                  cargo install --locked uv
+                  uv tool install gyp-next
+                  cd ..
+                  mkdir -p neqo_dependencies && cd neqo_dependencies
+                  hg clone https://hg-edge.mozilla.org/projects/nss/ -r NSS_3_121_RTM
+                  # nspr version from `automation/release/nspr-version.txt`in the corresponding nss release
+                  hg clone https://hg-edge.mozilla.org/projects/nspr/ -r NSPR_4_38_2_RTM
+                  echo "NSS_DIR=$(pwd)/nss" >> ${GITHUB_ENV}
+                  echo "LD_LIBRARY_PATH=$(pwd)/dist/Release/lib" >> ${GITHUB_ENV}
+                  cd .. && cd nesquic
             - name: Build nesquic for library ${{ matrix.library }}
               run: cargo build --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
             - name: Run tests
               run: |
                   if [[ "${{ matrix.library }}" == "neqo" ]]; then
-                      echo ${{ github.workspace }}/static_dependencies/neqo_dependencies/dist/Release/lib | sudo tee /etc/ld.so.conf.d/neqo.conf && sudo ldconfig
+                      echo $NSS_DIR
+                      echo "NSS_PREBUILT=1" >> ${GITHUB_ENV}
+                      echo $LD_LIBRARY_PATH | sudo tee /etc/ld.so.conf.d/neqo.conf && sudo ldconfig
                   fi
                   cargo test --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
