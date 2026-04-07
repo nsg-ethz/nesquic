@@ -183,21 +183,8 @@ impl bin::Client for Client {
             );
         }
 
-        // Graceful close: drive the connection through Closing → Closed so the
-        // peer receives the CONNECTION_CLOSE frame and we wait for acknowledgement.
-        conn.close(Instant::now(), 0, "done");
-        drive_until(conn, socket, local_addr, |conn| {
-            while let Some(event) = conn.next_event() {
-                if let ConnectionEvent::StateChange(State::Closed(ref reason)) = event {
-                    if reason.is_error() {
-                        bail!("connection closed with error during shutdown: {:?}", reason);
-                    }
-                    return Ok(true);
-                }
-            }
-            Ok(false)
-        })
-        .await?;
+        // No closing connection manually - the quinn-UDP-Socket will be close
+        // when the client is dropped (thus saving us an RTT for measuring).
 
         Ok(())
     }
