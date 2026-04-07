@@ -40,7 +40,7 @@ bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
 For Neqo, the following additional dependencies are needed: `libnss3`. While the distributed versions are not up to date, we will use a static version in `static_dependencies/neqo_dependencies`.
 In order to use it, you need to set the following environment variables: 
 ```shell
-export LD_LIBRARY_PATH=echo $(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
+export LD_LIBRARY_PATH=$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
 export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
 export NSS_PREBUILT=1
 ```
