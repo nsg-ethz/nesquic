@@ -7,7 +7,7 @@ edition = "2021"
 anyhow = "1.0.102"
 socket2 = "0.6"
 tracing = "0.1"
-tokio = { version = "1.50.0", features = ["macros", "full"] }
+tokio = { version = "1.51.0", features = ["macros", "full"] }
 utils = { path = "../../utils" }
 
 neqo-transport = { git = "https://github.com/mozilla/neqo.git", package = "neqo-transport", tag = "v0.23.1" }
