@@ -4,6 +4,16 @@ Nesquic is a testing infrastructure for QUIC libraries. It leverages eBPF to mon
 
 Nesquic provides multiple QUIC client and server implementations (see [status](#status) for supported libraries), as well as a set of testing regimes to evaluate them. It leverages [Mahimahi](https://github.com/ravinet/mahimahi) to emulate realistic network conditions during the test, and eBPF to collect library-internal metrics. Nesquic then generates a Grafana dashboard with the results.
 
+## Status
+
+| Library          | Status                                  |
+|------------------|-----------------------------------------|
+| [Quinn](https://github.com/quinn-rs/quinn)        | ✅     |
+| [Quiche](https://github.com/cloudflare/quiche)    | ✅     |
+| [MsQuic](https://github.com/microsoft/msquic)     | WIP    |
+| [Neqo](https://github.com/mozilla/neqo)           | WIP    |
+
+
 ## Getting Started
 
 First, install [Mahimahi](https://github.com/ravinet/mahimahi), along with some other Nesquic dependencies:
@@ -27,12 +37,27 @@ Then, generate a new vmlinux file as follows:
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
 ```
 
+For Neqo, the following additional dependencies are needed: `libnss3`. While the distributed versions are not up to date, we will use a static version in `static_dependencies/neqo_dependencies`.
+In order to use it, you need to set the following environment variables: 
+```shell
+export LD_LIBRARY_PATH=$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
+export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
+export NSS_PREBUILT=1
+```
+
 Now you can run a performance test as follows:
 ```
-# sanity check that all client and server implementations work
-cargo test
+# sanity check that all client and server implementations work within one library
+cargo test -p nesquic --features quinn
+cargo test -p nesquic --features quiche
+cargo test -p nesquic --features neqo
 # start the metric collection services (prometheus and grafana)
 docker compose -f docker/backend.yml up -d
+# set up the dashboards
+export NQ_LIBS="quinn quiche neqo"
+script/dashboard.sh
+# update run.sh to the correct CPU-range; if you are running a bare-metal
+# benchmark, enable NESQUIC_BENACHMARK=1.
 # run the test scenarios for a given library
 script/run.sh quinn quiche
 ```
@@ -51,10 +76,45 @@ docker compose -f docker/backend.yml down
 docker volume rm nesquic_grafana_data
 ```
 
-## Status
+## Details: NSS Dependency
 
-| Library          | Status                                  |
-|------------------|-----------------------------------------|
-| [Quinn](https://github.com/quinn-rs/quinn)        | ✅     |
-| [Quiche](https://github.com/cloudflare/quiche)    | ✅     |
-| [MsQuic](https://github.com/microsoft/msquic)     | WIP    |
+In order to create the static verion of Neqo's dependency libraries (NSS and NSPR), the following process which follows Neqo's README was used:
+```shell
+apt install ninja-build mercurial
+uv tool install gyp-next
+mkdir ~/neqo_dependencies
+cd neqo_dependencies
+hg clone https://hg-edge.mozilla.org/projects/nss
+hg clone https://hg-edge.mozilla.org/projects/nspr
+export NSS_DIR=$HOME/neqo_dependencies/nss
+cd ~/nesquic
+cargo build
+
+# after first successful build, the source files for nss and nspr are not needed anymore
+cd ~/nesquic
+mkdir -p ~/nesquic/static_dependencies/neqo_dependencies
+cp -r ~/neqo_depencencies/dist ~/nesquic/static_dependencies/neqo_dependencies/
+mdkir -p ~/nesquic/static_dependencies/neqo_dependencies/nss
+mdkir -p ~/nesquic/static_dependencies/neqo_dependencies/nspr
+touch ~/nesquic/static_dependencies/neqo_dependencies/nss/.gitkeep
+touch ~/nesquic/static_dependencies/neqo_dependencies/nspr/.gitkeep
+export LD_LIBRARY_PATH=$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
+export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
+export NSS_PREBUILT=1
+
+# for running with the custom built dependencies, need to install them first
+cd ~/nesquic
+echo "$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib" | sudo tee /etc/ld.so.conf.d/nesquic.conf
+sudo ldconfig
+ldconfig -p | grep static_dependencies/neqo_dependencies/dist/Release/lib/libnss3.so
+```
+
+## NSS Database setup
+sudo apt isntall libnss3-tools
+certutil -N -d res/nssdb
+openssl pkcs12 -export -in res/pem/cert.pem -inkey res/pem/key.pem -out res/pkcs12/cert.p12 -name "nesquic"
+certutil -N -d res/nssdb
+pk12util -i res/pkcs12/cert.p12 -d res/nssdb
+certutil -L -d nssdb
+certutil -M -t "TC,C,C" -n nesquic -d nssdb
+certutil -L -d nssdb

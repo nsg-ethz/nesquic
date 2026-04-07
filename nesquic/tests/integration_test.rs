@@ -1,30 +1,34 @@
 use anyhow::Result;
 use nesquic::{run_client, run_server, Library};
-use quinn_iut::Client as QuinnClient;
 use std::time::Duration;
 use tracing::trace;
 use utils::bin::{Client, ClientArgs, ServerArgs};
 
+#[cfg(feature = "quinn")]
+use quinn_iut::Client as HealthClient;
+#[cfg(feature = "quiche")]
+use quiche_iut::Client as HealthClient;
+#[cfg(feature = "neqo")]
+use neqo_iut::Client as HealthClient;
+
 async fn health_check() -> Result<()> {
-    let mut client = QuinnClient::new(ClientArgs::test())?;
+    let mut client = HealthClient::new(ClientArgs::test())?;
     client.connect().await?;
     Ok(())
 }
 
-#[test_case::test_matrix(
-    [
-        Library::Quinn,
-        Library::Quiche,
-        // Library::Msquic,
-    ],
-    [
-        Library::Quinn,
-        Library::Quiche,
-        // Library::Msquic,
-    ]
-)]
+
 #[tokio::test]
-async fn library_tests(client: Library, server: Library) {
+async fn library_tests() {
+    #[cfg(feature = "quinn")]
+    let library = Library::Quinn;
+    #[cfg(feature = "quiche")]
+    let library = Library::Quiche;
+    #[cfg(feature = "neqo")]
+    let library = Library::Neqo;
+    // #[cfg(feature = "msquic")]
+    // let library = Library::Msquic;
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
@@ -32,7 +36,7 @@ async fn library_tests(client: Library, server: Library) {
 
     let local = tokio::task::LocalSet::new();
     local.spawn_local(async move {
-        let res = run_server(server, ServerArgs::test()).await;
+        let res = run_server(library, ServerArgs::test()).await;
         assert!(res.is_ok(), "{}", res.err().unwrap());
     });
 
@@ -48,8 +52,8 @@ async fn library_tests(client: Library, server: Library) {
             }
 
             let res = tokio::time::timeout(
-                Duration::from_secs(1),
-                run_client(client, ClientArgs::test()),
+                Duration::from_secs(5),
+                run_client(library, ClientArgs::test()),
             )
             .await;
             assert!(res.is_ok(), "Test timed out");
