@@ -1,12 +1,10 @@
-use crate::bind_socket;
+use super::bind_socket;
 use anyhow::{anyhow, bail, Result};
-use noq::{crypto::rustls::QuicClientConfig, ClientConfig, Connection, TokioRuntime};
+use crate::backend::{ClientConfig, Connection, Endpoint, QuicClientConfig, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
 use std::{net::ToSocketAddrs, sync::Arc};
 use tracing::trace;
 use utils::{bin, bin::ClientArgs, perf::Request};
-
-const TARGET: &str = "noq::client";
 
 pub struct Client {
     args: ClientArgs,
@@ -25,7 +23,7 @@ impl bin::Client for Client {
 
         client_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-        let config = noq::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
+        let config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
 
         Ok(Client {
             args,
@@ -45,8 +43,8 @@ impl bin::Client for Client {
 
         let addr = "[::]:0".parse().unwrap();
         let socket = bind_socket(addr)?;
-        let endpoint =
-            noq::Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
+        #[allow(unused_mut)]
+        let mut endpoint = Endpoint::new(Default::default(), None, socket, Arc::new(TokioRuntime))?;
         endpoint.set_default_client_config(self.config.clone());
 
         let host = self
@@ -61,7 +59,7 @@ impl bin::Client for Client {
             .map_err(|e| anyhow!("failed to connect: {}", e))?;
         self.conn = Some(conn);
 
-        trace!(target: TARGET, "connected");
+        trace!(target: crate::CLIENT_TARGET, "connected");
 
         Ok(())
     }
@@ -76,7 +74,7 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
-        trace!(target: TARGET, "sending request");
+        trace!(target: crate::CLIENT_TARGET, "sending request");
 
         let request = Request::try_from(self.args.blob.clone())?;
         send.write_all(&request.to_bytes())
@@ -90,7 +88,7 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
-        trace!(target: TARGET, "received response: {}B", resp.len());
+        trace!(target: crate::CLIENT_TARGET, "received response: {}B", resp.len());
 
         if request.size != resp.len() {
             bail!(
