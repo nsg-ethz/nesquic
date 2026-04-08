@@ -10,6 +10,10 @@ use quinn_iut::Client as HealthClient;
 use quiche_iut::Client as HealthClient;
 #[cfg(feature = "neqo")]
 use neqo_iut::Client as HealthClient;
+#[cfg(feature = "noq")]
+use noq_iut::Client as HealthClient;
+// #[cfg(feature = "msquic")]
+// use msquic_iut::Client as HealthClient;
 
 async fn health_check() -> Result<()> {
     let mut client = HealthClient::new(ClientArgs::test())?;
@@ -26,6 +30,8 @@ async fn library_tests() {
     let library = Library::Quiche;
     #[cfg(feature = "neqo")]
     let library = Library::Neqo;
+    #[cfg(feature = "noq")]
+    let library = Library::Noq;
     // #[cfg(feature = "msquic")]
     // let library = Library::Msquic;
 

@@ -11,6 +11,7 @@ name = "nesquic"
 quinn  = ["dep:quinn-iut"]
 quiche = ["dep:quiche-iut"]
 neqo   = ["dep:neqo-iut"]
+noq    = ["dep:noq-iut"]
 
 
 [dependencies]
@@ -23,6 +24,7 @@ libc = "0.2.184"
 quinn-iut  = { path = "../iut/quinn",  optional = true }
 quiche-iut = { path = "../iut/quiche", optional = true }
 neqo-iut   = { path = "../iut/neqo",   optional = true }
+noq-iut    = { path = "../iut/noq",    optional = true }
 tokio = { version = "1.51.0", features = ["signal", "sync"] }
 utils = { path = "../utils" }
 tracing-subscriber = "0.3.23"

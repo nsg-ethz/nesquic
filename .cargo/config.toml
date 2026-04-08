@@ -8,6 +8,8 @@ msquic-server = "run --bin nesquic server --lib msquic --cert res/pem/cert.pem -
 msquic-client = "run --bin nesquic client --lib msquic --cert res/pem/cert.pem --blob 50Mbit"
 neqo-server = "run --bin nesquic server --lib neqo --cert res/pem/cert.pem --key res/pem/key.pem"
 neqo-client = "run --bin nesquic client --lib neqo --cert res/pem/cert.pem --blob 50Mbit"
+noq-server = "run --bin nesquic server --lib noq --cert res/pem/cert.pem --key res/pem/key.pem"
+noq-client = "run --bin nesquic client --lib noq --cert res/pem/cert.pem --blob 50Mbit"
 
 [env]
 RUST_TEST_THREADS = "1"
