@@ -99,7 +99,7 @@ function teardown {
 
 function compile {
     # compile IUTs in release mode
-    echo -e "${COLOR_YELLOW}Compile Nesquic${COLOR_OFF}"
+    echo -e "${COLOR_YELLOW}Compile Nesquic for ${1}${COLOR_OFF}"
     cargo build --release --bin nesquic --features $1
     mv -f ${BIN} ${BIN}-$1
 

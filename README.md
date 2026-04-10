@@ -12,6 +12,7 @@ Nesquic provides multiple QUIC client and server implementations (see [status](#
 | [Quiche](https://github.com/cloudflare/quiche)    | ✅     |
 | [MsQuic](https://github.com/microsoft/msquic)     | WIP    |
 | [Neqo](https://github.com/mozilla/neqo)           | WIP    |
+| [noq](https://github.com/n0-computer/noq)         | WIP    |
 
 
 ## Getting Started
@@ -51,6 +52,7 @@ Now you can run a performance test as follows:
 cargo test -p nesquic --features quinn
 cargo test -p nesquic --features quiche
 cargo test -p nesquic --features neqo
+cargo test -p nesquic --features noq
 # start the metric collection services (prometheus and grafana)
 docker compose -f docker/backend.yml up -d
 # set up the dashboards

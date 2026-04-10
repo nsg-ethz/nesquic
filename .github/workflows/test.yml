@@ -18,7 +18,7 @@ jobs:
             matrix:
                 rust: [stable, nightly]
                 profile: [dev, release]
-                library: [quinn, quiche, neqo]
+                library: [quinn, quiche, neqo, noq]
                 exclude:
                     - rust: nightly
                       profile: release
