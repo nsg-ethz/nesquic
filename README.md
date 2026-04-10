@@ -38,13 +38,7 @@ Then, generate a new vmlinux file as follows:
 bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
 ```
 
-For Neqo, the following additional dependencies are needed: `libnss3`. While the distributed versions are not up to date, we will use a static version in `static_dependencies/neqo_dependencies`.
-In order to use it, you need to set the following environment variables: 
-```shell
-export LD_LIBRARY_PATH=$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
-export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
-export NSS_PREBUILT=1
-```
+For Neqo, the following additional dependencies are needed: `libnss3`. While the distributed versions are not up to date, the corresponding libraries need to be compiled manually. See below in *Details: NSS Dependency*.
 
 Now you can run a performance test as follows:
 ```
@@ -82,7 +76,7 @@ docker volume rm nesquic_grafana_data
 
 ## Details: NSS Dependency
 
-In order to create the static verion of Neqo's dependency libraries (NSS and NSPR), the following process which follows Neqo's README was used:
+In order to create the static verion of Neqo's dependency libraries (NSS and NSPR), the following process which follows Neqo's README is used:
 ```shell
 apt install ninja-build mercurial
 uv tool install gyp-next
@@ -100,13 +94,11 @@ mkdir -p ~/nesquic/static_dependencies/neqo_dependencies
 cp -r ~/neqo_depencencies/dist ~/nesquic/static_dependencies/neqo_dependencies/
 mdkir -p ~/nesquic/static_dependencies/neqo_dependencies/nss
 mdkir -p ~/nesquic/static_dependencies/neqo_dependencies/nspr
-touch ~/nesquic/static_dependencies/neqo_dependencies/nss/.gitkeep
-touch ~/nesquic/static_dependencies/neqo_dependencies/nspr/.gitkeep
 export LD_LIBRARY_PATH=$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib
 export NSS_DIR=$(pwd)/static_dependencies/neqo_dependencies/nss
 export NSS_PREBUILT=1
 
-# for running with the custom built dependencies, need to install them first
+# for running the custom built dependencies, need to install them first
 cd ~/nesquic
 echo "$(pwd)/static_dependencies/neqo_dependencies/dist/Release/lib" | sudo tee /etc/ld.so.conf.d/nesquic.conf
 sudo ldconfig
@@ -114,6 +106,11 @@ ldconfig -p | grep static_dependencies/neqo_dependencies/dist/Release/lib/libnss
 ```
 
 ## NSS Database setup
+The NSS Database is set up already and only needs to be changed if the cert changes.
+
+Then, the following process should be used:
+
+```shell
 sudo apt isntall libnss3-tools
 certutil -N -d res/nssdb
 openssl pkcs12 -export -in res/pem/cert.pem -inkey res/pem/key.pem -out res/pkcs12/cert.p12 -name "nesquic"
@@ -122,3 +119,4 @@ pk12util -i res/pkcs12/cert.p12 -d res/nssdb
 certutil -L -d nssdb
 certutil -M -t "TC,C,C" -n nesquic -d nssdb
 certutil -L -d nssdb
+```
