@@ -53,7 +53,7 @@ cargo test -p nesquic --features quinn
 cargo test -p nesquic --features quiche
 cargo test -p nesquic --features neqo
 cargo test -p nesquic --features noq
-# start the metric collection services (prometheus and grafana)
+# start the metric collection services (InfluxDB and grafana)
 docker compose -f docker/backend.yml up -d
 # set up the dashboards
 export NQ_LIBS="quinn quiche neqo"
@@ -61,7 +61,9 @@ script/dashboard.sh
 # update run.sh to the correct CPU-range; if you are running a bare-metal
 # benchmark, enable NESQUIC_BENACHMARK=1.
 # run the test scenarios for a given library
-script/run.sh quinn quiche
+# the label can be used later to identify past runs. If no value is supplied,
+# the label is set to "default".
+NESQUIC_RUN_LABEL=firstRun script/run.sh quinn quiche
 ```
 
 This starts the Grafana dashboard and executes a performance test. The dashboard is hosted at `http://localhost:3000`

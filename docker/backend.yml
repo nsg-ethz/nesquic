@@ -8,36 +8,26 @@ networks:
 
 volumes:
     grafana_data:
-    prometheus_data:
+    influxdb_data:
 
 services:
-    prometheus:
-        image: prom/prometheus:latest
-        container_name: prometheus
+    influxdb:
+        image: influxdb:2
+        container_name: influxdb
         networks:
             - nesquic
         restart: unless-stopped
         ports:
-            - "9092:9090"
+            - "8086:8086"
         volumes:
-            - prometheus_data:/etc/prometheus
-            - ./prometheus/config.yml:/etc/prometheus/prometheus.yml:ro
-        command:
-            - "--config.file=/etc/prometheus/prometheus.yml"
-            - "--query.lookback-delta=1y"
-            - "--storage.tsdb.retention.time=1y"
-            - "--web.console.libraries=/etc/prometheus/console_libraries"
-            - "--web.console.templates=/etc/prometheus/consoles"
-            - "--web.enable-lifecycle"
-
-    pushgateway:
-        image: prom/pushgateway:latest
-        container_name: pushgateway
-        networks:
-            - nesquic
-        restart: unless-stopped
-        ports:
-            - "9091:9091"
+            - influxdb_data:/var/lib/influxdb2
+        environment:
+            - DOCKER_INFLUXDB_INIT_MODE=setup
+            - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUX_ADMIN_USER:-admin}
+            - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUX_ADMIN_PASSWORD:-nesquicadmin}
+            - DOCKER_INFLUXDB_INIT_ORG=${INFLUX_ORG:-nesquic}
+            - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET:-nesquic}
+            - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-nesquic-token}
 
     grafana:
         image: grafana/grafana:latest
@@ -48,7 +38,7 @@ services:
         ports:
             - "3000:3000"
         depends_on:
-            - prometheus
+            - influxdb
         user: root
         volumes:
             - grafana_data:/var/lib/grafana
