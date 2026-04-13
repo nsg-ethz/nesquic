@@ -41,7 +41,7 @@ bpf-tracing = "0.0.1"
 [build-dependencies]
 libbpf-cargo = "0.26.1"
 built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }
-bpf-tracing-include = "0.0.2"
+bpf-tracing-include = "0.0.3"
 
 [dev-dependencies]
 test-case = "3.3.1"

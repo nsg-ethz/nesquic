@@ -296,9 +296,12 @@ checksum = "23725bca5b95406267bb578989a33465266531e82b674d510d60c39189fde0fb"
 
 [[package]]
 name = "bpf-tracing-include"
-version = "0.0.2"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0989c41c4a2b0e755d84c9ff0b7b5f8f9b4b493d6c48785d5410357f6fc5cb46"
+checksum = "fba959a1f365a9db9ce00259ce9febedd44881ecd5ea6c70ff488bab2ed0dc83"
+dependencies = [
+ "tracing",
+]
 
 [[package]]
 name = "built"
@@ -2041,7 +2044,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bpf-tracing",
- "bpf-tracing-include 0.0.2",
+ "bpf-tracing-include 0.0.3",
  "built",
  "clap",
  "core_affinity",
