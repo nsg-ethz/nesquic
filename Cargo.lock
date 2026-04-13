@@ -278,27 +278,22 @@ dependencies = [
 
 [[package]]
 name = "bpf-tracing"
-version = "0.0.1"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a08d2dc0f9dda1c238848fd6a049359eb1a21e7dd3db7b1275b247a1f46d798"
+checksum = "12454fda23315ab908bc9e3e383fde5a79f0575a787b153f54bb479c786945ff"
 dependencies = [
- "bpf-tracing-include 0.0.1",
- "libbpf-cargo",
  "nix 0.31.2",
  "tracing",
 ]
 
 [[package]]
 name = "bpf-tracing-include"
-version = "0.0.1"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23725bca5b95406267bb578989a33465266531e82b674d510d60c39189fde0fb"
-
-[[package]]
-name = "bpf-tracing-include"
-version = "0.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0989c41c4a2b0e755d84c9ff0b7b5f8f9b4b493d6c48785d5410357f6fc5cb46"
+checksum = "fba959a1f365a9db9ce00259ce9febedd44881ecd5ea6c70ff488bab2ed0dc83"
+dependencies = [
+ "tracing",
+]
 
 [[package]]
 name = "built"
@@ -1739,15 +1734,14 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libbpf-cargo"
-version = "0.26.1"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdd59674b82a31cb53e512cee97e3d5143737b40feda35f89b5b7f5c439e51e8"
+checksum = "67e63283df9689af55b85f91e99dc8b213ae89fc3e1d9bb29ab7f75eb8a8a783"
 dependencies = [
  "anyhow",
  "cargo_metadata",
  "clap",
  "libbpf-rs",
- "libbpf-sys",
  "memmap2",
  "serde",
  "serde_json",
@@ -1758,9 +1752,9 @@ dependencies = [
 
 [[package]]
 name = "libbpf-rs"
-version = "0.26.1"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6af29f679fd713ba4466b0296436268f573f6c5a8ef2f316d237eb3019c3c6f"
+checksum = "fd8e8db46a2d5967b5b3dba7aba32a875dc38f222395040607045635ec1f9b63"
 dependencies = [
  "bitflags",
  "libbpf-sys",
@@ -1770,20 +1764,20 @@ dependencies = [
 
 [[package]]
 name = "libbpf-sys"
-version = "1.6.2+v1.6.2"
+version = "1.7.0+v1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba0346fc595fa2c8e274903e8a0e3ed5e6a29183af167567f6289fd3b116881b"
+checksum = "a109478760b2900aa2a6f2087e9d0de1d9c535b1758602af2845d5d2ccfaed7c"
 dependencies = [
  "cc",
- "nix 0.30.1",
+ "nix 0.31.2",
  "pkg-config",
 ]
 
 [[package]]
 name = "libc"
-version = "0.2.184"
+version = "0.2.185"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48f5d2a454e16a5ea0f4ced81bd44e4cfc7bd3a507b61887c99fd3538b28e4af"
+checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
 
 [[package]]
 name = "libloading"
@@ -1995,7 +1989,7 @@ dependencies = [
  "neqo-crypto",
  "neqo-transport",
  "neqo-udp",
- "quinn-udp",
+ "quinn-udp 0.6.1",
  "socket2",
  "tokio",
  "tracing",
@@ -2031,7 +2025,7 @@ dependencies = [
  "libc",
  "log",
  "neqo-common",
- "quinn-udp",
+ "quinn-udp 0.5.14",
  "windows",
 ]
 
@@ -2041,7 +2035,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bpf-tracing",
- "bpf-tracing-include 0.0.2",
+ "bpf-tracing-include",
  "built",
  "clap",
  "core_affinity",
@@ -2737,7 +2731,7 @@ dependencies = [
  "cfg_aliases",
  "pin-project-lite",
  "quinn-proto",
- "quinn-udp",
+ "quinn-udp 0.5.14",
  "rustc-hash",
  "rustls",
  "socket2",
@@ -2799,6 +2793,18 @@ dependencies = [
  "socket2",
  "tracing",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "quinn-udp"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76150b617afc75e6e21ac5f39bc196e80b65415ae48d62dbef8e2519d040ce42"
+dependencies = [
+ "cfg_aliases",
+ "libc",
+ "socket2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3068,9 +3074,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.37"
+version = "0.23.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "758025cb5fccfd3bc2fd74708fd4682be41d99e5dff73c377c0646c6012c73a4"
+checksum = "69f9466fb2c14ea04357e91413efb882e2a6d4a406e625449bc0a5d360d53a21"
 dependencies = [
  "once_cell",
  "ring",
@@ -3768,9 +3774,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.51.0"
+version = "1.51.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd1c4c0fc4a7ab90fc15ef6daaa3ec3b893f004f915f2392557ed23237820cd"
+checksum = "f66bf9585cda4b724d3e78ab34b73fb2bbaba9011b9bfdf69dc836382ea13b8c"
 dependencies = [
  "bytes",
  "libc",

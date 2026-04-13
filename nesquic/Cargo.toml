@@ -18,14 +18,14 @@ noq    = ["dep:noq-iut"]
 anyhow = "1.0.102"
 built = { version = "0.8" }
 clap = "4.6.0"
-libbpf-rs = "0.26.1"
-libc = "0.2.184"
+libbpf-rs = "0.26.2"
+libc = "0.2.185"
 # msquic-iut = { path = "../iut/msquic" }
 quinn-iut  = { path = "../iut/quinn",  optional = true }
 quiche-iut = { path = "../iut/quiche", optional = true }
 neqo-iut   = { path = "../iut/neqo",   optional = true }
 noq-iut    = { path = "../iut/noq",    optional = true }
-tokio = { version = "1.51.0", features = ["signal", "sync"] }
+tokio = { version = "1.51.1", features = ["signal", "sync"] }
 utils = { path = "../utils" }
 tracing-subscriber = "0.3.23"
 tracing = "0.1.44"
@@ -36,12 +36,12 @@ reqwest = { version = "0.13.2", default-features = false, features = ["http2"] }
 plain = "0.2.3"
 core_affinity = "0.8.3"
 futures = "0.3.32"
-bpf-tracing = "0.0.1"
+bpf-tracing = "0.0.3"
 
 [build-dependencies]
-libbpf-cargo = "0.26.1"
+libbpf-cargo = "0.26.2"
 built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }
-bpf-tracing-include = "0.0.2"
+bpf-tracing-include = "0.0.3"
 
 [dev-dependencies]
 test-case = "3.3.1"
