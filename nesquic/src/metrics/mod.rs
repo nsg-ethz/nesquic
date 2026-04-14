@@ -59,56 +59,31 @@ fn process(ev: &[u8]) -> i32 {
     0
 }
 
-
-
-fn escape_tag(s: &str) -> String {
-    s.replace(',', "\\,").replace('=', "\\=").replace(' ', "\\ ")
-}
-
-fn build_tag_str(tags: &HashMap<String, String>) -> String {
-    let mut parts: Vec<String> = tags
-        .iter()
-        .filter(|(_, v)| !v.is_empty())
-        .map(|(k, v)| format!("{}={}", escape_tag(k), escape_tag(v)))
-        .collect();
-    parts.sort();
-    if parts.is_empty() {
-        String::new()
-    } else {
-        format!(",{}", parts.join(","))
-    }
-}
-
 /// Drain global metric state into InfluxDB line-protocol strings.
 /// All mutex locks are acquired and released inside this sync function,
 /// so no MutexGuard crosses an await boundary in the async push_all.
 fn collect_line_protocol(tag_str: &str, timestamp_ns: u128) -> Result<String> {
     let mut lines: Vec<String> = Vec::new();
 
-    {
-        let throughput_samples = THROUGHPUT_SAMPLES.lock().unwrap();
-        if !throughput_samples.is_empty() {
-            let mean =
-                throughput_samples.iter().sum::<f64>() / throughput_samples.len() as f64;
-            lines.push(format!(
-                "nesquic{} throughput={} {}",
-                tag_str, mean, timestamp_ns
-            ));
-        }
+    let throughput_samples = THROUGHPUT_SAMPLES.lock().unwrap();
+    if !throughput_samples.is_empty() {
+        let mean = throughput_samples.iter().sum::<f64>() / throughput_samples.len() as f64;
+        lines.push(format!(
+            "nesquic{} throughput={} {}",
+            tag_str, mean, timestamp_ns
+        ));
     }
 
-    {
-        let mut volumes = SYSCALL_VOLUMES.lock().unwrap();
-        for (syscall, data) in volumes.drain() {
-            let count = data.len();
-            let sum: f64 = data.iter().sum();
+    let mut volumes = SYSCALL_VOLUMES.lock().unwrap();
+    for (syscall, data) in volumes.drain() {
+        let count = data.len();
+        let sum: f64 = data.iter().sum();
 
-            let syscall_tag = format!("{},syscall={}", tag_str, escape_tag(&syscall));
-            lines.push(format!(
-                "nesquic_io{} volume_kb_sum={},count={}i {}",
-                syscall_tag, sum, count, timestamp_ns
-            ));
-        }
+        let syscall_tag = format!("{},syscall={}", tag_str, &syscall);
+        lines.push(format!(
+            "nesquic_io{} volume_kb_sum={},count={}i {}",
+            syscall_tag, sum, count, timestamp_ns
+        ));
     }
 
     if lines.is_empty() {
@@ -204,12 +179,31 @@ impl<'obj> MetricsCollector<'obj> {
         // Dropping links flushes the ring buffer
         self.links.take();
 
-        let timestamp_ns = SystemTime::now()
-            .duration_since(UNIX_EPOCH)?
-            .as_nanos();
+        let timestamp_ns = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
 
         let mut all_tags = tags;
         all_tags.insert("job".to_string(), job);
+
+        fn build_tag_str(tags: &HashMap<String, String>) -> String {
+            fn escape_tag(s: &str) -> String {
+                s.replace(',', "\\,")
+                    .replace('=', "\\=")
+                    .replace(' ', "\\ ")
+            }
+
+            let mut parts: Vec<String> = tags
+                .iter()
+                .filter(|(_, v)| !v.is_empty())
+                .map(|(k, v)| format!("{}={}", escape_tag(k), escape_tag(v)))
+                .collect();
+            parts.sort();
+            if parts.is_empty() {
+                String::new()
+            } else {
+                format!(",{}", parts.join(","))
+            }
+        }
+
         let tag_str = build_tag_str(&all_tags);
 
         // Collect data into plain strings before any await (MutexGuard is not Send)
@@ -253,8 +247,7 @@ impl<'obj> MetricsCollector<'obj> {
 
         let throughput_samples = THROUGHPUT_SAMPLES.lock().unwrap();
         if !throughput_samples.is_empty() {
-            let mean =
-                throughput_samples.iter().sum::<f64>() / throughput_samples.len() as f64;
+            let mean = throughput_samples.iter().sum::<f64>() / throughput_samples.len() as f64;
             println!("throughput: {:.3} Mbps", mean);
         }
         drop(throughput_samples);
