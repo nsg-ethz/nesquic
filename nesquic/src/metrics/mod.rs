@@ -5,13 +5,13 @@ use libbpf_rs::{
     skel::{OpenSkel, SkelBuilder},
     Link, PrintLevel,
 };
-use prometheus::{
-    histogram_opts, opts, register_histogram, register_histogram_vec, register_int_counter,
-    Histogram, HistogramVec, IntCounter,
+use reqwest::Client;
+use std::{
+    collections::HashMap,
+    mem::MaybeUninit,
+    sync::Mutex,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use prometheus_push::prometheus_crate::PrometheusMetricsPusher;
-use reqwest::{Client, Url};
-use std::{collections::HashMap, mem::MaybeUninit, time::Duration};
 use tracing::{debug, error, info, trace, warn};
 
 include!(concat!(env!("OUT_DIR"), "/metrics.skel.rs"));
@@ -23,31 +23,15 @@ lazy_static! {
         "write", "writev", "send", "sendto", "sendmsg", "sendmmsg", "read", "readv", "recv",
         "recvfrom", "recvmsg", "recvmmsg",
     ];
-    pub static ref RUNS: IntCounter =
-        register_int_counter!(opts!("nesquic_runs", "Nesquic benchmarking runs"))
-            .expect("nesquic_runs");
-    pub static ref IO_SYSCALL_DATA_VOLUME: HistogramVec = register_histogram_vec!(
-        "io_syscalls_data_volume",
-        "I/O syscall data volume",
-        &["syscall"]
-    )
-    .expect("io_syscalls_data_volume");
-    pub static ref IO_SYSCALL_INVOCATIONS: HistogramVec = register_histogram_vec!(
-        "io_syscalls_invocations",
-        "I/O syscall invocations",
-        &["syscall"]
-    )
-    .expect("io_syscalls_invocations");
-    pub static ref THROUGHPUT: Histogram = register_histogram!(histogram_opts!(
-        "throughput",
-        "Average throughput throughout the benchmark"
-    ))
-    .expect("throughput");
+    /// Bytes transferred per syscall invocation, keyed by syscall name.
+    pub static ref SYSCALL_VOLUMES: Mutex<HashMap<String, Vec<f64>>> =
+        Mutex::new(HashMap::new());
+    /// Throughput samples (Mbps) recorded by the client after each run.
+    pub static ref THROUGHPUT_SAMPLES: Mutex<Vec<f64>> = Mutex::new(Vec::new());
 }
 
 fn print(level: PrintLevel, msg: String) {
     let msg = msg.trim_start_matches("libbpf:").trim();
-
     match level {
         PrintLevel::Debug => debug!(target: "libbpf", "{}", msg),
         PrintLevel::Info => info!(target: "libbpf", "{}", msg),
@@ -63,14 +47,49 @@ fn process(ev: &[u8]) -> i32 {
     trace!("Processing event: {:?}", ev);
 
     let syscall = SYSCALLS[ev.syscall as usize];
-    IO_SYSCALL_DATA_VOLUME
-        .with_label_values(&[syscall])
-        .observe(ev.len as f64 / 1000.0);
-    IO_SYSCALL_INVOCATIONS
-        .with_label_values(&[syscall])
-        .observe(1.0);
+    let volume_kb = ev.len as f64 / 1000.0;
 
-    return 0;
+    SYSCALL_VOLUMES
+        .lock()
+        .unwrap()
+        .entry(syscall.to_string())
+        .or_default()
+        .push(volume_kb);
+
+    0
+}
+
+/// Drain global metric state into InfluxDB line-protocol strings.
+/// All mutex locks are acquired and released inside this sync function,
+/// so no MutexGuard crosses an await boundary in the async push_all.
+fn collect_line_protocol(tag_str: &str, timestamp_ns: u128) -> Result<String> {
+    let mut lines: Vec<String> = Vec::new();
+
+    let throughput_samples = THROUGHPUT_SAMPLES.lock().unwrap();
+    if !throughput_samples.is_empty() {
+        let mean = throughput_samples.iter().sum::<f64>() / throughput_samples.len() as f64;
+        lines.push(format!(
+            "nesquic{} throughput={} {}",
+            tag_str, mean, timestamp_ns
+        ));
+    }
+
+    let mut volumes = SYSCALL_VOLUMES.lock().unwrap();
+    for (syscall, data) in volumes.drain() {
+        let count = data.len();
+        let sum: f64 = data.iter().sum();
+
+        let syscall_tag = format!("{},syscall={}", tag_str, &syscall);
+        lines.push(format!(
+            "nesquic_io{} volume_kb_sum={},count={}i {}",
+            syscall_tag, sum, count, timestamp_ns
+        ));
+    }
+
+    if lines.is_empty() {
+        bail!("No metrics to push");
+    }
+    Ok(lines.join("\n"))
 }
 
 pub struct MetricsCollector<'obj> {
@@ -143,39 +162,101 @@ impl<'obj> MetricsCollector<'obj> {
         Ok(())
     }
 
-    pub async fn push_all<S: AsRef<str>>(
+    /// Push all collected metrics to InfluxDB as a single point-in-time measurement.
+    ///
+    /// Writes two measurement types:
+    /// - `nesquic`: throughput (one point per run)
+    /// - `nesquic_io`: per-syscall stats (one point per syscall type per run)
+    pub async fn push_all(
         &mut self,
-        gateway: S,
-        job: S,
-        labels: HashMap<String, String>,
+        url: String,
+        token: String,
+        org: String,
+        bucket: String,
+        job: String,
+        tags: HashMap<String, String>,
     ) -> Result<()> {
-        // this flushes the ring buffer
+        // Dropping links flushes the ring buffer
         self.links.take();
-        RUNS.inc();
 
-        let push_gateway: Url = Url::parse(gateway.as_ref())?;
+        let timestamp_ns = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+
+        let mut all_tags = tags;
+        all_tags.insert("job".to_string(), job);
+
+        fn build_tag_str(tags: &HashMap<String, String>) -> String {
+            fn escape_tag(s: &str) -> String {
+                s.replace(',', "\\,")
+                    .replace('=', "\\=")
+                    .replace(' ', "\\ ")
+            }
+
+            let mut parts: Vec<String> = tags
+                .iter()
+                .filter(|(_, v)| !v.is_empty())
+                .map(|(k, v)| format!("{}={}", escape_tag(k), escape_tag(v)))
+                .collect();
+            parts.sort();
+            if parts.is_empty() {
+                String::new()
+            } else {
+                format!(",{}", parts.join(","))
+            }
+        }
+
+        let tag_str = build_tag_str(&all_tags);
+
+        // Collect data into plain strings before any await (MutexGuard is not Send)
+        let body = collect_line_protocol(&tag_str, timestamp_ns)?;
+        let line_count = body.lines().count();
+
+        let write_url = format!(
+            "{}/api/v2/write?org={}&bucket={}&precision=ns",
+            url, org, bucket
+        );
+
+        info!("Pushing {} line(s) to {}", line_count, write_url);
+        for line in body.lines() {
+            debug!("  > {}", line);
+        }
+
         let client = Client::new();
-        let metrics_pusher = PrometheusMetricsPusher::from(client, &push_gateway)?;
+        let resp = client
+            .post(&write_url)
+            .header("Authorization", format!("Token {}", token))
+            .header("Content-Type", "text/plain; charset=utf-8")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("HTTP request failed: {} (kind: {:?})", e, e.url()))?;
 
-        let labels = labels
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect::<HashMap<&str, &str>>();
+        let status = resp.status();
+        info!("InfluxDB responded with HTTP {}", status);
 
-        metrics_pusher
-            .push_all(job.as_ref(), &labels, prometheus::gather())
-            .await?;
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            bail!("InfluxDB write failed {}: {}", status, body);
+        }
 
+        info!("Metrics written to InfluxDB (bucket: {}/{})", org, bucket);
         Ok(())
     }
 
     pub fn report(&mut self) -> Result<()> {
-        // this flushes the ring buffer
         self.links.take();
-        RUNS.inc();
 
-        for metric in prometheus::gather() {
-            println!("{:?}", metric);
+        let throughput_samples = THROUGHPUT_SAMPLES.lock().unwrap();
+        if !throughput_samples.is_empty() {
+            let mean = throughput_samples.iter().sum::<f64>() / throughput_samples.len() as f64;
+            println!("throughput: {:.3} Mbps", mean);
+        }
+        drop(throughput_samples);
+
+        let volumes = SYSCALL_VOLUMES.lock().unwrap();
+        for (syscall, data) in volumes.iter() {
+            let count = data.len();
+            let sum: f64 = data.iter().sum();
+            println!("{}: count={}, volume_kb_sum={:.3}", syscall, count, sum);
         }
 
         Ok(())

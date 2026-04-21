@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use clap::ValueEnum;
-use metrics::THROUGHPUT;
+use metrics::THROUGHPUT_SAMPLES;
 
 /*
 
@@ -125,7 +125,7 @@ let stats: Stats   = match lib {
         _ => bail!("selected library is not enabled in this build"),
     };
 
-    THROUGHPUT.observe(stats.throughputs().mean());
+    THROUGHPUT_SAMPLES.lock().unwrap().push(stats.throughputs().mean());
     Ok(())
 }
 

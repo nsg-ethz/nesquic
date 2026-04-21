@@ -54,7 +54,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -129,7 +129,7 @@
           "mode": "single",
           "sort": "none"
         },
-        "xField": "exported_job",
+        "xField": "job",
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 0
       },
@@ -138,20 +138,13 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "throughput_sum{library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "throughput_sum{library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic\" and r._field == \"throughput\")\n  |> filter(fn: (r) => r.library == \"msquic\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"throughput\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
@@ -247,116 +240,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Data Volume [kB]",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 12.0,
-        "y": 40
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 5,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='server', exported_job='unbounded', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='server', exported_job='unbounded', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Server I/O Data Volume",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -408,7 +292,7 @@
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 6,
+      "id": 5,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -440,20 +324,13 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='server', exported_job='unbounded', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='server', exported_job='unbounded', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"unbounded\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
@@ -465,7 +342,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -513,11 +390,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 56
+        "y": 40
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 7,
+      "id": 6,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -549,32 +426,25 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='client', exported_job='unbounded', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='client', exported_job='unbounded', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"unbounded\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Data Volume",
+      "title": "Server I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -626,6 +496,108 @@
       },
       "height": null,
       "hideTimeOverride": false,
+      "id": 7,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "hide": false,
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"unbounded\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Syscalls",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "influxdb",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Data Volume [kB]",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 12.0,
+        "y": 56
+      },
+      "height": null,
+      "hideTimeOverride": false,
       "id": 8,
       "interval": null,
       "links": [],
@@ -658,25 +630,18 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='client', exported_job='unbounded', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='client', exported_job='unbounded', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"unbounded\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Syscalls",
+      "title": "Client I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
@@ -767,116 +732,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Data Volume [kB]",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 12.0,
-        "y": 88
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 11,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='server', exported_job='delay5', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='server', exported_job='delay5', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Server I/O Data Volume",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -928,7 +784,7 @@
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 12,
+      "id": 11,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -960,20 +816,13 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='server', exported_job='delay5', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='server', exported_job='delay5', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"delay5\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
@@ -985,7 +834,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -1033,11 +882,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 104
+        "y": 88
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 13,
+      "id": 12,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1069,32 +918,25 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='client', exported_job='delay5', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='client', exported_job='delay5', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"delay5\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Data Volume",
+      "title": "Server I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -1146,6 +988,108 @@
       },
       "height": null,
       "hideTimeOverride": false,
+      "id": 13,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "hide": false,
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"delay5\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Syscalls",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "influxdb",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Data Volume [kB]",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 12.0,
+        "y": 104
+      },
+      "height": null,
+      "hideTimeOverride": false,
       "id": 14,
       "interval": null,
       "links": [],
@@ -1178,25 +1122,18 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='client', exported_job='delay5', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='client', exported_job='delay5', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"delay5\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Syscalls",
+      "title": "Client I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
@@ -1287,116 +1224,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Data Volume [kB]",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 12.0,
-        "y": 136
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 17,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='server', exported_job='delay20', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='server', exported_job='delay20', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Server I/O Data Volume",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -1448,7 +1276,7 @@
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 18,
+      "id": 17,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1480,20 +1308,13 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='server', exported_job='delay20', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='server', exported_job='delay20', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"delay20\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
@@ -1505,7 +1326,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -1553,11 +1374,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 152
+        "y": 136
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 19,
+      "id": 18,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -1589,32 +1410,25 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='client', exported_job='delay20', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='client', exported_job='delay20', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"delay20\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Data Volume",
+      "title": "Server I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -1666,6 +1480,108 @@
       },
       "height": null,
       "hideTimeOverride": false,
+      "id": 19,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "hide": false,
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"delay20\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Syscalls",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "influxdb",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Data Volume [kB]",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 12.0,
+        "y": 152
+      },
+      "height": null,
+      "hideTimeOverride": false,
       "id": 20,
       "interval": null,
       "links": [],
@@ -1698,25 +1614,18 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='client', exported_job='delay20', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='client', exported_job='delay20', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"delay20\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Syscalls",
+      "title": "Client I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
@@ -1807,116 +1716,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
-      "description": null,
-      "editable": true,
-      "error": false,
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "fixedColor": "none",
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "Data Volume [kB]",
-            "axisPlacement": "auto",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineWidth": 1,
-            "scaleDistribution": {
-              "type": "linear"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12.0,
-        "x": 12.0,
-        "y": 184
-      },
-      "height": null,
-      "hideTimeOverride": false,
-      "id": 23,
-      "interval": null,
-      "links": [],
-      "maxDataPoints": 100,
-      "maxPerRow": null,
-      "minSpan": null,
-      "options": {
-        "barRadius": 0.0,
-        "barWidth": 0.97,
-        "groupWidth": 0.7,
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "orientation": "vertical",
-        "showValue": "auto",
-        "stacking": "none",
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "xField": "syscall",
-        "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0
-      },
-      "repeat": null,
-      "repeatDirection": null,
-      "span": null,
-      "targets": [
-        {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
-          "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
-        }
-      ],
-      "timeFrom": null,
-      "timeShift": null,
-      "title": "Server I/O Data Volume",
-      "transformations": [],
-      "transparent": false,
-      "type": "barchart"
-    },
-    {
-      "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -1968,7 +1768,7 @@
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 24,
+      "id": 23,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -2000,20 +1800,13 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='server', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"driving\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
@@ -2025,7 +1818,7 @@
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -2073,11 +1866,11 @@
         "h": 8,
         "w": 12.0,
         "x": 12.0,
-        "y": 200
+        "y": 184
       },
       "height": null,
       "hideTimeOverride": false,
-      "id": 25,
+      "id": 24,
       "interval": null,
       "links": [],
       "maxDataPoints": 100,
@@ -2109,32 +1902,25 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_data_volume_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_data_volume_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"server\" and r.job == \"driving\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Data Volume",
+      "title": "Server I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
     },
     {
       "cacheTimeout": null,
-      "datasource": "prometheus",
+      "datasource": "influxdb",
       "description": null,
       "editable": true,
       "error": false,
@@ -2186,6 +1972,108 @@
       },
       "height": null,
       "hideTimeOverride": false,
+      "id": 25,
+      "interval": null,
+      "links": [],
+      "maxDataPoints": 100,
+      "maxPerRow": null,
+      "minSpan": null,
+      "options": {
+        "barRadius": 0.0,
+        "barWidth": 0.97,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "vertical",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "syscall",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "repeat": null,
+      "repeatDirection": null,
+      "span": null,
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
+          "hide": false,
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"count\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"driving\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"count\"})\n  |> group()",
+          "refId": "A"
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Client I/O Syscalls",
+      "transformations": [],
+      "transparent": false,
+      "type": "barchart"
+    },
+    {
+      "cacheTimeout": null,
+      "datasource": "influxdb",
+      "description": null,
+      "editable": true,
+      "error": false,
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "none",
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Data Volume [kB]",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12.0,
+        "x": 12.0,
+        "y": 200
+      },
+      "height": null,
+      "hideTimeOverride": false,
       "id": 26,
       "interval": null,
       "links": [],
@@ -2218,25 +2106,18 @@
       "span": null,
       "targets": [
         {
-          "alias": "",
-          "datasource": null,
-          "expr": "io_syscalls_invocations_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "format": "table",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb"
+          },
           "hide": false,
-          "instant": true,
-          "interval": "",
-          "intervalFactor": 2,
-          "legendFormat": "",
-          "metric": "",
-          "query": "io_syscalls_invocations_sum{mode='client', exported_job='driving', library='msquic', log_level='error'}",
-          "refId": "",
-          "step": 10,
-          "target": ""
+          "query": "from(bucket: \"nesquic\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"nesquic_io\" and r._field == \"volume_kb_sum\")\n  |> filter(fn: (r) => r.library == \"msquic\" and r.mode == \"client\" and r.job == \"driving\")\n  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)\n  |> rename(columns: {\"_value\": \"volume_kb_sum\"})\n  |> group()",
+          "refId": "A"
         }
       ],
       "timeFrom": null,
       "timeShift": null,
-      "title": "Client I/O Syscalls",
+      "title": "Client I/O Data Volume",
       "transformations": [],
       "transparent": false,
       "type": "barchart"
@@ -2249,7 +2130,26 @@
   "style": "dark",
   "tags": "nesquic",
   "templating": {
-    "list": []
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {},
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "label": "Run",
+        "multi": false,
+        "name": "nesquic_run",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"nesquic\", tag: \"nesquic_run\")",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
   },
   "time": {
     "from": "now-1h",

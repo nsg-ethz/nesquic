@@ -90,6 +90,7 @@ fn labels(cli: &Cli) -> HashMap<String, String> {
             (hs[0].to_string(), hs[1].to_string())
         })
         .collect::<HashMap<String, String>>();
+    trace!("Run labels: {:?}", run_labels);
 
     let library = cli.command.args().lib;
 
@@ -99,6 +100,8 @@ fn labels(cli: &Cli) -> HashMap<String, String> {
     labels.insert(String::from("mode"), mode);
     labels.insert(String::from("version"), library.version());
     labels.extend(run_labels.into_iter());
+
+    trace!("Final labels: {:?}", labels);
 
     labels
 }
@@ -167,14 +170,19 @@ async fn main() -> Result<()> {
         _ = job_done_rx.await;
 
         if let Some(job) = job {
-            if let Ok(push_gateway) = env::var("PR_PUSH_GATEWAY") {
-                info!("Pushing metrics to {}", push_gateway);
+            if let (Ok(url), Ok(token), Ok(org), Ok(bucket)) = (
+                env::var("INFLUX_URL"),
+                env::var("INFLUX_TOKEN"),
+                env::var("INFLUX_ORG"),
+                env::var("INFLUX_BUCKET"),
+            ) {
+                info!("Pushing metrics to InfluxDB at {}", url);
 
                 if let Some(Err(e)) =
-                    select_with_term_signals(monitor.push_all(push_gateway.clone(), job, labels))
+                    select_with_term_signals(monitor.push_all(url, token, org, bucket, job, labels))
                         .await
                 {
-                    error!("Error pushing metrics to {}: {}", push_gateway, e);
+                    error!("Error pushing metrics to InfluxDB: {}", e);
                 }
             }
         } else {
