@@ -108,10 +108,6 @@ impl<'obj> MetricsCollector<'obj> {
             bail!("Failed to load rodata");
         };
         rodata.MONITORED_PID = std::process::id();
-
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            open_skel.progs.do_writev.set_log_level(1);
-        }
         let skel = open_skel.load()?;
 
         Ok(Self { skel, links: None })
@@ -119,29 +115,20 @@ impl<'obj> MetricsCollector<'obj> {
 
     pub fn monitor_io(&mut self) -> Result<()> {
         info!("Monitoring IO");
-        let ksys_read = self.skel.progs.ksys_read.attach()?;
-        let ksys_write = self.skel.progs.ksys_write.attach()?;
-        let do_writev = self.skel.progs.do_writev.attach()?;
-        let do_readv = self.skel.progs.do_readv.attach()?;
+        let read = self.skel.progs.read.attach()?;
+        let write = self.skel.progs.write.attach()?;
+        let writev = self.skel.progs.writev.attach()?;
+        let readv = self.skel.progs.readv.attach()?;
 
-        let sys_recvfrom = self.skel.progs.__sys_recvfrom.attach()?;
-        let sys_recvmsg = self.skel.progs.__sys_recvmsg.attach()?;
-        let sys_recvmmsg = self.skel.progs.__sys_recvmmsg.attach()?;
-        let sys_sendto = self.skel.progs.__sys_sendto.attach()?;
-        let sys_sendmsg = self.skel.progs.__sys_sendmsg.attach()?;
-        let sys_sendmmsg = self.skel.progs.__sys_sendmmsg.attach()?;
+        let recvfrom = self.skel.progs.recvfrom.attach()?;
+        let recvmsg = self.skel.progs.recvmsg.attach()?;
+        let recvmmsg = self.skel.progs.recvmmsg.attach()?;
+        let sendto = self.skel.progs.sendto.attach()?;
+        let sendmsg = self.skel.progs.sendmsg.attach()?;
+        let sendmmsg = self.skel.progs.sendmmsg.attach()?;
 
         self.links = Some(vec![
-            ksys_read,
-            ksys_write,
-            do_writev,
-            do_readv,
-            sys_recvfrom,
-            sys_recvmsg,
-            sys_recvmmsg,
-            sys_sendto,
-            sys_sendmsg,
-            sys_sendmmsg,
+            read, write, writev, readv, recvfrom, recvmsg, recvmmsg, sendto, sendmsg, sendmmsg,
         ]);
 
         let mut builder = libbpf_rs::RingBufferBuilder::new();

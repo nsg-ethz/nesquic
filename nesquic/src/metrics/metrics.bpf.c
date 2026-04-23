@@ -25,7 +25,7 @@ const u16 EVENT_IO_SYSCALL_RECVMMSG = 11;
 
 struct ringbuf {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, 1000);
+    __uint(max_entries, 5000);
 } events SEC(".maps");
 
 struct event_io {
@@ -39,13 +39,13 @@ struct event_io noevent = {};
 __always_inline void _submit_event(void *event, u32 len) {
     struct bpf_dynptr ptr;
     if (bpf_ringbuf_reserve_dynptr(&events, len, 0, &ptr) != 0) {
-        bpf_error("ERROR: _submit_event failed to reserve dynptr");
+        bpf_error("_submit_event failed to reserve %u bytes", len);
         bpf_ringbuf_discard_dynptr(&ptr, 0);
         return;
     }
 
     if (bpf_dynptr_write(&ptr, 0, event, len, 0) != 0) {
-        bpf_error("ERROR: _submit_event failed to write dynptr");
+        bpf_error("_submit_event failed to write dynptr");
         bpf_ringbuf_discard_dynptr(&ptr, 0);
         return;
     }
@@ -67,7 +67,7 @@ __always_inline u32 count_iovec_len(struct iovec *vec, u32 vlen) {
     bpf_for(i, 0, vlen) {
         struct iovec iov;
         if (bpf_probe_read_user(&iov, sizeof(struct iovec), vec + i) < 0) {
-            bpf_error("ERROR: count_iovec_len failed to read iov[%u]", i);
+            bpf_error("count_iovec_len failed to read iov[%u]", i);
             return 0;
         }
 
@@ -86,7 +86,7 @@ __always_inline void _submit_event_user_msghdr(u16 syscall, struct user_msghdr *
     u32 i = 0, k = 0;
     struct user_msghdr msg;
     if (bpf_probe_read_user(&msg, sizeof(struct user_msghdr), msg_ptr) < 0) {
-        bpf_error("ERROR: _submit_event_user_msghdr failed to read msg");
+        bpf_error("_submit_event_user_msghdr failed to read msg");
         return;
     }
 
@@ -102,7 +102,7 @@ __always_inline void _submit_event_msghdr(u16 syscall, struct mmsghdr *mmsg, u32
     bpf_for(i, 0, vlen) {
         struct mmsghdr msg;
         if (bpf_probe_read_user(&msg, sizeof(struct mmsghdr), mmsg + i) < 0) {
-            bpf_error("ERROR: _submit_event_msghdr failed to read mmsg[%u]", i);
+            bpf_error("_submit_event_msghdr failed to read mmsg[%u]", i);
             return;
         }
 
@@ -112,91 +112,160 @@ __always_inline void _submit_event_msghdr(u16 syscall, struct mmsghdr *mmsg, u32
     _submit_event_io(syscall, k);
 }
 
-SEC("kprobe/do_writev")
-int BPF_KPROBE(do_writev, unsigned long fd, struct iovec *vec, unsigned long vlen, rwf_t flags) {
+// struct trace_sys_enter_writev_args {
+//    short common_type;
+//    char common_flags;
+//    char common_preempt_count;
+//    int common_pid;
+//    s32 syscall_nr;
+//    unsigned long fd;
+//    struct iovec *vec;
+//    unsigned long vlen;
+// };
+
+SEC("tracepoint/syscalls/sys_enter_writev")
+int writev(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("do_writev(%lu, %p, %lu, %u)", fd, vec, vlen, flags);
+
+    unsigned long fd = ctx->args[0];
+    struct iovec *vec = (struct iovec *)ctx->args[1];
+    unsigned long vlen = ctx->args[2];
+
+    bpf_trace("writev(%lu, %p, %lu)", fd, vec, vlen);
     _submit_event_iovec(EVENT_IO_SYSCALL_WRITEV, vec, vlen);
 
     return 0;
 }
 
-SEC("kprobe/do_readv")
-int BPF_KPROBE(do_readv, unsigned long fd, struct iovec* vec, unsigned long vlen) {
+SEC("tracepoint/syscalls/sys_enter_readv")
+int readv(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("do_readv(%lu, %p, %lu)", fd, vec, vlen);
+
+    unsigned long fd = ctx->args[0];
+    struct iovec *vec = (struct iovec *)ctx->args[1];
+    unsigned long vlen = ctx->args[2];
+
+    bpf_trace("readv(%lu, %p, %lu)", fd, vec, vlen);
     _submit_event_iovec(EVENT_IO_SYSCALL_READV, vec, vlen);
 
     return 0;
 }
 
-SEC("kprobe/ksys_write")
-int BPF_KPROBE(ksys_write, int fd, char *buf, size_t len) {
+SEC("tracepoint/syscalls/sys_enter_write")
+int write(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("ksys_write(%d, %p, %lu)", fd, buf, len);
-    // _submit_event_io(EVENT_IO_SYSCALL_WRITE, len);
+
+    unsigned int fd = ctx->args[0];
+    const char *buf = (const char *)ctx->args[1];
+    size_t count = ctx->args[2];
+
+    bpf_trace("write(%u, %p, %lu)", fd, buf, count);
+    _submit_event_io(EVENT_IO_SYSCALL_WRITE, count);
 
     return 0;
 }
 
-SEC("kprobe/ksys_read")
-int BPF_KPROBE(ksys_read, int fd, char *buf, size_t len) {
+SEC("tracepoint/syscalls/sys_enter_read")
+int read(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("ksys_read(%d, %p, %lu)", fd, buf, len);
-    _submit_event_io(EVENT_IO_SYSCALL_READ, len);
+
+    unsigned int fd = ctx->args[0];
+    char *buf = (char *)ctx->args[1];
+    size_t count = ctx->args[2];
+
+    bpf_trace("read(%u, %p, %lu)", fd, buf, count);
+    _submit_event_io(EVENT_IO_SYSCALL_READ, count);
 
     return 0;
 }
 
-SEC("kprobe/__sys_recvmsg")
-int BPF_KPROBE(__sys_recvmsg, int fd, struct user_msghdr *msg, unsigned int flags, bool forbid_cmsg_compat) {
+SEC("tracepoint/syscalls/sys_enter_recvmsg")
+int recvmsg(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("__sys_recvmsg(%u, %p, %u, %u)", fd, msg, flags, forbid_cmsg_compat);
+
+    int fd = ctx->args[0];
+    struct user_msghdr *msg = (struct user_msghdr *)ctx->args[1];
+    unsigned int flags = ctx->args[2];
+
+    bpf_trace("recvmsg(%u, %p, %u)", fd, msg, flags);
     _submit_event_user_msghdr(EVENT_IO_SYSCALL_RECVMSG, msg);
 
     return 0;
 }
 
-SEC("kprobe/__sys_recvmmsg")
-int BPF_KPROBE(__sys_recvmmsg, int fd, struct mmsghdr *mmsg, unsigned int vlen, unsigned int flags, struct timespec64 *timeout) {
+SEC("tracepoint/syscalls/sys_enter_recvmmsg")
+int recvmmsg(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("__sys_recvmmsg(%u, %p, %u, %u, %p)", fd, mmsg, vlen, flags, timeout);
+
+    int fd = ctx->args[0];
+    struct mmsghdr *mmsg = (struct mmsghdr *)ctx->args[1];
+    unsigned int vlen = ctx->args[2];
+    unsigned int flags = ctx->args[3];
+
+    bpf_trace("recvmmsg(%u, %p, %u, %u)", fd, mmsg, vlen, flags);
     _submit_event_msghdr(EVENT_IO_SYSCALL_RECVMMSG, mmsg, vlen);
 
     return 0;
 }
 
-SEC("kprobe/__sys_recvfrom")
-int BPF_KPROBE(__sys_recvfrom, int fd, void *buf, size_t size, unsigned int flags, struct sockaddr *addr, int *addr_len) {
+SEC("tracepoint/syscalls/sys_enter_recvfrom")
+int recvfrom(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("__sys_recvfrom(%u, %p, %lu, %u, %p, %p)", fd, buf, size, flags, addr, addr_len);
+
+    int fd = ctx->args[0];
+    void *buf = (void *)ctx->args[1];
+    size_t size = ctx->args[2];
+    unsigned int flags = ctx->args[3];
+    struct sockaddr *addr = (struct sockaddr *)ctx->args[4];
+    int *addr_len = (int *)ctx->args[5];
+
+    bpf_trace("recvfrom(%u, %p, %lu, %u, %p, %p)", fd, buf, size, flags, addr, addr_len);
     _submit_event_io(EVENT_IO_SYSCALL_RECVFROM, size);
 
     return 0;
 }
 
-SEC("kprobe/__sys_sendto")
-int BPF_KPROBE(__sys_sendto, int fd, void *buf, size_t len, unsigned int flags, struct sockaddr *addr,  int addr_len) {
+SEC("tracepoint/syscalls/sys_enter_sendto")
+int sendto(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("__sys_sendto(%u, %p, %lu, %u, %p, %d)", fd, buf, len, flags, addr, addr_len);
+
+    int fd = ctx->args[0];
+    void *buf = (void *)ctx->args[1];
+    size_t len = ctx->args[2];
+    unsigned int flags = ctx->args[3];
+    struct sockaddr *addr = (struct sockaddr *)ctx->args[4];
+    int addr_len = ctx->args[5];
+
+    bpf_trace("sendto(%u, %p, %lu, %u, %p, %d)", fd, buf, len, flags, addr, addr_len);
     _submit_event_io(EVENT_IO_SYSCALL_SENDTO, len);
 
     return 0;
 }
 
-SEC("kprobe/__sys_sendmsg")
-int BPF_KPROBE(__sys_sendmsg, int fd, struct user_msghdr *msg, unsigned int flags, bool forbid_cmsg_compat) {
+SEC("tracepoint/syscalls/sys_enter_sendmsg")
+int sendmsg(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("__sys_sendmsg(%u, %p, %u, %u)", fd, msg, flags, forbid_cmsg_compat);
+
+    int fd = ctx->args[0];
+    struct user_msghdr *msg = (struct user_msghdr *)ctx->args[1];
+    unsigned int flags = ctx->args[2];
+
+    bpf_trace("sendmsg(%u, %p, %u)", fd, msg, flags);
     _submit_event_user_msghdr(EVENT_IO_SYSCALL_SENDMSG, msg);
 
     return 0;
 }
 
-SEC("kprobe/__sys_sendmmsg")
-int BPF_KPROBE(__sys_sendmmsg, int fd, struct mmsghdr *mmsg, unsigned int vlen, unsigned int flags, bool forbid_cmsg_compat) {
+SEC("tracepoint/syscalls/sys_enter_sendmmsg")
+int sendmmsg(struct trace_event_raw_sys_enter *ctx) {
     pid_guard();
-    bpf_trace("__sys_sendmmsg(%u, %p, %u, %u, %u)", fd, mmsg, vlen, flags, forbid_cmsg_compat);
+
+    int fd = ctx->args[0];
+    struct mmsghdr *mmsg = (struct mmsghdr *)ctx->args[1];
+    unsigned int vlen = ctx->args[2];
+    unsigned int flags = ctx->args[3];
+
+    bpf_trace("sendmmsg(%u, %p, %u, %u)", fd, mmsg, vlen, flags);
     _submit_event_msghdr(EVENT_IO_SYSCALL_SENDMMSG, mmsg, vlen);
 
     return 0;
