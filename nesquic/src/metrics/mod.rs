@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use byte_unit::{Byte, Unit};
 use lazy_static::lazy_static;
 use libbpf_rs::{
     set_print,
@@ -24,7 +25,7 @@ lazy_static! {
         "recvfrom", "recvmsg", "recvmmsg",
     ];
     /// Bytes transferred per syscall invocation, keyed by syscall name.
-    pub static ref SYSCALL_VOLUMES: Mutex<HashMap<String, Vec<f64>>> =
+    pub static ref SYSCALL_VOLUMES: Mutex<HashMap<String, Vec<Byte>>> =
         Mutex::new(HashMap::new());
     /// Throughput samples (Mbps) recorded by the client after each run.
     pub static ref THROUGHPUT_SAMPLES: Mutex<Vec<f64>> = Mutex::new(Vec::new());
@@ -47,14 +48,14 @@ fn process(ev: &[u8]) -> i32 {
     trace!("Processing event: {:?}", ev);
 
     let syscall = SYSCALLS[ev.syscall as usize];
-    let volume_kb = ev.len as f64 / 1000.0;
+    let volume = Byte::from_u64(ev.len as u64);
 
     SYSCALL_VOLUMES
         .lock()
         .unwrap()
         .entry(syscall.to_string())
         .or_default()
-        .push(volume_kb);
+        .push(volume);
 
     0
 }
@@ -77,7 +78,11 @@ fn collect_line_protocol(tag_str: &str, timestamp_ns: u128) -> Result<String> {
     let mut volumes = SYSCALL_VOLUMES.lock().unwrap();
     for (syscall, data) in volumes.drain() {
         let count = data.len();
-        let sum: f64 = data.iter().sum();
+        let sum = data
+            .iter()
+            .fold(Byte::from_u64(0), |acc, v| acc.add(*v).unwrap())
+            .get_adjusted_unit(Unit::KB)
+            .get_value();
 
         let syscall_tag = format!("{},syscall={}", tag_str, &syscall);
         lines.push(format!(
@@ -242,8 +247,12 @@ impl<'obj> MetricsCollector<'obj> {
         let volumes = SYSCALL_VOLUMES.lock().unwrap();
         for (syscall, data) in volumes.iter() {
             let count = data.len();
-            let sum: f64 = data.iter().sum();
-            println!("{}: count={}, volume_kb_sum={:.3}", syscall, count, sum);
+            let sum = data
+                .iter()
+                .fold(Byte::from_u64(0), |acc, v| acc.add(*v).unwrap())
+                .get_adjusted_unit(Unit::KB)
+                .get_value();
+            println!("{}: count={}, volume_sum={:.3}", syscall, count, sum);
         }
 
         Ok(())
