@@ -54,10 +54,16 @@ export NQ_LIBS="quinn quiche neqo"
 script/dashboard.sh
 # update run.sh to the correct CPU-range; if you are running a bare-metal
 # benchmark, enable NESQUIC_BENACHMARK=1.
+
 # run the test scenarios for a given library
-# the label can be used later to identify past runs. If no value is supplied,
+# NESQUIC_RUN_LABEL can be used later to identify past runs. If no value is supplied,
 # the label is set to "default".
-NESQUIC_RUN_LABEL=firstRun script/run.sh quinn quiche
+
+# if QLOG_DIR is set, qlog-traces will be written to that directory
+# if QLOG_DIR is unset, no qlog-traces are written
+# currently, only quiche, quinn and neqo produce qlog.
+# For neqo, the flag is ignored.
+NESQUIC_RUN_LABEL=firstRun QLOG_DIR="qlog" script/run.sh quinn quiche noq neqo
 ```
 
 This starts the Grafana dashboard and executes a performance test. The dashboard is hosted at `http://localhost:3000`

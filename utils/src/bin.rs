@@ -20,6 +20,11 @@ pub struct ClientArgs {
 
     #[clap(short, long)]
     pub blob: String,
+
+    /// produce qlog files in this directory
+    /// if not set, qlog files will not be produced
+    #[clap(long)]
+    pub qlog: Option<String>,
 }
 
 impl ClientArgs {
@@ -29,6 +34,7 @@ impl ClientArgs {
             unencrypted: false,
             cert: format!("{}/../res/pem/cert.pem", env!("CARGO_MANIFEST_DIR")),
             blob: "50Mbit".to_string(),
+            qlog: None,
         }
     }
 }
@@ -48,6 +54,10 @@ pub struct ServerArgs {
     /// Address to listen on
     #[clap(default_value = "0.0.0.0:4433")]
     pub listen: SocketAddr,
+    /// produce qlog files in this directory
+    /// if not set, qlog files will not be produced
+    #[clap(long)]
+    pub qlog: Option<String>,
 }
 
 impl ServerArgs {
@@ -57,6 +67,7 @@ impl ServerArgs {
             key: format!("{}/../res/pem/key.pem", env!("CARGO_MANIFEST_DIR")),
             cert: format!("{}/../res/pem/cert.pem", env!("CARGO_MANIFEST_DIR")),
             listen: "127.0.0.1:4433".parse().unwrap(),
+            qlog: None,
         }
     }
 }
