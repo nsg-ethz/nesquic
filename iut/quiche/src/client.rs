@@ -51,6 +51,8 @@ impl bin::Client for Client {
         let mut params = ConnectionParams::default();
         params.settings.alpn = vec![b"perf".to_vec()];
 
+        params.settings.qlog_dir = self.args.qlog.clone();
+        
         let (benchmark, send) = Benchmark::new();
         let Ok(qconn) = quic::connect_with_config(socket, None, &params, benchmark).await else {
             bail!("Failed to establish connection");
