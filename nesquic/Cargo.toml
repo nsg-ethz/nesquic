@@ -40,7 +40,7 @@ byte-unit = "5.2.0"
 [build-dependencies]
 libbpf-cargo = "0.26.2"
 built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }
-bpf-tracing-include = "0.0.3"
+bpf-tracing-include = "0.0.4"
 
 [dev-dependencies]
 test-case = "3.3.1"
