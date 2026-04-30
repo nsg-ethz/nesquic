@@ -349,9 +349,9 @@ dependencies = [
 
 [[package]]
 name = "bpf-tracing-include"
-version = "0.0.3"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fba959a1f365a9db9ce00259ce9febedd44881ecd5ea6c70ff488bab2ed0dc83"
+checksum = "c2b4a3164c3f96d15c0970089e549da149f32e1c6467a068bc607faff7a9c1cf"
 dependencies = [
  "tracing",
 ]
