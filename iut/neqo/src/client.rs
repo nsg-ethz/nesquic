@@ -3,12 +3,13 @@ use std::{
     io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     num::NonZeroUsize,
+    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use neqo_common::event::Provider as _;
+use neqo_common::{Role, event::Provider as _, qlog::Qlog};
 use neqo_crypto::AuthenticationStatus;
 use neqo_transport::{
     Connection, ConnectionEvent, ConnectionIdGenerator, ConnectionParameters, OutputBatch,
@@ -73,6 +74,19 @@ impl bin::Client for Client {
             Instant::now(),
         )
         .context("create QUIC connection")?;
+
+        if let Some(ref dir) = self.args.qlog {
+            let qlog = Qlog::enabled_with_file(
+                PathBuf::from(dir),
+                Role::Client,
+                Some("neqo client qlog".to_string()),
+                Some("neqo client qlog".to_string()),
+                "client".to_string(),
+                Instant::now(),
+            )
+            .context("create qlog")?;
+            conn.set_qlog(qlog);
+        }
 
         trace!(target: TARGET, "connecting to {remote}");
 
