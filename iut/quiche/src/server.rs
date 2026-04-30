@@ -25,6 +25,8 @@ impl bin::Server for Server {
             kind: tokio_quiche::settings::CertificateKind::X509,
         });
 
+        params.settings.qlog_dir = self.args.qlog.clone();
+
         let mut listeners = tokio_quiche::listen([socket], params, DefaultMetrics)?;
         let accept = &mut listeners[0];
 

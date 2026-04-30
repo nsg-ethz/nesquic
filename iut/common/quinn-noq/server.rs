@@ -26,7 +26,12 @@ impl bin::Server for Server {
             .with_single_cert(certs, key)?;
         server_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-        let config = ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
+        let mut config = ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
+
+        if let Some(ref dir) = args.qlog {
+            let transport = crate::setup_qlog_transport(dir, "server")?;
+            config.transport_config(Arc::new(transport));
+        }
 
         Ok(Server { args, config })
     }

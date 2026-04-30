@@ -23,7 +23,12 @@ impl bin::Client for Client {
 
         client_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-        let config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
+        let mut config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
+
+        if let Some(ref dir) = args.qlog {
+            let transport = crate::setup_qlog_transport(dir, "client")?;
+            config.transport_config(Arc::new(transport));
+        }
 
         Ok(Client {
             args,
