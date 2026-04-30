@@ -34,7 +34,7 @@ reqwest = { version = "0.13.2", default-features = false, features = ["http2"] }
 plain = "0.2.3"
 core_affinity = "0.8.3"
 futures = "0.3.32"
-bpf-tracing = "0.0.3"
+bpf-tracing = "0.0.4"
 byte-unit = "5.2.0"
 
 [build-dependencies]
