@@ -120,7 +120,6 @@ Then, the following process should be used:
 sudo apt isntall libnss3-tools
 certutil -N -d res/nssdb
 openssl pkcs12 -export -in res/pem/cert.pem -inkey res/pem/key.pem -out res/pkcs12/cert.p12 -name "nesquic"
-certutil -N -d res/nssdb
 pk12util -i res/pkcs12/cert.p12 -d res/nssdb
 certutil -L -d nssdb
 certutil -M -t "TC,C,C" -n nesquic -d nssdb
