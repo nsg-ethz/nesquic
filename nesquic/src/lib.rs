@@ -68,6 +68,7 @@ mod built_info {
 }
 
 pub mod metrics;
+pub(crate) mod qlog;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 pub enum Library {

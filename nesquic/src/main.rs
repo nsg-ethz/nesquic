@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use core_affinity::{self, CoreId};
 use futures::future::Either::*;
 use nesquic::{metrics::MetricsCollector, run_client, run_server, Library};
-use std::{collections::HashMap, env, future::Future, mem::MaybeUninit};
+use std::{collections::HashMap, env, future::Future, mem::MaybeUninit, path::PathBuf};
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::oneshot,
@@ -156,6 +156,17 @@ async fn main() -> Result<()> {
         .map(|idx| get_core_id(idx))
         .transpose()?;
 
+    // For client runs: derive the qlog parent dir from --qlog (which points at the client subdir).
+    // The parent contains both client/ and server/ subdirs and is what extract_metrics() expects.
+    let qlog_dir: Option<PathBuf> = match &cli.command {
+        Command::Client(args) => args
+            .client
+            .qlog
+            .as_deref()
+            .and_then(|q| std::path::Path::new(q).parent().map(|p| p.to_path_buf())),
+        Command::Server(_) => None,
+    };
+
     let monitor_handle = tokio::spawn(async move {
         if let Some(core) = metric_core {
             trace!("Set metric core to {}", core.id);
@@ -179,7 +190,7 @@ async fn main() -> Result<()> {
                 info!("Pushing metrics to InfluxDB at {}", url);
 
                 if let Some(Err(e)) =
-                    select_with_term_signals(monitor.push_all(url, token, org, bucket, job, labels))
+                    select_with_term_signals(monitor.push_all(url, token, org, bucket, job, labels, qlog_dir.as_deref()))
                         .await
                 {
                     error!("Error pushing metrics to InfluxDB: {}", e);
