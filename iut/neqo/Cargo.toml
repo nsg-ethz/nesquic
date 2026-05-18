@@ -15,3 +15,4 @@ neqo-crypto    = { git = "https://github.com/mozilla/neqo.git", package = "neqo-
 neqo-common    = { git = "https://github.com/mozilla/neqo.git", package = "neqo-common",    tag = "v0.26.0" }
 neqo-udp       = { git = "https://github.com/mozilla/neqo.git", package = "neqo-udp",       tag = "v0.26.0" }
 quinn-udp      = { version = "*", default-features = false }
+qlog_neqo      = { package = "qlog", version = "0.16.0" }

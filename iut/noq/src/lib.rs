@@ -1,3 +1,5 @@
+pub use qlog_noq;
+
 pub(crate) mod backend {
     pub(crate) use noq::{ClientConfig, Connection, ConnectionError, Endpoint, Incoming, RecvStream, SendStream, ServerConfig, TokioRuntime};
     pub(crate) use noq::crypto::rustls::{QuicClientConfig, QuicServerConfig};
