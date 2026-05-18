@@ -36,7 +36,7 @@ impl QlogPacket {
 /// assumption: initial > handshake > "handshake done" > 1rtt from client
 /// to server > 1rtt from server to client.
 /// latency = time(1rtt received by client) - time(initial sent by client)
-/// 
+///
 /// Pass 1: client: find
 /// - client_first_initial_pkt_sent (easy)
 /// - client_last_handshake_pkt_sent (just take the last one we see)
@@ -45,17 +45,17 @@ impl QlogPacket {
 /// - server_first_1rtt_pkt_sent (next packet with type 1rtt)
 /// Pass 3: client: find
 /// - client_first_1rtt_pkt_received (same pkt_id as server_first_1rtt_pkt_sent)
-/// 
+///
 /// Better solution: read from back
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct QlogResults {
     /// startpoint
     client_first_initial_pkt_sent: Option<QlogPacket>,
-    /// find handshake "done" packet by client and server - this should be the 
+    /// find handshake "done" packet by client and server - this should be the
     /// same packet just viewed from different endpoints
     client_last_handshake_pkt_sent: Option<QlogPacket>,
     server_last_handshake_pkt_received: Option<QlogPacket>,
-    /// this is (hopefully) the first 1rtt packet sent by server 
+    /// this is (hopefully) the first 1rtt packet sent by server
     /// and received by client that contains actual data
     server_first_1rtt_pkt_sent: Option<QlogPacket>,
     /// endpoint
@@ -98,15 +98,23 @@ fn parse_handshake_latency(client_path: &Path, server_path: &Path) -> Result<f32
         let Event::Qlog(ref event) = event else {
             bail!("unexpected non-qlog event in client file");
         };
-        ensure!(event.time >= last_ts, "client qlog events are out of order");
+        // TODO: Some qlog-files do not pass this check, for now we only care for situations
+        // where we will update the results.
+        // ensure!(event.time >= last_ts, "client qlog events are out of order");
         if let EventData::PacketSent(ref pkt) = event.data {
             match pkt.header.packet_type {
                 PacketType::Initial => {
-                    results.client_first_initial_pkt_sent.get_or_insert_with(|| {
-                        QlogPacket::new(pkt.header.packet_number.unwrap(), event.time)
-                    });
+                    // TODO: see above
+                    ensure!(event.time >= last_ts, "client qlog events are out of order");
+                    results
+                        .client_first_initial_pkt_sent
+                        .get_or_insert_with(|| {
+                            QlogPacket::new(pkt.header.packet_number.unwrap(), event.time)
+                        });
                 }
                 PacketType::Handshake => {
+                    // TODO: see above
+                    ensure!(event.time >= last_ts, "client qlog events are out of order");
                     results.client_last_handshake_pkt_sent = Some(QlogPacket::new(
                         pkt.header.packet_number.unwrap(),
                         event.time,
@@ -136,12 +144,20 @@ fn parse_handshake_latency(client_path: &Path, server_path: &Path) -> Result<f32
         let Event::Qlog(ref event) = event else {
             bail!("unexpected non-qlog event in server file");
         };
-        ensure!(event.time >= last_ts, "server qlog events are out of order");
+        // TODO: see above
+        // ensure!(event.time >= last_ts, "server qlog events are out of order");
         match &event.data {
             EventData::PacketReceived(pkt)
                 if matches!(pkt.header.packet_type, PacketType::Handshake) =>
             {
-                if pkt.header.packet_number.unwrap() == results.client_last_handshake_pkt_sent.unwrap().packet_number {
+                // TODO: see above
+                ensure!(event.time >= last_ts, "server qlog events are out of order");
+                if pkt.header.packet_number.unwrap()
+                    == results
+                        .client_last_handshake_pkt_sent
+                        .unwrap()
+                        .packet_number
+                {
                     hs_received = true;
                     results.server_last_handshake_pkt_received = Some(QlogPacket::new(
                         pkt.header.packet_number.unwrap(),
@@ -152,6 +168,8 @@ fn parse_handshake_latency(client_path: &Path, server_path: &Path) -> Result<f32
             EventData::PacketSent(pkt)
                 if matches!(pkt.header.packet_type, PacketType::OneRtt) && hs_received =>
             {
+                // TODO: see above
+                ensure!(event.time >= last_ts, "server qlog events are out of order");
                 results.server_first_1rtt_pkt_sent.get_or_insert_with(|| {
                     QlogPacket::new(pkt.header.packet_number.unwrap(), event.time)
                 });
@@ -168,7 +186,7 @@ fn parse_handshake_latency(client_path: &Path, server_path: &Path) -> Result<f32
         results.server_last_handshake_pkt_received.is_some(),
         "server never received client's last Handshake packet"
     );
-    
+
     ensure!(
         results.server_first_1rtt_pkt_sent.is_some(),
         "server never sent 1-RTT packet after handshake"
@@ -182,7 +200,8 @@ fn parse_handshake_latency(client_path: &Path, server_path: &Path) -> Result<f32
         };
         if let EventData::PacketReceived(pkt) = &event.data {
             if matches!(pkt.header.packet_type, PacketType::OneRtt)
-                && pkt.header.packet_number.unwrap() == results.server_first_1rtt_pkt_sent.unwrap().packet_number
+                && pkt.header.packet_number.unwrap()
+                    == results.server_first_1rtt_pkt_sent.unwrap().packet_number
             {
                 results.client_first_1rtt_pkt_received = Some(QlogPacket::new(
                     pkt.header.packet_number.unwrap(),
@@ -198,9 +217,11 @@ fn parse_handshake_latency(client_path: &Path, server_path: &Path) -> Result<f32
         "client never received server's first 1-RTT packet"
     );
 
-    let first_initial_pkt =
-        results.client_first_initial_pkt_sent.ok_or_else(|| anyhow!("no Initial packet sent by client"))?;
-    let first_1rtt_client = results.client_first_1rtt_pkt_received
+    let first_initial_pkt = results
+        .client_first_initial_pkt_sent
+        .ok_or_else(|| anyhow!("no Initial packet sent by client"))?;
+    let first_1rtt_client = results
+        .client_first_1rtt_pkt_received
         .ok_or_else(|| anyhow!("client never received server's first 1-RTT packet"))?;
 
     let latency_ms = first_1rtt_client.time - first_initial_pkt.time;
