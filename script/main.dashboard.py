@@ -77,6 +77,18 @@ def flux_throughput_query(library):
     ])
 
 
+def flux_latency_query(library):
+    return "\n".join([
+        f'from(bucket: "{BUCKET}")',
+        "  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)",
+        '  |> filter(fn: (r) => r._measurement == "nesquic_qlog" and r._field == "handshake_latency_ms")',
+        f'  |> filter(fn: (r) => r.library == "{library}")',
+        RUN_FILTER,
+        '  |> rename(columns: {"_value": "handshake_latency_ms"})',
+        "  |> group()",
+    ])
+
+
 def flux_io_query(library, mode, job, field):
     rename_to = "count" if field == "count" else "volume_kb_sum"
     return "\n".join([
@@ -129,6 +141,19 @@ def throughput_panel(library):
     )
 
 
+def latency_panel(library):
+    return BarChart(
+        title="Handshake Latency With Varying Connection Delay",
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(flux_latency_query(library))],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
+        xField="job",
+        axisLabel="Handshake Latency [ms]",
+    )
+
+
 def overview_panels(library):
     return [
         RowPanel(
@@ -136,6 +161,7 @@ def overview_panels(library):
             gridPos=GridPos(h=1, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
         ),
         throughput_panel(library),
+        latency_panel(library),
     ]
 
 
