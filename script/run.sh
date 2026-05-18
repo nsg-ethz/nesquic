@@ -76,7 +76,7 @@ function run_client {
     
     # if qlog is enabled, add qlog options to the command
     if [ -n "${EXP_QLOG_DIR}" ]; then
-        CMD+=" --qlog ${EXP_QLOG_DIR}"
+        CMD+=" --qlog ${EXP_QLOG_DIR}/client"
     fi
 
     eval ${CMD}
@@ -91,7 +91,7 @@ function run_server {
     CMD+="${BIN}-$1 server -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu $((NUM_CPU - 2)) --metric-cpu $((NUM_CPU - 1)) -L nesquic_run:${NESQUIC_RUN_LABEL}"
 
     if [ -n "${EXP_QLOG_DIR}" ]; then
-        CMD+=" --qlog ${EXP_QLOG_DIR}"
+        CMD+=" --qlog ${EXP_QLOG_DIR}/server"
     fi
 
     CMD+=" &"
@@ -195,6 +195,8 @@ function run_experiment {
     if [ -n "${ROOT_QLOG_DIR}" ]; then
         EXP_QLOG_DIR="${LIB_QLOG_DIR}/${EXP_NAME}"
         mkdir -p ${EXP_QLOG_DIR}
+        mkdir -p ${EXP_QLOG_DIR}/client
+        mkdir -p ${EXP_QLOG_DIR}/server
     fi
 
     run_server $1
