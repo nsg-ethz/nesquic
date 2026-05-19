@@ -41,7 +41,7 @@ bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
 For Neqo, the following additional dependencies are needed: `libnss3`. While the distributed versions are not up to date, the corresponding libraries need to be compiled manually. See below in *Details: NSS Dependency*.
 
 Now you can run a performance test as follows:
-```
+```shell
 # sanity check that all client and server implementations work within one library
 cargo test -p nesquic --features quinn
 cargo test -p nesquic --features quiche
@@ -50,7 +50,7 @@ cargo test -p nesquic --features noq
 # start the metric collection services (InfluxDB and grafana)
 docker compose -f docker/backend.yml up -d
 # set up the dashboards
-export NQ_LIBS="quinn quiche neqo"
+export NQ_LIBS="quinn quiche neqo noq msquic"
 script/dashboard.sh
 # update run.sh to the correct CPU-range; if you are running a bare-metal
 # benchmark, enable NESQUIC_BENACHMARK=1.
@@ -79,6 +79,14 @@ To reset the Grafana dashboard, simply remove the `nesquic_grafana_data` volume:
 docker compose -f docker/backend.yml down
 docker volume rm nesquic_grafana_data
 ```
+
+## QLOG
+
+QLOG is a standardized logging format for QUIC-libraries. We use it to enable the collection of metrics only visible from the inside.
+
+QLOG-collection deteriorates performance, thus, it is only enabled when `QLOG_DIR` is set to a folder.
+
+The QLOG-RFC is not finalized yet, and there are multiple common versions used in libraries as of today. We parse the generated files with the same version of the qlog library as the libraries use to write them. However, there is one exception right now: quiche internally uses `qlog-0.17.0`, but we use `qlog-0.16.0` since leaves only compatible versions across all currently maintaned IUTs.
 
 ## Details: NSS Dependency
 
@@ -120,7 +128,6 @@ Then, the following process should be used:
 sudo apt isntall libnss3-tools
 certutil -N -d res/nssdb
 openssl pkcs12 -export -in res/pem/cert.pem -inkey res/pem/key.pem -out res/pkcs12/cert.p12 -name "nesquic"
-certutil -N -d res/nssdb
 pk12util -i res/pkcs12/cert.p12 -d res/nssdb
 certutil -L -d nssdb
 certutil -M -t "TC,C,C" -n nesquic -d nssdb

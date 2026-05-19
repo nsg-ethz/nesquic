@@ -10,6 +10,7 @@ use reqwest::Client;
 use std::{
     collections::HashMap,
     mem::MaybeUninit,
+    path::Path,
     sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -167,6 +168,7 @@ impl<'obj> MetricsCollector<'obj> {
         bucket: String,
         job: String,
         tags: HashMap<String, String>,
+        qlog_dir: Option<&Path>,
     ) -> Result<()> {
         // Dropping links flushes the ring buffer
         self.links.take();
@@ -199,7 +201,18 @@ impl<'obj> MetricsCollector<'obj> {
         let tag_str = build_tag_str(&all_tags);
 
         // Collect data into plain strings before any await (MutexGuard is not Send)
-        let body = collect_line_protocol(&tag_str, timestamp_ns)?;
+        let mut body = collect_line_protocol(&tag_str, timestamp_ns)?;
+
+        if let Some(dir) = qlog_dir {
+            match crate::qlog::extract_metrics(dir, &tag_str, timestamp_ns) {
+                Ok(line) => {
+                    body.push('\n');
+                    body.push_str(&line);
+                }
+                Err(e) => warn!("qlog metric extraction skipped: {}", e),
+            }
+        }
+
         let line_count = body.lines().count();
 
         let write_url = format!(

@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     io,
+    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -76,6 +77,10 @@ impl bin::Server for Server {
             ConnectionParameters::default(),
         )
         .context("create neqo server")?;
+
+        if let Some(ref dir) = self.args.qlog {
+            neqo_server.set_qlog_dir(Some(PathBuf::from(dir)));
+        }
 
         let mut stream_states: HashMap<StreamId, StreamState> = HashMap::new();
         let mut timeout: Option<Duration>;

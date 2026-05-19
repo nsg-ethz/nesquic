@@ -3,6 +3,7 @@ mod server;
 
 pub use client::Client;
 pub use server::Server;
+pub use qlog_neqo;
 
 use std::{io, net::SocketAddr};
 

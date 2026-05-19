@@ -1,3 +1,5 @@
+pub use qlog_quinn;
+
 pub(crate) mod backend {
     pub(crate) use quinn::{ClientConfig, Connection, ConnectionError, Endpoint, Incoming, RecvStream, SendStream, ServerConfig, TokioRuntime};
     pub(crate) use quinn::crypto::rustls::{QuicClientConfig, QuicServerConfig};
