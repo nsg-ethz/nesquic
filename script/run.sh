@@ -18,8 +18,12 @@ WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 BIN="${WORKSPACE}/target/release/nesquic"
 RES_DIR="${WORKSPACE}/res"
 # if QLOG_DIR is set and is a relative path, prefix it with ${WORKSPACE}
-if [ -n "${QLOG_DIR}" ] && [[ "${QLOG_DIR}" != /* ]]; then
-    ROOT_QLOG_DIR="${WORKSPACE}/${QLOG_DIR}/${NESQUIC_RUN_LABEL}"
+if [ -n "${QLOG_DIR}" ]; then
+    if [[ "${QLOG_DIR}" != /* ]]; then
+        QLOG_DIR="${WORKSPACE}/${QLOG_DIR}"
+    fi
+
+    ROOT_QLOG_DIR="${QLOG_DIR}/${NESQUIC_RUN_LABEL}"
 fi
 
 NESQUIC_RUN_LABEL="${NESQUIC_RUN_LABEL:-default}"
@@ -73,7 +77,7 @@ function run_client {
     fi
 
     CMD+="${BIN}-$1 client -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu $((NUM_CPU - 4)) --metric-cpu $((NUM_CPU - 3)) https://${MAHIMAHI_BASE}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL}"
-    
+
     # if qlog is enabled, add qlog options to the command
     if [ -n "${EXP_QLOG_DIR}" ]; then
         CMD+=" --qlog ${EXP_QLOG_DIR}/client"
