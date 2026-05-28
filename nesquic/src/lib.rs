@@ -37,27 +37,28 @@ Thus, the following features are available:
     all(feature = "quinn", feature = "noq"),
     all(feature = "quiche", feature = "noq"),
     all(feature = "neqo", feature = "noq"),
-    ))]
-compile_error!(
-    "Cannot enable two or more IUTs: must choose one per compilation."
-);
+))]
+compile_error!("Cannot enable two or more IUTs: must choose one per compilation.");
 
 // #[cfg(not(any(feature = "msquic", feature = "quinn", feature = "quiche", feature = "neqo")))]
-#[cfg(not(any(feature = "quinn", feature = "quiche", feature = "neqo", feature = "noq")))]
-compile_error!(
-    "Must enable one of the following features: msquic, quinn, quiche, neqo, noq"
-);
+#[cfg(not(any(
+    feature = "quinn",
+    feature = "quiche",
+    feature = "neqo",
+    feature = "noq"
+)))]
+compile_error!("Must enable one of the following features: msquic, quinn, quiche, neqo, noq");
 
 // #[cfg(feature = "msquic")]
 // use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
-#[cfg(feature = "quinn")]
-use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
-#[cfg(feature = "quiche")]
-use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
 #[cfg(feature = "neqo")]
 use neqo_iut::{Client as NeqoClient, Server as NeqoServer};
 #[cfg(feature = "noq")]
 use noq_iut::{Client as NoqClient, Server as NoqServer};
+#[cfg(feature = "quiche")]
+use quiche_iut::{Client as QuicheClient, Server as QuicheServer};
+#[cfg(feature = "quinn")]
+use quinn_iut::{Client as QuinnClient, Server as QuinnServer};
 use utils::{
     bin::{Client, ClientArgs, Server, ServerArgs},
     perf::{Request, Stats},
@@ -76,7 +77,7 @@ pub enum Library {
     Msquic,
     Ngtcp,
     Neqo,
-    Noq
+    Noq,
 }
 
 impl Library {
@@ -105,13 +106,13 @@ pub async fn run_client(lib: Library, args: ClientArgs) -> Result<()> {
         stats.start_measurement();
 
         client.run().await?;
-        stats.add_bytes(req.size)?;
+        stats.add_bytes(req.len())?;
 
         stats.stop_measurement()?;
         Ok(stats)
     }
 
-let stats: Stats   = match lib {
+    let stats: Stats = match lib {
         #[cfg(feature = "quinn")]
         Library::Quinn => run::<QuinnClient>(args).await?,
         #[cfg(feature = "quiche")]
@@ -125,20 +126,35 @@ let stats: Stats   = match lib {
         _ => bail!("selected library is not enabled in this build"),
     };
 
-    THROUGHPUT_SAMPLES.lock().unwrap().push(stats.throughputs().mean());
+    THROUGHPUT_SAMPLES
+        .lock()
+        .unwrap()
+        .push(stats.throughputs().mean());
     Ok(())
 }
 
 pub async fn run_server(lib: Library, args: ServerArgs) -> Result<()> {
     match lib {
         #[cfg(feature = "quinn")]
-        Library::Quinn => { let mut s = QuinnServer::new(args)?; s.listen().await }
+        Library::Quinn => {
+            let mut s = QuinnServer::new(args)?;
+            s.listen().await
+        }
         #[cfg(feature = "quiche")]
-        Library::Quiche => { let mut s = QuicheServer::new(args)?; s.listen().await }
+        Library::Quiche => {
+            let mut s = QuicheServer::new(args)?;
+            s.listen().await
+        }
         #[cfg(feature = "neqo")]
-        Library::Neqo => { let mut s = NeqoServer::new(args)?; s.listen().await }
+        Library::Neqo => {
+            let mut s = NeqoServer::new(args)?;
+            s.listen().await
+        }
         #[cfg(feature = "noq")]
-        Library::Noq => { let mut s = NoqServer::new(args)?; s.listen().await }
+        Library::Noq => {
+            let mut s = NoqServer::new(args)?;
+            s.listen().await
+        }
         // #[cfg(feature = "msquic")]
         // Library::Msquic => { let mut s = MsQuicServer::new(args)?; s.listen().await }
         _ => bail!("selected library is not enabled in this build"),

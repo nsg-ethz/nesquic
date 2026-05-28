@@ -19,3 +19,4 @@ ring = "0.17.14"
 tokio = { version = "1.51.1", features = ["full"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = "2.5.8"
+byte-unit = { version = "5.2.0", features = ["bit"] }

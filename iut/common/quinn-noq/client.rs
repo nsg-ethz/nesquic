@@ -90,11 +90,11 @@ impl bin::Client for Client {
 
         trace!(target: crate::CLIENT_TARGET, "received response: {}B", resp.len());
 
-        if request.size != resp.len() {
+        if request.len() != resp.len() {
             bail!(
                 "received blob size ({}B) different from requested blob size ({}B)",
                 resp.len(),
-                request.size
+                request.len()
             )
         }
 
