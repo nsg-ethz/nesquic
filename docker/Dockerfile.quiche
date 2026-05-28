@@ -1,0 +1,24 @@
+FROM rust:1.94.1 AS builder
+
+# quiche links against BoringSSL, which requires cmake, Go, and nasm to build
+RUN apt-get update && apt-get install -y \
+    curl build-essential pkg-config \
+    clang llvm libelf-dev libbpf-dev \
+    libssl-dev cmake nasm golang-go \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+COPY . .
+
+RUN cargo build --release -p quiche-iut --bin nesquic-quiche
+
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+    libbpf0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /workspace/target/release/nesquic-quiche /usr/local/bin/nesquic-quiche
+COPY --from=builder /workspace/res /workspace/res
+
+ENTRYPOINT ["/usr/local/bin/nesquic-quiche"]

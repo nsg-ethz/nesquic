@@ -1,0 +1,13 @@
+FROM rust:1.94.1 AS builder
+
+WORKDIR /workspace
+COPY . .
+
+RUN cargo build --release --locked -p noq-iut --bin nesquic-noq
+
+FROM ubuntu:22.04
+
+COPY --from=builder /workspace/target/release/nesquic-noq /usr/local/bin/nesquic-noq
+COPY --from=builder /workspace/res /workspace/res
+
+ENTRYPOINT ["/usr/local/bin/nesquic-noq"]

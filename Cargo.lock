@@ -1934,6 +1934,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "iut-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bpf-tracing",
+ "bpf-tracing-include",
+ "byte-unit",
+ "clap",
+ "core_affinity",
+ "futures",
+ "lazy_static",
+ "libbpf-cargo",
+ "libbpf-rs",
+ "libc",
+ "plain",
+ "reqwest",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "utils",
+]
+
+[[package]]
 name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2257,11 +2280,12 @@ name = "neqo-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
+ "iut-common",
  "neqo-common",
  "neqo-crypto",
  "neqo-transport",
  "neqo-udp",
- "quinn-udp 0.6.1",
  "socket2",
  "tokio",
  "tracing",
@@ -2299,35 +2323,6 @@ dependencies = [
  "neqo-common",
  "quinn-udp 0.6.1",
  "windows",
-]
-
-[[package]]
-name = "nesquic"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bpf-tracing",
- "bpf-tracing-include",
- "built",
- "byte-unit",
- "clap",
- "core_affinity",
- "futures",
- "lazy_static",
- "libbpf-cargo",
- "libbpf-rs",
- "libc",
- "neqo-iut",
- "noq-iut",
- "plain",
- "quiche-iut",
- "quinn-iut",
- "reqwest",
- "test-case",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "utils",
 ]
 
 [[package]]
@@ -2397,7 +2392,9 @@ name = "noq-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
  "bytes",
+ "iut-common",
  "noq",
  "rustls",
  "socket2",
@@ -2987,8 +2984,10 @@ name = "quiche-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
  "bytes",
  "futures",
+ "iut-common",
  "quiche",
  "tokio",
  "tokio-quiche",
@@ -3022,7 +3021,9 @@ name = "quinn-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
  "bytes",
+ "iut-common",
  "quinn",
  "quinn-proto",
  "rustls",
@@ -4000,39 +4001,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8c27177b12a6399ffc08b98f76f7c9a1f4fe9fc967c784c5a071fa8d93cf7e1"
 dependencies = [
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "test-case"
-version = "3.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb2550dd13afcd286853192af8601920d959b14c401fcece38071d53bf0768a8"
-dependencies = [
- "test-case-macros",
-]
-
-[[package]]
-name = "test-case-core"
-version = "3.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adcb7fd841cd518e279be3d5a3eb0636409487998a4aff22f3de87b81e88384f"
-dependencies = [
- "cfg-if",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "test-case-macros"
-version = "3.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c89e72a01ed4c579669add59014b9a524d609c0c88c6a585ce37485879f6ffb"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
- "test-case-core",
 ]
 
 [[package]]

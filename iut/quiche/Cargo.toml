@@ -3,6 +3,10 @@ name = "quiche-iut"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "nesquic-quiche"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.102"
 bytes = "1.11.1"
@@ -13,3 +17,7 @@ utils = { path = "../../utils" }
 tokio-quiche = "0.18.0"
 tokio = { version = "1.51.1", features = ["full"] }
 futures = "0.3.32"
+iut-common = { path = "../common" }
+
+[build-dependencies]
+built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }

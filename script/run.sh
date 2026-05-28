@@ -20,21 +20,22 @@ RES_DIR="${WORKSPACE}/res"
 
 NESQUIC_RUN_LABEL="${NESQUIC_RUN_LABEL:-default}"
 
+# Name of the server container currently running (set by run_server)
+SERVER_CONTAINER=""
+
 function may_fail {
     ($@ > /dev/null 2>&1) || true
 }
 
 function wait_for_launch {
-    local pid=""
     local printed=false
     while true; do
-        pid=$(pgrep $1 | head -n1)
-        if [[ -n "$pid" ]]; then
-            echo "$pid"
+        if docker ps --filter "name=${SERVER_CONTAINER}" --filter "status=running" \
+               --format "{{.Names}}" 2>/dev/null | grep -q .; then
             return 0
         fi
         if [[ ! $printed ]]; then
-            echo "Waiting for $1..."
+            echo "Waiting for ${SERVER_CONTAINER}..."
             printed=true
         fi
         sleep 0.1
@@ -42,11 +43,8 @@ function wait_for_launch {
 }
 
 function wait_for_term {
-    while true; do
-        pid=$(pgrep $1 | head -n1)
-        if [[ -z "$pid" ]]; then
-            return 0
-        fi
+    while docker ps --filter "name=${SERVER_CONTAINER}" --filter "status=running" \
+              --format "{{.Names}}" 2>/dev/null | grep -q .; do
         sleep 0.1
     done
 }
@@ -68,23 +66,37 @@ function run_client {
         CMD+="mm-link ${RES_DIR}/traces/${EXP_LINK}.up ${RES_DIR}/traces/${EXP_LINK}.down -- "
     fi
 
-    CMD+="${BIN}-$1 client -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu $((NUM_CPU - 4)) --metric-cpu $((NUM_CPU - 3)) https://${MAHIMAHI_BASE}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL}"
+    # Run the binary directly on the host so it participates in the mahimahi
+    # network namespace (docker --network=host uses the daemon's namespace, not
+    # the calling process's namespace, which would bypass mahimahi emulation).
+    CMD+="${BIN}-$1 client -j ${EXP_NAME} --cert ${RES_DIR}/pem/cert.pem --blob ${EXP_BLOB} --quic-cpu $((NUM_CPU - 4)) --metric-cpu $((NUM_CPU - 3)) https://${MAHIMAHI_BASE}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL}"
 
     eval ${CMD}
 }
 
 function run_server {
-    CMD=""
-    CMD+="INFLUX_URL=http://localhost:8086 "
-    CMD+="INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} "
-    CMD+="INFLUX_ORG=${INFLUX_ORG:-nesquic} "
-    CMD+="INFLUX_BUCKET=${INFLUX_BUCKET:-nesquic} "
-    CMD+="${BIN}-$1 server -j ${EXP_NAME} --lib $1 --cert ${RES_DIR}/pem/cert.pem --key ${RES_DIR}/pem/key.pem 0.0.0.0:4433 --quic-cpu $((NUM_CPU - 2)) --metric-cpu $((NUM_CPU - 1)) -L nesquic_run:${NESQUIC_RUN_LABEL} &"
+    SERVER_CONTAINER="nesquic-server-$1"
+
+    # Remove any stale container with the same name
+    may_fail docker rm -f ${SERVER_CONTAINER}
+
+    CMD="docker run --rm --privileged --network=host "
+    CMD+="-e INFLUX_URL=http://localhost:8086 "
+    CMD+="-e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} "
+    CMD+="-e INFLUX_ORG=${INFLUX_ORG:-nesquic} "
+    CMD+="-e INFLUX_BUCKET=${INFLUX_BUCKET:-nesquic} "
+    CMD+="--name ${SERVER_CONTAINER} "
+    CMD+="nesquic-$1 "
+    CMD+="server -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --key /workspace/res/pem/key.pem 0.0.0.0:4433 --quic-cpu $((NUM_CPU - 2)) --metric-cpu $((NUM_CPU - 1)) -L nesquic_run:${NESQUIC_RUN_LABEL} &"
 
     eval ${CMD}
 }
 
 function kill_nesquic {
+    if [ -n "${SERVER_CONTAINER}" ]; then
+        may_fail docker stop --time 2 ${SERVER_CONTAINER}
+    fi
+    # Also stop any host-run client binary that may still be running
     may_fail sudo pkill --signal ${1:-INT} nesquic
 }
 
@@ -95,6 +107,10 @@ function cpu_governor {
 
 function teardown {
     kill_nesquic KILL
+
+    # Stop all nesquic server containers in case teardown is called mid-run
+    may_fail docker stop $(docker ps -q --filter "name=nesquic-server-") 2>/dev/null
+
     may_fail sudo ip link del ${VETH_MM}
 
     if [ ${NESQUIC_BENCHMARK} -eq 1 ]; then
@@ -110,10 +126,16 @@ function teardown {
 }
 
 function compile {
-    # compile IUTs in release mode
-    echo -e "${COLOR_YELLOW}Compile Nesquic for ${1}${COLOR_OFF}"
-    cargo build --release --bin nesquic --features $1
-    mv -f ${BIN} ${BIN}-$1
+    echo -e "${COLOR_YELLOW}Building Docker image for ${1}${COLOR_OFF}"
+    docker build -f ${WORKSPACE}/docker/Dockerfile.$1 -t nesquic-$1 ${WORKSPACE}
+
+    # Extract the binary so the client can run directly on the host inside mahimahi
+    echo -e "${COLOR_YELLOW}Extracting binary for ${1}${COLOR_OFF}"
+    local tmp_container="nesquic-extract-$1"
+    may_fail docker rm ${tmp_container}
+    docker create --name ${tmp_container} nesquic-$1
+    docker cp ${tmp_container}:/usr/local/bin/nesquic-$1 ${BIN}-$1
+    docker rm ${tmp_container}
 
     sudo chown root:root ${BIN}-$1
     sudo chmod u+s,o+rx ${BIN}-$1
@@ -178,12 +200,12 @@ function run_experiment {
     echo -e "run ${EXP_NAME}... "
 
     run_server $1
-    wait_for_launch nesquic > /dev/null 2>&1
+    wait_for_launch
     run_client $1
 
-    # kill nesquic and give it time to upload its metrics
+    # kill server and give it time to upload its metrics
     kill_nesquic
-    wait_for_term nesquic
+    wait_for_term
 
     echo -e "${COLOR_GREEN}ok${COLOR_OFF}"
 }
