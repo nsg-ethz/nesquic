@@ -69,8 +69,9 @@ jobs:
             - name: Generate certificate
               run: cargo rcgen
             - name: Build builder container
-              run: docker build -f docker/Dockerfile.${{ matrix.library }}-builder -t nesquic/${{ matrix.library }}:latest .
+              run: docker build -f docker/Dockerfile.${{ matrix.library }}-builder -t nesquic/${{ matrix.library }}-builder:latest .
             - name: Run tests
               run: docker run -it nesquic/${{ matrix.library }}-builder:latest cargo test --locked --verbose
             - name: Build IUT container
+              if: ${{ matrix.profile == 'release' && matrix.channel == 'stable' }}
               run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .
