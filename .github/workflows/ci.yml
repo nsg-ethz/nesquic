@@ -46,15 +46,19 @@ jobs:
                   tc_var RUSTFLAGS
                   tc_var CFLAGS
                   tc_var CXXFLAGS
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v4
             - uses: dtolnay/rust-toolchain@master
               with:
                   toolchain: ${{ matrix.rust }}
                   components: rustfmt
-            - name: Install deps
+            - uses: awalsh128/cache-apt-pkgs-action@latest
+              with:
+                  packages: clang-18 libelf-dev zlib1g-dev libnuma-dev
+                  version: latest
+            - name: Configure LLVM
               run: |
                   sudo apt-get update
-                  sudo apt-get install --yes --no-install-recommends clang-18 libelf-dev zlib1g-dev linux-headers-$(uname -r) libnuma-dev
+                  sudo apt-get install --yes --no-install-recommends linux-headers-$(uname -r)
                   sudo ln -s /usr/include/asm-generic /usr/include/asm
                   sudo rm -f /bin/clang && sudo ln -s /usr/bin/clang-18 /bin/clang && sudo ln -s /usr/bin/llvm-strip-18 /bin/llvm-strip
                   git clone --recurse-submodules https://github.com/libbpf/bpftool.git
