@@ -1,9 +1,6 @@
-FROM rust:1.94.1 AS builder
+# syntax = edrevo/dockerfile-plus
 
-WORKDIR /workspace
-COPY . .
-
-RUN cargo build --release --locked -p noq-iut --bin nesquic-noq
+INCLUDE+ Dockerfile.noq-builder
 
 FROM ubuntu:22.04
 

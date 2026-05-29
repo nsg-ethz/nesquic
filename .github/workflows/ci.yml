@@ -68,13 +68,9 @@ jobs:
               run: cargo build --profile=${{ matrix.profile }} --locked --verbose --bin rcgen
             - name: Generate certificate
               run: cargo rcgen
-            - name: Build docker container
-              run: cargo build --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
+            - name: Build builder container
+              run: docker build -f docker/Dockerfile.${{ matrix.library }}-builder -t nesquic/${{ matrix.library }}:latest .
             - name: Run tests
-              run: |
-                  if [[ "${{ matrix.library }}" == "neqo" ]]; then
-                      echo $NSS_DIR
-                      echo "NSS_PREBUILT=1" >> ${GITHUB_ENV}
-                      echo $LD_LIBRARY_PATH | sudo tee /etc/ld.so.conf.d/neqo.conf && sudo ldconfig
-                  fi
-                  cargo test --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
+              run: docker run -it nesquic/${{ matrix.library }}-builder:latest cargo test --locked --verbose
+            - name: Build IUT container
+              run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .
