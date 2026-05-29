@@ -64,10 +64,6 @@ jobs:
                   mkdir -p include
                   bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
             - uses: Swatinem/rust-cache@v2
-            - name: Build rcgen
-              run: cargo build --profile=${{ matrix.profile }} --locked --verbose --bin rcgen
-            - name: Generate certificate
-              run: cargo rcgen
             - name: Build builder container
               run: docker build -f docker/Dockerfile.${{ matrix.library }}-builder -t nesquic/${{ matrix.library }}-builder:latest .
             - name: Run tests
