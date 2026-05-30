@@ -168,10 +168,10 @@ mod tests {
     #[test]
     fn parse_blob_sizes() {
         let req = Request::try_from(String::from("100Mbit")).expect("parse");
-        assert_eq!(req.size, 100_000_000 / 8);
+        assert_eq!(req.len(), 100_000_000 / 8);
 
         let req = Request::try_from(String::from("100bit")).expect("parse");
-        assert_eq!(req.size, 100 / 8);
+        assert_eq!(req.len(), 100 / 8);
 
         let req = Request::try_from(String::from("12lbit"));
         assert_eq!(req.is_err(), true);
@@ -184,6 +184,6 @@ mod tests {
     fn create_responses() {
         let req = Request::try_from(String::from("20Gbit")).expect("parse");
         let res = Blob::from(req.to_bytes());
-        assert_eq!(req.size, res.size);
+        assert_eq!(req.len(), res.size);
     }
 }
