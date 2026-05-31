@@ -71,5 +71,5 @@ jobs:
               run: cargo test --locked --verbose -p ${{ matrix.library }}-iut
             - uses: Swatinem/rust-cache@v2
             - name: Build container
-              if: ${{ matrix.profile == 'release' && matrix.channel == 'stable' }}
+              if: ${{ matrix.profile == 'release' && matrix.rust == 'stable' }}
               run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .
