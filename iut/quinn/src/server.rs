@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tracing::{error, info, trace};
 use utils::{bin, bin::ServerArgs, perf::Blob};
 
-const SERVER_TARGET: &str = "quinn-server";
+const TARGET: &str = "quinn::server";
 
 pub struct Server {
     args: ServerArgs,
@@ -47,14 +47,14 @@ impl bin::Server for Server {
         )
         .context("creating endpoint")?;
 
-        info!(target: SERVER_TARGET, "Listening on {}", endpoint.local_addr()?);
+        info!(target: TARGET, "Listening on {}", endpoint.local_addr()?);
 
         while let Some(conn) = endpoint.accept().await {
-            trace!(target: SERVER_TARGET, "connection incoming");
+            trace!(target: TARGET, "connection incoming");
             let fut = handle_connection(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!(target: SERVER_TARGET, "connection failed: {reason}", reason = e.to_string())
+                    error!(target: TARGET, "connection failed: {reason}", reason = e.to_string())
                 }
             });
         }
@@ -66,15 +66,15 @@ impl bin::Server for Server {
 async fn handle_connection(conn: Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
-        trace!(target: SERVER_TARGET, "established");
+        trace!(target: TARGET, "established");
 
         loop {
             let stream = connection.accept_bi().await;
-            trace!(target: SERVER_TARGET, "stream accepted");
+            trace!(target: TARGET, "stream accepted");
 
             let stream = match stream {
                 Err(ConnectionError::ApplicationClosed { .. }) => {
-                    trace!(target: SERVER_TARGET, "connection closed");
+                    trace!(target: TARGET, "connection closed");
                     return Ok(());
                 }
                 Err(e) => {
@@ -85,7 +85,7 @@ async fn handle_connection(conn: Incoming) -> Result<()> {
             let fut = handle_request(stream);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!(target: SERVER_TARGET, "failed: {reason}", reason = e.to_string());
+                    error!(target: TARGET, "failed: {reason}", reason = e.to_string());
                 }
             });
         }
@@ -102,7 +102,7 @@ async fn handle_request((mut send, mut recv): (SendStream, RecvStream)) -> Resul
 
     let blob =
         Blob::try_from(req.as_slice()).map_err(|e| anyhow!("failed handling request: {}", e))?;
-    trace!(target: SERVER_TARGET, "serving {}", blob.size);
+    trace!(target: TARGET, "serving {}", blob.size);
 
     send.write_chunk(Bytes::from_iter(blob))
         .await
@@ -111,6 +111,6 @@ async fn handle_request((mut send, mut recv): (SendStream, RecvStream)) -> Resul
     send.finish()
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
 
-    trace!(target: SERVER_TARGET, "complete");
+    trace!(target: TARGET, "complete");
     Ok(())
 }

@@ -2,53 +2,6 @@ use anyhow::{bail, Result};
 use clap::ValueEnum;
 use metrics::THROUGHPUT_SAMPLES;
 
-/*
-
-# Features
-
-This project supports multiple QUIC implementations, which are gated behind Cargo features.
-Since some of these implementations depend on C libraries with conflicting symbols,
-we enforce that only one implementation can be enabled at a time.
-Since there is not clear "default" implementation, we do not enable any by default,
-and require users to explicitly select one.
-Even if multiple implementations would not be sctructurally incompatible,
-we still enforce this to avoid confusion and to ensure that the build process is deterministic.
-
-Thus, the following features are available:
-- `msquic` (not available at the moment)
-- `quinn`
-- `quiche`
-- `neqo`
-- `noq`
-*/
-
-// #[cfg(any(
-//     all(feature = "msquic", feature = "quinn"),
-//     all(feature = "msquic", feature = "quiche"),
-//     all(feature = "msquic", feature = "neqo"),
-//     all(feature = "quinn", feature = "quiche"),
-//     all(feature = "quinn", feature = "neqo"),
-//     all(feature = "quiche", feature = "neqo"),
-//     ))]
-#[cfg(any(
-    all(feature = "quinn", feature = "quiche"),
-    all(feature = "quinn", feature = "neqo"),
-    all(feature = "quiche", feature = "neqo"),
-    all(feature = "quinn", feature = "noq"),
-    all(feature = "quiche", feature = "noq"),
-    all(feature = "neqo", feature = "noq"),
-))]
-compile_error!("Cannot enable two or more IUTs: must choose one per compilation.");
-
-// #[cfg(not(any(feature = "msquic", feature = "quinn", feature = "quiche", feature = "neqo")))]
-#[cfg(not(any(
-    feature = "quinn",
-    feature = "quiche",
-    feature = "neqo",
-    feature = "noq"
-)))]
-compile_error!("Must enable one of the following features: msquic, quinn, quiche, neqo, noq");
-
 // #[cfg(feature = "msquic")]
 // use msquic_iut::{Client as MsQuicClient, Server as MsQuicServer};
 #[cfg(feature = "neqo")]
