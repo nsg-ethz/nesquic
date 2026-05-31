@@ -1,10 +1,12 @@
-use super::bind_socket;
 use anyhow::{anyhow, bail, Result};
-use crate::backend::{ClientConfig, Connection, Endpoint, QuicClientConfig, TokioRuntime};
+use common::bind_socket;
+use quinn::{crypto::rustls::QuicClientConfig, ClientConfig, Connection, Endpoint, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
 use std::{net::ToSocketAddrs, sync::Arc};
 use tracing::trace;
 use utils::{bin, bin::ClientArgs, perf::Request};
+
+const CLIENT_TARGET: &str = "quinn-client";
 
 pub struct Client {
     args: ClientArgs,
@@ -59,7 +61,7 @@ impl bin::Client for Client {
             .map_err(|e| anyhow!("failed to connect: {}", e))?;
         self.conn = Some(conn);
 
-        trace!(target: crate::CLIENT_TARGET, "connected");
+        trace!(target: CLIENT_TARGET, "connected");
 
         Ok(())
     }
@@ -74,7 +76,7 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
-        trace!(target: crate::CLIENT_TARGET, "sending request");
+        trace!(target: CLIENT_TARGET, "sending request");
 
         let request = Request::try_from(self.args.blob.clone())?;
         send.write_all(&request.to_bytes())
@@ -88,7 +90,7 @@ impl bin::Client for Client {
             .await
             .map_err(|e| anyhow!("failed to read response: {}", e))?;
 
-        trace!(target: crate::CLIENT_TARGET, "received response: {}B", resp.len());
+        trace!(target: CLIENT_TARGET, "received response: {}B", resp.len());
 
         if request.len() != resp.len() {
             bail!(

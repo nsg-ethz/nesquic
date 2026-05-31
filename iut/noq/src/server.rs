@@ -1,11 +1,16 @@
-use super::bind_socket;
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use crate::backend::{ConnectionError, Endpoint, Incoming, QuicServerConfig, RecvStream, SendStream, ServerConfig, TokioRuntime};
+use common::bind_socket;
+use noq::{
+    crypto::rustls::QuicServerConfig, ConnectionError, Endpoint, Incoming, RecvStream, SendStream,
+    ServerConfig, TokioRuntime,
+};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
 use tracing::{error, info, trace};
 use utils::{bin, bin::ServerArgs, perf::Blob};
+
+const SERVER_TARGET: &str = "noq-server";
 
 pub struct Server {
     args: ServerArgs,
@@ -26,7 +31,8 @@ impl bin::Server for Server {
             .with_single_cert(certs, key)?;
         server_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-        let config = ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
+        let config =
+            ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
 
         Ok(Server { args, config })
     }
@@ -41,14 +47,14 @@ impl bin::Server for Server {
         )
         .context("creating endpoint")?;
 
-        info!(target: crate::SERVER_TARGET, "Listening on {}", endpoint.local_addr()?);
+        info!(target: SERVER_TARGET, "Listening on {}", endpoint.local_addr()?);
 
         while let Some(conn) = endpoint.accept().await {
-            trace!(target: crate::SERVER_TARGET, "connection incoming");
+            trace!(target: SERVER_TARGET, "connection incoming");
             let fut = handle_connection(conn);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!(target: crate::SERVER_TARGET, "connection failed: {reason}", reason = e.to_string())
+                    error!(target: SERVER_TARGET, "connection failed: {reason}", reason = e.to_string())
                 }
             });
         }
@@ -60,15 +66,15 @@ impl bin::Server for Server {
 async fn handle_connection(conn: Incoming) -> Result<()> {
     let connection = conn.await?;
     async {
-        trace!(target: crate::SERVER_TARGET, "established");
+        trace!(target: SERVER_TARGET, "established");
 
         loop {
             let stream = connection.accept_bi().await;
-            trace!(target: crate::SERVER_TARGET, "stream accepted");
+            trace!(target: SERVER_TARGET, "stream accepted");
 
             let stream = match stream {
                 Err(ConnectionError::ApplicationClosed { .. }) => {
-                    trace!(target: crate::SERVER_TARGET, "connection closed");
+                    trace!(target: SERVER_TARGET, "connection closed");
                     return Ok(());
                 }
                 Err(e) => {
@@ -79,7 +85,7 @@ async fn handle_connection(conn: Incoming) -> Result<()> {
             let fut = handle_request(stream);
             tokio::spawn(async move {
                 if let Err(e) = fut.await {
-                    error!(target: crate::SERVER_TARGET, "failed: {reason}", reason = e.to_string());
+                    error!(target: SERVER_TARGET, "failed: {reason}", reason = e.to_string());
                 }
             });
         }
@@ -94,8 +100,9 @@ async fn handle_request((mut send, mut recv): (SendStream, RecvStream)) -> Resul
         .await
         .map_err(|e| anyhow!("failed reading request: {}", e))?;
 
-    let blob = Blob::try_from(req.as_slice()).map_err(|e| anyhow!("failed handling request: {}", e))?;
-    trace!(target: crate::SERVER_TARGET, "serving {}", blob.size);
+    let blob =
+        Blob::try_from(req.as_slice()).map_err(|e| anyhow!("failed handling request: {}", e))?;
+    trace!(target: SERVER_TARGET, "serving {}", blob.size);
 
     send.write_chunk(Bytes::from_iter(blob))
         .await
@@ -104,6 +111,6 @@ async fn handle_request((mut send, mut recv): (SendStream, RecvStream)) -> Resul
     send.finish()
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
 
-    trace!(target: crate::SERVER_TARGET, "complete");
+    trace!(target: SERVER_TARGET, "complete");
     Ok(())
 }

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "iut_common"
+name = "common"
 
 [dependencies]
 anyhow = "1.0.102"
@@ -22,6 +22,7 @@ core_affinity = "0.8.3"
 futures = "0.3.32"
 bpf-tracing = "0.0.3"
 byte-unit = "5.2.0"
+socket2 = "0.6.3"
 
 [build-dependencies]
 libbpf-cargo = "0.26.2"

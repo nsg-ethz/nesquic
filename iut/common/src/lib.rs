@@ -1,7 +1,9 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use core_affinity::{self, CoreId};
 use futures::future::Either::*;
+use socket2::{Domain, Protocol, Socket, Type};
+use std::net::SocketAddr;
 use std::{collections::HashMap, env, future::Future, mem::MaybeUninit};
 use tokio::{
     signal::unix::{signal, SignalKind},
@@ -12,6 +14,8 @@ use utils::{
     bin::{Client, ClientArgs, Server, ServerArgs},
     perf::{Request, Stats},
 };
+
+pub mod test;
 
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about)]
@@ -221,4 +225,19 @@ pub async fn run<C: Client, S: Server>(lib_name: &str, lib_version: &str) -> Res
     // }
 
     Ok(())
+}
+
+pub fn bind_socket(addr: SocketAddr) -> Result<std::net::UdpSocket> {
+    let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))
+        .context("create socket")?;
+
+    if addr.is_ipv6() {
+        socket.set_only_v6(false).context("set_only_v6")?;
+    }
+
+    socket
+        .bind(&socket2::SockAddr::from(addr))
+        .context("binding endpoint")?;
+
+    Ok(socket.into())
 }

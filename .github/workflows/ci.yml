@@ -67,11 +67,9 @@ jobs:
               run: |
                   mkdir -p include
                   bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
-            - uses: Swatinem/rust-cache@v2
-            - name: Build builder container
-              run: docker build -f docker/Dockerfile.${{ matrix.library }}-builder -t nesquic/${{ matrix.library }}-builder:latest .
             - name: Run tests
-              run: docker run -it nesquic/${{ matrix.library }}-builder:latest cargo test --locked --verbose
-            - name: Build IUT container
+              run: cargo test --locked --verbose -p ${{ matrix.library }}-iut
+            - uses: Swatinem/rust-cache@v2
+            - name: Build container
               if: ${{ matrix.profile == 'release' && matrix.channel == 'stable' }}
               run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .

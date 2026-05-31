@@ -1,3 +1,10 @@
+use client::Client;
+use common::run;
+use server::Server;
+
+mod client;
+mod server;
+
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
@@ -10,5 +17,16 @@ async fn main() -> anyhow::Result<()> {
         .map(|(_, v)| *v)
         .unwrap_or("unknown");
 
-    iut_common::run::<noq_iut::Client, noq_iut::Server>("noq", version).await
+    run::<Client, Server>("noq", version).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common::test;
+
+    #[tokio::test]
+    async fn test_connectivity() {
+        test::connectivity::<Client, Server>().await;
+    }
 }

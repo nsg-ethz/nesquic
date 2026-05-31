@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["iut/common", "iut/quinn", "iut/quiche", "iut/neqo", "iut/noq", "utils"]
+members = ["iut/common", "iut/quinn", "iut/quiche", "iut/noq", "utils"]
 
 [profile.release]
 debug = true
