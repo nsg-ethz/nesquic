@@ -14,10 +14,6 @@ RUN cargo build --release -p quiche-iut --bin nesquic-quiche
 
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y \
-    libbpf0 \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY --from=builder /workspace/target/release/nesquic-quiche /usr/local/bin/nesquic-quiche
 COPY --from=builder /workspace/res /workspace/res
 

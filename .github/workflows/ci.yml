@@ -10,15 +10,14 @@ on:
     workflow_call:
 
 jobs:
-    test:
-        name: Test [${{ matrix.rust }}, ${{ matrix.profile }} - ${{ matrix.library }}]
+    nesquic:
+        name: Test Nesquic [${{ matrix.rust }}, ${{ matrix.profile }}}]
         runs-on: ubuntu-24.04
         strategy:
             fail-fast: false
             matrix:
                 rust: [stable, nightly]
                 profile: [dev, release]
-                library: [quinn, quiche, neqo, noq]
                 exclude:
                     - rust: nightly
                       profile: release
@@ -68,8 +67,20 @@ jobs:
                   mkdir -p include
                   bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
             - name: Run tests
-              run: cargo test --locked --verbose -p ${{ matrix.library }}-iut
+              run: cargo test -p nesquic --locked --verbose
             - uses: Swatinem/rust-cache@v2
+    libraries:
+        name: Test ${{ matrix.library }}
+        runs-on: ubuntu-24.04
+        strategy:
+            fail-fast: false
+            matrix:
+                library: [quinn, quiche, neqo, noq]
+        steps:
+            - uses: actions/checkout@v4
+            - name: Test
+              run: |
+                  docker build -f docker/Dockerfile.${{ matrix.library }} --target builder -t ${{ matrix.library }}-builder .
+                  docker run --rm ${{ matrix.library }}-builder cargo test --release -p ${{ matrix.library }}-iut
             - name: Build container
-              if: ${{ matrix.profile == 'release' && matrix.rust == 'stable' }}
               run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .

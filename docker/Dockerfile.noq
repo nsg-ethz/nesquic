@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /workspace
 COPY . .
 
-RUN cargo build --release --locked -p quinn-iut --bin nesquic-quinn
+RUN cargo build --release --locked -p noq-iut --bin nesquic-noq
 
 FROM ubuntu:22.04
 
