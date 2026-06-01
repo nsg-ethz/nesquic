@@ -2205,10 +2205,9 @@ dependencies = [
 
 [[package]]
 name = "mtu"
-version = "0.3.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.4.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
- "bindgen",
  "cfg_aliases",
  "libc",
  "static_assertions",
@@ -2246,8 +2245,8 @@ dependencies = [
 
 [[package]]
 name = "neqo-common"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.28.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
  "enum-map",
  "env_logger",
@@ -2259,24 +2258,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "neqo-crypto"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
-dependencies = [
- "bindgen",
- "enum-map",
- "log",
- "neqo-common",
- "semver",
- "serde",
- "serde_derive",
- "strum",
- "thiserror 2.0.18",
- "toml 0.9.12+spec-1.1.0",
- "windows",
-]
-
-[[package]]
 name = "neqo-iut"
 version = "0.1.0"
 dependencies = [
@@ -2284,9 +2265,9 @@ dependencies = [
  "built",
  "iut-common",
  "neqo-common",
- "neqo-crypto",
  "neqo-transport",
  "neqo-udp",
+ "nss-rs 0.12.2",
  "quinn-udp 0.6.1",
  "socket2",
  "tokio",
@@ -2296,8 +2277,8 @@ dependencies = [
 
 [[package]]
 name = "neqo-transport"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.28.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
  "enum-map",
  "enumset",
@@ -2305,7 +2286,7 @@ dependencies = [
  "log",
  "mtu",
  "neqo-common",
- "neqo-crypto",
+ "nss-rs 0.9.0",
  "qlog 0.16.0",
  "rustc-hash",
  "smallvec",
@@ -2316,8 +2297,8 @@ dependencies = [
 
 [[package]]
 name = "neqo-udp"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.28.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -2469,6 +2450,44 @@ dependencies = [
  "socket2",
  "tracing",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "nss-rs"
+version = "0.9.0"
+source = "git+https://github.com/mozilla/nss-rs?rev=0.9.0#0ea3df78a294136cab1e11b50d1e60e6582c1395"
+dependencies = [
+ "bindgen",
+ "enum-map",
+ "log",
+ "once_cell",
+ "pkcs11-bindings",
+ "semver",
+ "serde",
+ "serde_derive",
+ "strum",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
+ "windows",
+]
+
+[[package]]
+name = "nss-rs"
+version = "0.12.2"
+source = "git+https://github.com/mozilla/nss-rs.git?tag=0.12.2#ee26ca59b52b405be802c1ed669b7252b6caa811"
+dependencies = [
+ "bindgen",
+ "enum-map",
+ "log",
+ "once_cell",
+ "pkcs11-bindings",
+ "semver",
+ "serde",
+ "serde_derive",
+ "strum",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
+ "windows",
 ]
 
 [[package]]
@@ -2704,6 +2723,15 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "pkcs11-bindings"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77f2b11de4fec7f1e085891d4a4bf16a8b1beb49978837a80d4e9e705b99295c"
+dependencies = [
+ "bindgen",
+]
 
 [[package]]
 name = "pkg-config"
