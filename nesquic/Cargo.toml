@@ -3,16 +3,9 @@ name = "nesquic"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
+[[bin]]
 name = "nesquic"
-
-[features]
-# msquic = ["dep:msquic-iut"]
-quinn  = ["dep:quinn-iut"]
-quiche = ["dep:quiche-iut"]
-neqo   = ["dep:neqo-iut"]
-noq    = ["dep:noq-iut"]
-
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.102"
@@ -20,11 +13,6 @@ built = { version = "0.8" }
 clap = "4.6.0"
 libbpf-rs = "0.26.2"
 libc = "0.2.185"
-# msquic-iut = { path = "../iut/msquic" }
-quinn-iut  = { path = "../iut/quinn",  optional = true }
-quiche-iut = { path = "../iut/quiche", optional = true }
-neqo-iut   = { path = "../iut/neqo",   optional = true }
-noq-iut    = { path = "../iut/noq",    optional = true }
 tokio = { version = "1.51.1", features = ["signal", "sync"] }
 utils = { path = "../utils" }
 tracing-subscriber = "0.3.23"

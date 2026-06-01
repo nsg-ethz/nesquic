@@ -67,7 +67,7 @@ jobs:
                   mkdir -p include
                   bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
             - name: Run tests
-              run: cargo test -p nesquic --locked --verbose
+              run: cargo test --bin nesquic --locked --verbose
             - uses: Swatinem/rust-cache@v2
     libraries:
         name: Test ${{ matrix.library }}
