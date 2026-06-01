@@ -27,18 +27,14 @@ pub(crate) fn bind_socket(addr: SocketAddr) -> Result<std::net::UdpSocket> {
         .bind(&socket2::SockAddr::from(addr))
         .context("binding socket")?;
 
-    socket
-        .set_nonblocking(true)
-        .context("set_nonblocking")?;
+    socket.set_nonblocking(true).context("set_nonblocking")?;
 
     Ok(socket.into())
 }
 
 /// Bind a socket and wrap it in a Tokio UdpSocket, returning the local address too.
 /// Used by the server which does not need GSO support.
-pub(crate) fn bind_tokio_socket(
-    addr: SocketAddr,
-) -> Result<(tokio::net::UdpSocket, SocketAddr)> {
+pub(crate) fn bind_tokio_socket(addr: SocketAddr) -> Result<(tokio::net::UdpSocket, SocketAddr)> {
     let socket = tokio::net::UdpSocket::from_std(bind_socket(addr)?)?;
     let local_addr = socket.local_addr()?;
     Ok((socket, local_addr))
@@ -57,8 +53,7 @@ impl UdpSocket {
     /// Bind to `addr` and initialise the quinn-udp socket state.
     pub(crate) fn bind(addr: SocketAddr) -> Result<(Self, SocketAddr)> {
         let std_socket = bind_socket(addr)?;
-        let state =
-            UdpSocketState::new((&std_socket).into()).context("init UdpSocketState")?;
+        let state = UdpSocketState::new((&std_socket).into()).context("init UdpSocketState")?;
         let inner = tokio::net::UdpSocket::from_std(std_socket)?;
         let local_addr = inner.local_addr()?;
         Ok((Self { state, inner }, local_addr))
@@ -107,8 +102,7 @@ impl UdpSocket {
 
 /// Initialize NSS crypto with a certificate database.
 pub(crate) fn init_crypto_db(db_path: &str) -> Result<()> {
-    neqo_crypto::init_db(std::path::Path::new(db_path))
-        .context("failed to initialize NSS crypto database")
+    nss::init_db(std::path::Path::new(db_path)).context("failed to initialize NSS crypto database")
 }
 
 /// Initialize the NSS crypto database from the canonical bundled path.

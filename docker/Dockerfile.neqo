@@ -1,66 +1,40 @@
-# Stage 1: build NSS and NSPR from Mozilla Mercurial (required by neqo-crypto)
-FROM ubuntu:22.04 AS nss-builder
+FROM rust:1.94.1 AS builder
 
 RUN apt-get update && apt-get install -y \
-    mercurial ninja-build python3-pip python3 \
-    build-essential \
+    libclang-dev gyp ninja-build python-is-python3 libelf-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# gyp-next is the build system driver for NSS
-RUN pip3 install gyp-next
+ENV NSS_DIR=/nss \
+    NSS_VERSION=3.121 \
+    NSS_TARGET=Release \
+    NSS_PREBUILT=1 \
+    NSPR_DIR=/nspr \
+    NSPR_VERSION=4.38.2 \
+    LD_LIBRARY_PATH=/dist/Release/lib
 
-WORKDIR /neqo_dependencies
-RUN hg clone https://hg-edge.mozilla.org/projects/nss nss
-RUN hg clone https://hg-edge.mozilla.org/projects/nspr nspr
-
-# Stage 2: compile the Rust binary against the pre-cloned NSS sources
-FROM ubuntu:22.04 AS builder
-
-RUN apt-get update && apt-get install -y \
-    curl build-essential pkg-config \
-    clang llvm libelf-dev libbpf-dev \
-    libssl-dev ninja-build python3-pip python3 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pip3 install gyp-next
-
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --default-toolchain stable
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Copy the cloned NSS/NSPR sources from the first stage
-COPY --from=nss-builder /neqo_dependencies /neqo_dependencies
+ARG MOZILLA_ACTIONS_REF=v1
+RUN set -eux; \
+    mkdir -p "$NSPR_DIR" "$NSS_DIR"; \
+    curl -L -o /tmp/nspr.tar.gz "https://ftp.mozilla.org/pub/nspr/releases/v$NSPR_VERSION/src/nspr-$NSPR_VERSION.tar.gz"; \
+    tar xzf /tmp/nspr.tar.gz --strip-components=2 -C "$NSPR_DIR"; \
+    rm /tmp/nspr.tar.gz; \
+    NSS_TAG=$(echo "$NSS_VERSION" | tr '.' '_'); \
+    curl -L -o /tmp/nss.tar.gz "https://ftp.mozilla.org/pub/security/nss/releases/NSS_${NSS_TAG}_RTM/src/nss-${NSS_VERSION}.tar.gz"; \
+    tar xzf /tmp/nss.tar.gz --strip-components=2 -C "$NSS_DIR"; \
+    rm /tmp/nss.tar.gz;
+RUN "$NSS_DIR"/build.sh --static -Ddisable_tests=1 -Ddisable_dbm=1 -Ddisable_libpkix=1 -Ddisable_ckbi=1 -Ddisable_fips=1 -o
 
 WORKDIR /workspace
 COPY . .
 
-# NSS_DIR tells neqo-crypto where to find NSS sources so it compiles them
-ENV NSS_DIR=/neqo_dependencies/nss
-
-# NSS shared libs live here after the build; expose them to the dynamic linker
-# so that test binaries run correctly inside this container
-ENV LD_LIBRARY_PATH=/neqo_dependencies/dist/Release/lib
-
 RUN cargo build --release -p neqo-iut --bin nesquic-neqo
 
-# Stage 3: minimal runtime image
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y \
-    libbpf0 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy the binary
 COPY --from=builder /workspace/target/release/nesquic-neqo /usr/local/bin/nesquic-neqo
-
-# Copy the res directory — neqo's init_default_crypto_db() looks for the NSS cert DB
-# at a path derived from CARGO_MANIFEST_DIR at build time (/workspace/res/nssdb)
 COPY --from=builder /workspace/res /workspace/res
+COPY --from=builder /dist/Release/lib/*.so /neqo/lib/
 
-# Copy the compiled NSS shared libraries
-COPY --from=builder /neqo_dependencies/dist/Release/lib /neqo_dependencies/dist/Release/lib
-
-# Register NSS libs so the dynamic linker can find them
-RUN echo "/neqo_dependencies/dist/Release/lib" > /etc/ld.so.conf.d/neqo-nss.conf && ldconfig
+RUN echo "/neqo/lib" > /etc/ld.so.conf.d/neqo-nss.conf && ldconfig
 
 ENTRYPOINT ["/usr/local/bin/nesquic-neqo"]

@@ -8,12 +8,12 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use neqo_common::{event::Provider as _, Datagram, Tos};
-use neqo_crypto::{AllowZeroRtt, AntiReplay};
 use neqo_transport::{
     server::{ConnectionRef, Server as NeqoServer},
     ConnectionEvent, ConnectionIdGenerator, ConnectionParameters, Output,
     RandomConnectionIdGenerator, State, StreamId,
 };
+use nss::{agent::AllowZeroRtt, AntiReplay};
 use tracing::{error, info, trace};
 use utils::{bin, bin::ServerArgs, perf::Blob};
 

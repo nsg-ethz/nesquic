@@ -9,12 +9,12 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use neqo_common::event::Provider as _;
-use neqo_crypto::AuthenticationStatus;
 use neqo_transport::{
     Connection, ConnectionEvent, ConnectionIdGenerator, ConnectionParameters, OutputBatch,
     RandomConnectionIdGenerator, State, StreamType,
 };
 use neqo_udp::RecvBuf;
+use nss::AuthenticationStatus;
 use tracing::trace;
 use utils::{bin, bin::ClientArgs, perf::Request};
 
