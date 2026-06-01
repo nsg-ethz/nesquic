@@ -2287,6 +2287,7 @@ dependencies = [
  "neqo-crypto",
  "neqo-transport",
  "neqo-udp",
+ "quinn-udp 0.6.1",
  "socket2",
  "tokio",
  "tracing",
@@ -3082,6 +3083,7 @@ dependencies = [
  "libc",
  "log",
  "socket2",
+ "tracing",
  "windows-sys 0.52.0",
 ]
 

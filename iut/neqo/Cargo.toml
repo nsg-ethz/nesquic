@@ -11,6 +11,7 @@ path = "src/main.rs"
 anyhow = "1.0.102"
 socket2 = "0.6"
 tracing = "0.1"
+quinn-udp = "0.6.1"
 tokio = { version = "1.51.1", features = ["macros", "full"] }
 utils = { path = "../../utils" }
 iut-common = { path = "../common" }

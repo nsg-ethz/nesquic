@@ -81,6 +81,6 @@ jobs:
             - name: Test
               run: |
                   docker build -f docker/Dockerfile.${{ matrix.library }} --target builder -t ${{ matrix.library }}-builder .
-                  docker run --rm ${{ matrix.library }}-builder cargo test --release -p ${{ matrix.library }}-iut
+                  docker run ${{ matrix.library }}-builder cargo test --release -p ${{ matrix.library }}-iut
             - name: Build container
               run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .
