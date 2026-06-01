@@ -7,12 +7,12 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
-use neqo_common::{Datagram, Tos, event::Provider as _};
+use neqo_common::{event::Provider as _, Datagram, Tos};
 use neqo_crypto::{AllowZeroRtt, AntiReplay};
 use neqo_transport::{
+    server::{ConnectionRef, Server as NeqoServer},
     ConnectionEvent, ConnectionIdGenerator, ConnectionParameters, Output,
     RandomConnectionIdGenerator, State, StreamId,
-    server::{ConnectionRef, Server as NeqoServer},
 };
 use tracing::{error, info, trace};
 use utils::{bin, bin::ServerArgs, perf::Blob};
@@ -56,9 +56,8 @@ impl bin::Server for Server {
 
         info!(target: TARGET, "listening on {local_addr}");
 
-        let anti_replay =
-            AntiReplay::new(Instant::now(), Duration::from_millis(10), 7, 14)
-                .context("create anti-replay")?;
+        let anti_replay = AntiReplay::new(Instant::now(), Duration::from_millis(10), 7, 14)
+            .context("create anti-replay")?;
 
         let cid_gen: Rc<RefCell<dyn ConnectionIdGenerator>> =
             Rc::new(RefCell::new(RandomConnectionIdGenerator::new(8)));
@@ -152,10 +151,7 @@ impl bin::Server for Server {
 ///
 /// All stream I/O calls (stream_recv, stream_send, stream_close_send) are synchronous.
 /// UDP sending is deferred to the caller via `neqo_server.process_output()`.
-fn process_all_events(
-    server: &NeqoServer,
-    stream_states: &mut HashMap<StreamId, StreamState>,
-) {
+fn process_all_events(server: &NeqoServer, stream_states: &mut HashMap<StreamId, StreamState>) {
     #[allow(clippy::mutable_key_type)]
     let active = server.active_connections();
 
@@ -226,9 +222,7 @@ fn read_request(
     loop {
         // Each borrow_mut() creates a temporary RefMut that is dropped after
         // stream_recv() returns, so the next borrow in this loop is safe.
-        let result = conn_ref
-            .borrow_mut()
-            .stream_recv(stream_id, &mut read_buf);
+        let result = conn_ref.borrow_mut().stream_recv(stream_id, &mut read_buf);
 
         let (n, fin) = match result {
             Ok(r) => r,
@@ -276,11 +270,7 @@ fn read_request(
 ///
 /// If `stream_send` returns 0 bytes written (flow-controlled), we stop and wait
 /// for the next `SendStreamWritable` event before resuming.
-fn try_send_response(
-    conn_ref: &ConnectionRef,
-    stream_id: StreamId,
-    state: &mut StreamState,
-) {
+fn try_send_response(conn_ref: &ConnectionRef, stream_id: StreamId, state: &mut StreamState) {
     let remaining = match state.write_remaining {
         Some(ref mut r) => r,
         None => return, // request not yet received or already finished

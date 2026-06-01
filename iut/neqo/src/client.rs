@@ -123,7 +123,7 @@ impl bin::Client for Client {
         let local_addr = self.local_addr.ok_or_else(|| anyhow!("not connected"))?;
 
         let request = Request::try_from(self.args.blob.clone())?;
-        trace!(target: TARGET, "requesting {}B", request.size);
+        trace!(target: TARGET, "requesting {}B", request.len());
 
         let stream_id = conn
             .stream_create(StreamType::BiDi)
