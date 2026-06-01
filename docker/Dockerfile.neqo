@@ -37,6 +37,10 @@ COPY . .
 # NSS_DIR tells neqo-crypto where to find NSS sources so it compiles them
 ENV NSS_DIR=/neqo_dependencies/nss
 
+# NSS shared libs live here after the build; expose them to the dynamic linker
+# so that test binaries run correctly inside this container
+ENV LD_LIBRARY_PATH=/neqo_dependencies/dist/Release/lib
+
 RUN cargo build --release -p neqo-iut --bin nesquic-neqo
 
 # Stage 3: minimal runtime image
