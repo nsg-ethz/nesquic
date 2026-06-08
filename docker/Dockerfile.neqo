@@ -29,7 +29,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY iut/ iut/
 COPY nesquic/ nesquic/
 COPY utils/ utils/
-COPY include/ include/
+COPY res/ res/
 
 RUN cargo build --release -p neqo-iut --bin nesquic-neqo
 
