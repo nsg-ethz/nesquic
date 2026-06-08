@@ -3,4 +3,5 @@
 .envrc
 .clangd
 __pycache__
-static_dependencies/
+.claude
+res/qlog

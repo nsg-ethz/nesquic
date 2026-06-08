@@ -9,16 +9,16 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use neqo_common::event::Provider as _;
-use neqo_crypto::AuthenticationStatus;
 use neqo_transport::{
     Connection, ConnectionEvent, ConnectionIdGenerator, ConnectionParameters, OutputBatch,
     RandomConnectionIdGenerator, State, StreamType,
 };
 use neqo_udp::RecvBuf;
+use nss::AuthenticationStatus;
 use tracing::trace;
 use utils::{bin, bin::ClientArgs, perf::Request};
 
-use crate::{UdpSocket, init_default_crypto_db};
+use crate::{init_default_crypto_db, UdpSocket};
 
 const TARGET: &str = "neqo::client";
 
@@ -86,8 +86,9 @@ impl bin::Client for Client {
                     ConnectionEvent::StateChange(State::Connected | State::Confirmed) => {
                         connected = true;
                     }
-                    ConnectionEvent::StateChange(State::Closing { ref error, .. }
-                    | State::Draining { ref error, .. }) => {
+                    ConnectionEvent::StateChange(
+                        State::Closing { ref error, .. } | State::Draining { ref error, .. },
+                    ) => {
                         if error.is_error() {
                             bail!("connection closing with error: {:?}", error);
                         }
@@ -115,11 +116,14 @@ impl bin::Client for Client {
 
     async fn run(&mut self) -> Result<()> {
         let conn = self.conn.as_mut().ok_or_else(|| anyhow!("not connected"))?;
-        let socket = self.socket.as_ref().ok_or_else(|| anyhow!("not connected"))?;
+        let socket = self
+            .socket
+            .as_ref()
+            .ok_or_else(|| anyhow!("not connected"))?;
         let local_addr = self.local_addr.ok_or_else(|| anyhow!("not connected"))?;
 
         let request = Request::try_from(self.args.blob.clone())?;
-        trace!(target: TARGET, "requesting {}B", request.size);
+        trace!(target: TARGET, "requesting {}B", request.len());
 
         let stream_id = conn
             .stream_create(StreamType::BiDi)
@@ -138,7 +142,7 @@ impl bin::Client for Client {
 
         trace!(target: TARGET, "request sent on stream {:?}", stream_id);
 
-        let request_size = request.size;
+        let request_size = request.len();
         let mut received: usize = 0;
         let mut response_done = false;
         let mut read_buf = vec![0u8; 32 * 1024];
@@ -146,9 +150,7 @@ impl bin::Client for Client {
         drive_until(conn, socket, local_addr, |conn| {
             while let Some(event) = conn.next_event() {
                 match event {
-                    ConnectionEvent::RecvStreamReadable { stream_id: sid }
-                        if sid == stream_id =>
-                    {
+                    ConnectionEvent::RecvStreamReadable { stream_id: sid } if sid == stream_id => {
                         loop {
                             let (n, fin) = conn
                                 .stream_recv(sid, &mut read_buf)
@@ -207,8 +209,7 @@ async fn drive_until<F>(
 where
     F: FnMut(&mut Connection) -> Result<bool>,
 {
-    let max_datagrams =
-        NonZeroUsize::new(socket.max_gso_segments()).unwrap_or(NonZeroUsize::MIN);
+    let max_datagrams = NonZeroUsize::new(socket.max_gso_segments()).unwrap_or(NonZeroUsize::MIN);
     let mut recv_buf = RecvBuf::default();
     let mut timeout: Option<Duration>;
 

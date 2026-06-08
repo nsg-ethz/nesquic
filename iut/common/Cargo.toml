@@ -1,34 +1,29 @@
 [package]
-name = "nesquic"
+name = "iut-common"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "nesquic"
-path = "src/main.rs"
+[lib]
+name = "common"
 
 [dependencies]
 anyhow = "1.0.102"
-built = { version = "0.8" }
 clap = "4.6.0"
 libbpf-rs = "0.26.2"
 libc = "0.2.185"
 tokio = { version = "1.51.1", features = ["signal", "sync"] }
-utils = { path = "../utils" }
+utils = { path = "../../utils" }
 tracing-subscriber = "0.3.23"
 tracing = "0.1.44"
 lazy_static = "1.5.0"
-reqwest = { version = "0.13.4", default-features = false, features = ["http2"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["http2"] }
 plain = "0.2.3"
 core_affinity = "0.8.3"
 futures = "0.3.32"
 bpf-tracing = "0.0.3"
 byte-unit = "5.2.0"
+socket2 = "0.6.3"
 
 [build-dependencies]
 libbpf-cargo = "0.26.2"
-built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }
 bpf-tracing-include = "0.0.3"
-
-[dev-dependencies]
-test-case = "3.3.1"

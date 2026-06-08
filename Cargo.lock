@@ -1045,18 +1045,18 @@ dependencies = [
 
 [[package]]
 name = "enumset"
-version = "1.1.10"
+version = "1.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25b07a8dfbbbfc0064c0a6bdf9edcf966de6b1c33ce344bdeca3b41615452634"
+checksum = "839c4174b41e75c8f7306110b2c51996a293b8d1d850edd529011841d9fede7d"
 dependencies = [
  "enumset_derive",
 ]
 
 [[package]]
 name = "enumset_derive"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f43e744e4ea338060faee68ed933e46e722fb7f3617e722a5772d7e856d8b3ce"
+checksum = "4bd536557b58c682b217b8fb199afdff47cd3eff260623f19e77074eb073d63a"
 dependencies = [
  "darling 0.21.3",
  "proc-macro2",
@@ -1934,6 +1934,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "iut-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bpf-tracing",
+ "bpf-tracing-include",
+ "byte-unit",
+ "clap",
+ "core_affinity",
+ "futures",
+ "lazy_static",
+ "libbpf-cargo",
+ "libbpf-rs",
+ "libc",
+ "plain",
+ "reqwest",
+ "socket2",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "utils",
+]
+
+[[package]]
 name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2181,10 +2205,9 @@ dependencies = [
 
 [[package]]
 name = "mtu"
-version = "0.3.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.4.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
- "bindgen",
  "cfg_aliases",
  "libc",
  "static_assertions",
@@ -2222,8 +2245,8 @@ dependencies = [
 
 [[package]]
 name = "neqo-common"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.28.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
  "enum-map",
  "env_logger",
@@ -2235,32 +2258,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "neqo-crypto"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
-dependencies = [
- "bindgen",
- "enum-map",
- "log",
- "neqo-common",
- "semver",
- "serde",
- "serde_derive",
- "strum",
- "thiserror 2.0.18",
- "toml",
- "windows",
-]
-
-[[package]]
 name = "neqo-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
+ "iut-common",
  "neqo-common",
- "neqo-crypto",
  "neqo-transport",
  "neqo-udp",
+ "nss-rs",
  "quinn-udp 0.6.1",
  "socket2",
  "tokio",
@@ -2270,8 +2277,8 @@ dependencies = [
 
 [[package]]
 name = "neqo-transport"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.28.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
  "enum-map",
  "enumset",
@@ -2279,7 +2286,7 @@ dependencies = [
  "log",
  "mtu",
  "neqo-common",
- "neqo-crypto",
+ "nss-rs",
  "qlog 0.16.0",
  "rustc-hash",
  "smallvec",
@@ -2290,8 +2297,8 @@ dependencies = [
 
 [[package]]
 name = "neqo-udp"
-version = "0.26.0"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.26.0#7c0b85f4c7d60bfb74b7be5a64551a4a5c5c0c6b"
+version = "0.28.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -2317,11 +2324,7 @@ dependencies = [
  "libbpf-cargo",
  "libbpf-rs",
  "libc",
- "neqo-iut",
- "noq-iut",
  "plain",
- "quiche-iut",
- "quinn-iut",
  "reqwest",
  "test-case",
  "tokio",
@@ -2397,7 +2400,9 @@ name = "noq-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
  "bytes",
+ "iut-common",
  "noq",
  "rustls",
  "socket2",
@@ -2445,6 +2450,25 @@ dependencies = [
  "socket2",
  "tracing",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "nss-rs"
+version = "0.9.0"
+source = "git+https://github.com/mozilla/nss-rs.git?rev=0.9.0#0ea3df78a294136cab1e11b50d1e60e6582c1395"
+dependencies = [
+ "bindgen",
+ "enum-map",
+ "log",
+ "once_cell",
+ "pkcs11-bindings",
+ "semver",
+ "serde",
+ "serde_derive",
+ "strum",
+ "thiserror 2.0.18",
+ "toml",
+ "windows",
 ]
 
 [[package]]
@@ -2682,6 +2706,15 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "pkcs11-bindings"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77f2b11de4fec7f1e085891d4a4bf16a8b1beb49978837a80d4e9e705b99295c"
+dependencies = [
+ "bindgen",
+]
 
 [[package]]
 name = "pkg-config"
@@ -2989,8 +3022,10 @@ name = "quiche-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
  "bytes",
  "futures",
+ "iut-common",
  "quiche",
  "tokio",
  "tokio-quiche",
@@ -3024,7 +3059,9 @@ name = "quinn-iut"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "built",
  "bytes",
+ "iut-common",
  "quinn",
  "quinn-proto",
  "rustls",
@@ -3082,6 +3119,7 @@ dependencies = [
  "libc",
  "log",
  "socket2",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -4565,6 +4603,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "average",
+ "byte-unit",
  "clap",
  "rcgen",
  "ring",

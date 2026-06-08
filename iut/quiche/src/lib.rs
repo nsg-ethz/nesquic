@@ -17,7 +17,7 @@ pub use client::Client;
 pub use server::Server;
 
 struct Benchmark {
-    buf: [u8; 16384],
+    buf: Vec<u8>,
     reqs: mpsc::UnboundedReceiver<(u64, Request, oneshot::Sender<()>)>,
     pending_req: HashMap<u64, oneshot::Sender<()>>,
     pending_res: HashMap<u64, Cursor<Bytes>>,
@@ -31,7 +31,7 @@ impl Benchmark {
         let (req_tx, req_rx) = mpsc::unbounded_channel();
 
         let benchmark = Benchmark {
-            buf: [0u8; 16384],
+            buf: vec![0u8; 32 * 1024],
             reqs: req_rx,
             pending_req: HashMap::new(),
             pending_res: HashMap::new(),
@@ -66,7 +66,7 @@ impl ApplicationOverQuic for Benchmark {
     }
 
     fn process_reads(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        let mut buf = [0u8; 16384];
+        let mut buf = vec![0u8; 32 * 1024];
         for stream in qconn.readable() {
             trace!("stream_recv({})", stream);
             while let Ok((_, done)) = qconn.stream_recv(stream, &mut buf) {

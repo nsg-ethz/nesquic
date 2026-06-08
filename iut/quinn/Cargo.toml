@@ -3,6 +3,10 @@ name = "quinn-iut"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "nesquic-quinn"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.102"
 bytes = "1.11.1"
@@ -14,3 +18,7 @@ socket2 = "0.6.3"
 tokio = { version = "1.51.1", features = ["macros", "full"] }
 url = "2.5.8"
 utils = { path = "../../utils" }
+iut-common = { path = "../common" }
+
+[build-dependencies]
+built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }

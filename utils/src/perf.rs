@@ -1,14 +1,19 @@
 use anyhow::{bail, Result};
 use average::MeanWithError;
+use byte_unit::Byte;
 use std::time::{Duration, Instant};
 
 pub struct Request {
-    pub size: usize,
+    size: Byte,
 }
 
 impl Request {
     pub fn to_bytes(&self) -> [u8; 8] {
-        self.size.to_be_bytes()
+        self.size.as_u64().to_be_bytes()
+    }
+
+    pub fn len(&self) -> usize {
+        self.size.as_u64() as usize
     }
 }
 
@@ -16,28 +21,8 @@ impl TryFrom<String> for Request {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self> {
-        if value.len() < 4 || !value.ends_with("bit") {
-            bail!("malformed blob size");
-        }
-
-        let bit_prefix = value.chars().rev().nth(3).unwrap();
-
-        let size_bits = if bit_prefix.to_digit(10) == None {
-            let mult: usize = match bit_prefix {
-                'G' => 1000 * 1000 * 1000,
-                'M' => 1000 * 1000,
-                'K' => 1000,
-                _ => bail!("unknown unit prefix"),
-            };
-
-            let size = value[..value.len() - 4].parse::<usize>()?;
-            Ok(mult * size)
-        } else {
-            let size = value[..value.len() - 3].parse::<usize>()?;
-            Ok(size)
-        };
-
-        size_bits.map(|k| Request { size: k / 8 })
+        let size: Byte = value.parse()?;
+        Ok(Request { size })
     }
 }
 
@@ -183,10 +168,10 @@ mod tests {
     #[test]
     fn parse_blob_sizes() {
         let req = Request::try_from(String::from("100Mbit")).expect("parse");
-        assert_eq!(req.size, 100_000_000 / 8);
+        assert_eq!(req.len(), 100_000_000 / 8);
 
         let req = Request::try_from(String::from("100bit")).expect("parse");
-        assert_eq!(req.size, 100 / 8);
+        assert_eq!(req.len(), 100 / 8);
 
         let req = Request::try_from(String::from("12lbit"));
         assert_eq!(req.is_err(), true);
@@ -199,6 +184,6 @@ mod tests {
     fn create_responses() {
         let req = Request::try_from(String::from("20Gbit")).expect("parse");
         let res = Blob::from(req.to_bytes());
-        assert_eq!(req.size, res.size);
+        assert_eq!(req.len(), res.size);
     }
 }

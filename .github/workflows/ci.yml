@@ -1,4 +1,4 @@
-name: Test
+name: CI
 
 on:
     push:
@@ -10,15 +10,14 @@ on:
     workflow_call:
 
 jobs:
-    test:
-        name: Test [${{ matrix.rust }}, ${{ matrix.profile }} - ${{ matrix.library }}]
+    nesquic:
+        name: Test Nesquic [${{ matrix.rust }}, ${{ matrix.profile }}}]
         runs-on: ubuntu-24.04
         strategy:
             fail-fast: false
             matrix:
                 rust: [stable, nightly]
                 profile: [dev, release]
-                library: [quinn, quiche, neqo, noq]
                 exclude:
                     - rust: nightly
                       profile: release
@@ -46,15 +45,19 @@ jobs:
                   tc_var RUSTFLAGS
                   tc_var CFLAGS
                   tc_var CXXFLAGS
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v4
             - uses: dtolnay/rust-toolchain@master
               with:
                   toolchain: ${{ matrix.rust }}
                   components: rustfmt
-            - name: Install deps
+            - uses: awalsh128/cache-apt-pkgs-action@latest
+              with:
+                  packages: clang-18 libelf-dev zlib1g-dev libnuma-dev
+                  version: latest
+            - name: Configure LLVM
               run: |
                   sudo apt-get update
-                  sudo apt-get install --yes --no-install-recommends clang-18 libelf-dev zlib1g-dev linux-headers-$(uname -r) libnuma-dev
+                  sudo apt-get install --yes --no-install-recommends linux-headers-$(uname -r)
                   sudo ln -s /usr/include/asm-generic /usr/include/asm
                   sudo rm -f /bin/clang && sudo ln -s /usr/bin/clang-18 /bin/clang && sudo ln -s /usr/bin/llvm-strip-18 /bin/llvm-strip
                   git clone --recurse-submodules https://github.com/libbpf/bpftool.git
@@ -63,32 +66,22 @@ jobs:
               run: |
                   mkdir -p include
                   bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
-            - uses: Swatinem/rust-cache@v2
-            - name: Build rcgen
-              run: cargo build --profile=${{ matrix.profile }} --locked --verbose --bin rcgen
-            - name: Generate certificate
-              run: cargo rcgen
-            - name: Build static dependencies for neqo
-              if: matrix.library == 'neqo'
-              run: |
-                  sudo apt-get install --yes --no-install-recommends ninja-build mercurial
-                  cargo install --locked uv
-                  uv tool install gyp-next
-                  cd ..
-                  mkdir -p neqo_dependencies && cd neqo_dependencies
-                  hg clone https://hg-edge.mozilla.org/projects/nss/ -r NSS_3_121_RTM
-                  # nspr version from `automation/release/nspr-version.txt`in the corresponding nss release
-                  hg clone https://hg-edge.mozilla.org/projects/nspr/ -r NSPR_4_38_2_RTM
-                  echo "NSS_DIR=$(pwd)/nss" >> ${GITHUB_ENV}
-                  echo "LD_LIBRARY_PATH=$(pwd)/dist/Release/lib" >> ${GITHUB_ENV}
-                  cd .. && cd nesquic
-            - name: Build nesquic for library ${{ matrix.library }}
-              run: cargo build --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
             - name: Run tests
+              run: cargo test --bin nesquic --locked --verbose
+            - uses: Swatinem/rust-cache@v2
+    libraries:
+        name: Test ${{ matrix.library }}
+        runs-on: ubuntu-24.04
+        strategy:
+            fail-fast: false
+            matrix:
+                library: [quinn, quiche, neqo, noq]
+        steps:
+            - uses: actions/checkout@v4
+            - name: Test
               run: |
-                  if [[ "${{ matrix.library }}" == "neqo" ]]; then
-                      echo $NSS_DIR
-                      echo "NSS_PREBUILT=1" >> ${GITHUB_ENV}
-                      echo $LD_LIBRARY_PATH | sudo tee /etc/ld.so.conf.d/neqo.conf && sudo ldconfig
-                  fi
-                  cargo test --profile=${{ matrix.profile }} --locked --verbose --features=${{ matrix.library }} -p nesquic
+                  docker build -f docker/Dockerfile.mahimahi -t nesquic/mahimahi .
+                  docker build -f docker/Dockerfile.${{ matrix.library }} --target builder -t ${{ matrix.library }}-builder .
+                  docker run ${{ matrix.library }}-builder cargo test --release -p ${{ matrix.library }}-iut
+            - name: Build container
+              run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .

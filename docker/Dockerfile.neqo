@@ -1,0 +1,43 @@
+FROM rust:1.94.1 AS builder
+
+RUN apt-get update && apt-get install -y \
+    libclang-dev gyp ninja-build python-is-python3 libelf-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV NSS_DIR=/nss \
+    NSS_VERSION=3.121 \
+    NSS_TARGET=Release \
+    NSS_PREBUILT=1 \
+    NSPR_DIR=/nspr \
+    NSPR_VERSION=4.38.2 \
+    LD_LIBRARY_PATH=/dist/Release/lib
+
+ARG MOZILLA_ACTIONS_REF=v1
+RUN set -eux; \
+    mkdir -p "$NSPR_DIR" "$NSS_DIR"; \
+    curl -L -o /tmp/nspr.tar.gz "https://ftp.mozilla.org/pub/nspr/releases/v$NSPR_VERSION/src/nspr-$NSPR_VERSION.tar.gz"; \
+    tar xzf /tmp/nspr.tar.gz --strip-components=2 -C "$NSPR_DIR"; \
+    rm /tmp/nspr.tar.gz; \
+    NSS_TAG=$(echo "$NSS_VERSION" | tr '.' '_'); \
+    curl -L -o /tmp/nss.tar.gz "https://ftp.mozilla.org/pub/security/nss/releases/NSS_${NSS_TAG}_RTM/src/nss-${NSS_VERSION}.tar.gz"; \
+    tar xzf /tmp/nss.tar.gz --strip-components=2 -C "$NSS_DIR"; \
+    rm /tmp/nss.tar.gz;
+RUN "$NSS_DIR"/build.sh --static -Ddisable_tests=1 -Ddisable_dbm=1 -Ddisable_libpkix=1 -Ddisable_ckbi=1 -Ddisable_fips=1 -o
+
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY iut/ iut/
+COPY nesquic/ nesquic/
+COPY utils/ utils/
+COPY res/ res/
+
+RUN cargo build --release -p neqo-iut --bin nesquic-neqo
+
+FROM nesquic/mahimahi
+
+COPY --from=builder /workspace/target/release/nesquic-neqo /usr/local/bin/nesquic-neqo
+COPY --from=builder /dist/Release/lib/*.so /neqo/lib/
+
+RUN echo "/neqo/lib" > /etc/ld.so.conf.d/neqo-nss.conf && ldconfig
+
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-neqo
