@@ -5,13 +5,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
-COPY . .
+COPY Cargo.toml Cargo.lock ./
+COPY iut/ iut/
+COPY nesquic/ nesquic/
+COPY utils/ utils/
+COPY include/ include/
 
 RUN cargo build --release --locked -p quinn-iut --bin nesquic-quinn
 
-FROM ubuntu:22.04
+FROM nesquic/mahimahi
 
 COPY --from=builder /workspace/target/release/nesquic-quinn /usr/local/bin/nesquic-quinn
-COPY --from=builder /workspace/res /workspace/res
 
-ENTRYPOINT ["/usr/local/bin/nesquic-quinn"]
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-quinn

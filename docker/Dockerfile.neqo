@@ -25,16 +25,19 @@ RUN set -eux; \
 RUN "$NSS_DIR"/build.sh --static -Ddisable_tests=1 -Ddisable_dbm=1 -Ddisable_libpkix=1 -Ddisable_ckbi=1 -Ddisable_fips=1 -o
 
 WORKDIR /workspace
-COPY . .
+COPY Cargo.toml Cargo.lock ./
+COPY iut/ iut/
+COPY nesquic/ nesquic/
+COPY utils/ utils/
+COPY include/ include/
 
 RUN cargo build --release -p neqo-iut --bin nesquic-neqo
 
-FROM ubuntu:22.04
+FROM nesquic/mahimahi
 
 COPY --from=builder /workspace/target/release/nesquic-neqo /usr/local/bin/nesquic-neqo
-COPY --from=builder /workspace/res /workspace/res
 COPY --from=builder /dist/Release/lib/*.so /neqo/lib/
 
 RUN echo "/neqo/lib" > /etc/ld.so.conf.d/neqo-nss.conf && ldconfig
 
-ENTRYPOINT ["/usr/local/bin/nesquic-neqo"]
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-neqo

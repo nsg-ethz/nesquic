@@ -43,6 +43,8 @@ impl bin::Client for Client {
             .next()
             .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
 
+        trace!(target: TARGET, "connecting to {}", remote);
+
         let addr = "[::]:0".parse().unwrap();
         let socket = bind_socket(addr)?;
         #[allow(unused_mut)]
