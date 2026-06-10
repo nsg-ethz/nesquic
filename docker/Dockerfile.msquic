@@ -1,6 +1,6 @@
 # Builds the standalone C++ msquic IUT (nesquic perf protocol).
 # See docs/PROTOCOL.md and docs/CLI.md. Build context is the repo root.
-FROM ubuntu:22.04 AS builder
+FROM debian:bookworm AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
 # msquic version whose public headers we compile against. Kept close to the

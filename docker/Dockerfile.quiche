@@ -1,4 +1,4 @@
-FROM rust:1.94.1 AS builder
+FROM rust:bookworm AS builder
 
 # quiche links against BoringSSL, which requires cmake, Go, and nasm to build
 RUN apt-get update && apt-get install -y \
