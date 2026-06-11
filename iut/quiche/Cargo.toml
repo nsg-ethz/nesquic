@@ -11,7 +11,7 @@ path = "src/main.rs"
 anyhow = "1.0.102"
 bytes = "1.11.1"
 tracing = "0.1.44"
-quiche = "0.28.0"
+quiche = "0.29.1"
 url = "2.5.8"
 utils = { path = "../../utils" }
 tokio-quiche = "0.18.0"
