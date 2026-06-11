@@ -1,4 +1,4 @@
-FROM debian:bookworm AS builder
+FROM ubuntu:24.04 AS builder
 
 RUN apt-get update && apt-get install -y \
     build-essential git autotools-dev dh-autoreconf pkg-config \
@@ -13,11 +13,11 @@ RUN git clone https://github.com/ravinet/mahimahi /mahimahi
 WORKDIR /mahimahi
 RUN ./autogen.sh && ./configure && make && make install DESTDIR=/install
 
-FROM debian:bookworm
+FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y \
     iproute2 iptables dnsmasq-base apache2-bin \
-    libprotobuf23 libssl3 libpangocairo-1.0-0 libxcb-present0 \
+    libprotobuf32t64 libssl3 libpangocairo-1.0-0 libxcb-present0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /install/usr/local /usr/local

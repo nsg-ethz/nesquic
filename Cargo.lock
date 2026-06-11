@@ -1938,15 +1938,11 @@ name = "iut-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bpf-tracing",
- "bpf-tracing-include",
  "byte-unit",
  "clap",
  "core_affinity",
  "futures",
  "lazy_static",
- "libbpf-cargo",
- "libbpf-rs",
  "libc",
  "plain",
  "reqwest",

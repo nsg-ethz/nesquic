@@ -1,8 +1,4 @@
-FROM rust:bookworm AS builder
-
-RUN apt-get update && apt-get install -y \
-    libelf-dev \
-    && rm -rf /var/lib/apt/lists/*
+FROM nesquic/rust AS builder
 
 WORKDIR /workspace
 COPY Cargo.toml Cargo.lock ./

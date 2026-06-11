@@ -1,10 +1,6 @@
-# Builds the standalone C++ msquic IUT (nesquic perf protocol).
-# See docs/PROTOCOL.md and docs/CLI.md. Build context is the repo root.
-FROM debian:bookworm AS builder
+FROM ubuntu:24.04 AS builder
 
 ARG DEBIAN_FRONTEND=noninteractive
-# msquic version whose public headers we compile against. Kept close to the
-# libmsquic package available from packages.microsoft.com.
 ARG MSQUIC_VERSION=v2.4.5
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,7 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gpg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install the prebuilt libmsquic runtime from Microsoft's package repository.
 RUN wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb \
         -O /tmp/packages-microsoft-prod.deb \
     && dpkg -i /tmp/packages-microsoft-prod.deb \
@@ -38,9 +33,6 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release .. \
     && cmake --build . -j "$(nproc)" \
     && cmake --install . --prefix /usr/local
 
-# ---- runtime image ----
-# Based on the shared mahimahi image so run.sh's mm-entrypoint wraps the binary
-# with the configured network emulation (see docker/mm-entrypoint.sh).
 FROM nesquic/mahimahi
 
 ARG DEBIAN_FRONTEND=noninteractive

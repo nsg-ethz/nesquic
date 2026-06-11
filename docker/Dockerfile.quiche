@@ -1,8 +1,8 @@
-FROM rust:bookworm AS builder
+FROM nesquic/rust AS builder
 
 # quiche links against BoringSSL, which requires cmake, Go, and nasm to build
 RUN apt-get update && apt-get install -y \
-    curl build-essential pkg-config \
+    curl git build-essential pkg-config \
     clang llvm libelf-dev libbpf-dev \
     libssl-dev cmake nasm golang-go \
     && rm -rf /var/lib/apt/lists/*

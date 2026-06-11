@@ -17,7 +17,6 @@
 #   BLOB      payload requested by the client       (default 50Mbit)
 #   ATTEMPTS  connection attempts before giving up  (default 30)
 #   TIMEOUT   per-attempt client timeout in seconds (default 10)
-#   NO_BUILD  set to 1 to skip building the image   (default unset)
 
 set -u
 
@@ -41,7 +40,7 @@ if [[ ! -f "${DOCKERFILE}" ]]; then
 fi
 
 PORT="${PORT:-4433}"
-BLOB="${BLOB:-50Mbit}"
+BLOB="${BLOB:-1Mbit}"
 ATTEMPTS="${ATTEMPTS:-30}"
 TIMEOUT="${TIMEOUT:-10}"
 IMAGE="nesquic/${LIB}"
@@ -55,14 +54,6 @@ function cleanup {
     docker rm -f "${SERVER_CONTAINER}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
-
-if [[ "${NO_BUILD:-}" != "1" ]]; then
-    echo -e "${COLOR_YELLOW}Building ${IMAGE}${COLOR_OFF}"
-    docker build -f "${WORKSPACE}/docker/Dockerfile.mahimahi" -t nesquic/mahimahi "${WORKSPACE}" \
-        || { echo -e "${COLOR_RED}error: failed to build nesquic/mahimahi${COLOR_OFF}" >&2; exit 1; }
-    docker build -f "${DOCKERFILE}" -t "${IMAGE}" "${WORKSPACE}" \
-        || { echo -e "${COLOR_RED}error: failed to build ${IMAGE}${COLOR_OFF}" >&2; exit 1; }
-fi
 
 cleanup
 echo -e "${COLOR_YELLOW}Starting ${LIB} server on 127.0.0.1:${PORT}${COLOR_OFF}"
