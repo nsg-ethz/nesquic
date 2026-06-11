@@ -9,7 +9,6 @@ name = "common"
 [dependencies]
 anyhow = "1.0.102"
 clap = "4.6.0"
-libbpf-rs = "0.26.2"
 libc = "0.2.185"
 tokio = { version = "1.51.1", features = ["signal", "sync"] }
 utils = { path = "../../utils" }
@@ -20,10 +19,5 @@ reqwest = { version = "0.13.2", default-features = false, features = ["http2"] }
 plain = "0.2.3"
 core_affinity = "0.8.3"
 futures = "0.3.32"
-bpf-tracing = "0.0.3"
 byte-unit = "5.2.0"
 socket2 = "0.6.3"
-
-[build-dependencies]
-libbpf-cargo = "0.26.2"
-bpf-tracing-include = "0.0.3"

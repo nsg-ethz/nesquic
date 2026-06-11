@@ -69,19 +69,53 @@ jobs:
             - name: Run tests
               run: cargo test --bin nesquic --locked --verbose
             - uses: Swatinem/rust-cache@v2
+    base:
+        name: Build base images
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@v4
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+            - name: Build base rust image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: docker/Dockerfile.rust
+                  tags: nesquic/rust
+                  load: true
+                  cache-from: type=gha,scope=rust
+                  cache-to: type=gha,mode=max,scope=rust
+            - name: Build mahimahi image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: docker/Dockerfile.mahimahi
+                  tags: nesquic/mahimahi
+                  load: true
+                  cache-from: type=gha,scope=mahimahi
+                  cache-to: type=gha,mode=max,scope=mahimahi
+            - name: Export base images
+              run: docker save nesquic/rust nesquic/mahimahi -o base-images.tar
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: base-images
+                  path: base-images.tar
     libraries:
         name: Test ${{ matrix.library }}
+        needs: base
         runs-on: ubuntu-24.04
         strategy:
             fail-fast: false
             matrix:
-                library: [quinn, quiche, neqo, noq]
+                library: [quinn, quiche, neqo, noq, msquic]
         steps:
             - uses: actions/checkout@v4
+            - uses: actions/download-artifact@v4
+              with:
+                  name: base-images
+            - name: Load base images
+              run: docker load -i base-images.tar
+            - name: Build library image
+              run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }} .
             - name: Test
-              run: |
-                  docker build -f docker/Dockerfile.mahimahi -t nesquic/mahimahi .
-                  docker build -f docker/Dockerfile.${{ matrix.library }} --target builder -t ${{ matrix.library }}-builder .
-                  docker run ${{ matrix.library }}-builder cargo test --release -p ${{ matrix.library }}-iut
-            - name: Build container
-              run: docker build -f docker/Dockerfile.${{ matrix.library }} -t nesquic/${{ matrix.library }}:latest .
+              run: script/test.sh ${{ matrix.library }}

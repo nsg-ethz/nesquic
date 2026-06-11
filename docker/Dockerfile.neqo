@@ -1,7 +1,7 @@
-FROM rust:1.94.1 AS builder
+FROM nesquic/rust AS builder
 
 RUN apt-get update && apt-get install -y \
-    libclang-dev gyp ninja-build python-is-python3 libelf-dev \
+    clang libclang-dev gyp ninja-build python-is-python3 libelf-dev curl gzip build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NSS_DIR=/nss \
@@ -9,7 +9,7 @@ ENV NSS_DIR=/nss \
     NSS_TARGET=Release \
     NSS_PREBUILT=1 \
     NSPR_DIR=/nspr \
-    NSPR_VERSION=4.38.2 \
+    NSPR_VERSION=4.39 \
     LD_LIBRARY_PATH=/dist/Release/lib
 
 ARG MOZILLA_ACTIONS_REF=v1
@@ -40,4 +40,5 @@ COPY --from=builder /dist/Release/lib/*.so /neqo/lib/
 
 RUN echo "/neqo/lib" > /etc/ld.so.conf.d/neqo-nss.conf && ldconfig
 
-ENV NESQUIC_BIN=/usr/local/bin/nesquic-neqo
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-neqo \
+    NSS_DB_PATH=/workspace/res/nssdb
