@@ -14,10 +14,34 @@ COPY nesquic/ nesquic/
 COPY utils/ utils/
 COPY res/ res/
 
-RUN cargo build --release -p quiche-iut --bin nesquic-quiche
+# Build BoringSSL dynamically so quiche's crypto symbols resolve through the PLT
+# and can be interposed by the LD_PRELOAD monitor (libnesquic_preload.so).
+# boring-sys and quiche both hard-code static linking, so patch their build
+# scripts in the cargo registry instead of vendoring BoringSSL's ~39 MB source.
+RUN set -eux; \
+    cargo fetch; \
+    REG="${CARGO_HOME:-/root/.cargo}/registry/src"; \
+    BORING="$(find "$REG" -maxdepth 2 -type d -name 'boring-sys-*' | head -1)"; \
+    QUICHE="$(find "$REG" -maxdepth 2 -type d -name 'quiche-*' | head -1)"; \
+    sed -i '/let mut cfg = get_boringssl_cmake_config(config);/a\        cfg.define("BUILD_SHARED_LIBS", "1");' "$BORING/build/main.rs"; \
+    sed -i 's/rustc-link-lib=static=crypto/rustc-link-lib=dylib=crypto/; s/rustc-link-lib=static=ssl/rustc-link-lib=dylib=ssl/' "$BORING/build/main.rs"; \
+    sed -i 's/rustc-link-lib=static=ssl/rustc-link-lib=dylib=ssl/; s/rustc-link-lib=static=crypto/rustc-link-lib=dylib=crypto/' "$QUICHE/src/build.rs"; \
+    cargo build --release --offline -p quiche-iut --bin nesquic-quiche
+
+# Collect the BoringSSL shared libs for the runtime image. Their soname is the
+# unversioned libcrypto.so/libssl.so, distinct from OpenSSL's versioned .so.3,
+# so they can coexist with any system OpenSSL.
+RUN mkdir -p /boringssl && \
+    find target/release/build -path '*boring-sys*/out/build/*' \
+        \( -name 'libcrypto.so' -o -name 'libssl.so' \) -exec cp -v {} /boringssl/ \;
 
 FROM nesquic/mahimahi
 
 COPY --from=builder /workspace/target/release/nesquic-quiche /usr/local/bin/nesquic-quiche
+COPY --from=builder /boringssl/ /opt/boringssl/lib/
 
+# Make the dynamically linked BoringSSL discoverable. LD_LIBRARY_PATH is
+# transitive, so libssl.so also resolves its libcrypto.so dependency here
+# rather than against any system OpenSSL.
+ENV LD_LIBRARY_PATH=/opt/boringssl/lib
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-quiche

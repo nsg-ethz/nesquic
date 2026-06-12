@@ -66,6 +66,13 @@ Common options above, plus (`ServerArgs`):
 
 The server runs indefinitely, serving connections until it receives `SIGINT` or `SIGTERM` (see below).
 
+## Crypto library linkage
+
+Every per-library binary must link its crypto library (e.g. quiche's BoringSSL)
+**dynamically**, so that nesquic's `LD_PRELOAD` monitor (`libnesquic_preload.so`)
+can interpose the crypto functions at runtime. A statically linked crypto
+library binds its symbols internally and cannot be intercepted.
+
 ## Lifecycle & signals
 
 - `SIGINT` (Ctrl-C) and `SIGTERM` cancel the running job; the server relies on
