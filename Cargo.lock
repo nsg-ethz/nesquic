@@ -2362,15 +2362,21 @@ dependencies = [
  "lazy_static",
  "libbpf-cargo",
  "libbpf-rs",
- "libc",
  "plain",
- "redhook",
  "reqwest",
  "test-case",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "utils",
+]
+
+[[package]]
+name = "nesquic-preload"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "redhook",
 ]
 
 [[package]]

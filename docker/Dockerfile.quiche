@@ -11,6 +11,7 @@ WORKDIR /workspace
 COPY Cargo.toml Cargo.lock ./
 COPY iut/ iut/
 COPY nesquic/ nesquic/
+COPY preload/ preload/
 COPY utils/ utils/
 COPY res/ res/
 
@@ -26,7 +27,7 @@ RUN set -eux; \
     sed -i '/let mut cfg = get_boringssl_cmake_config(config);/a\        cfg.define("BUILD_SHARED_LIBS", "1");' "$BORING/build/main.rs"; \
     sed -i 's/rustc-link-lib=static=crypto/rustc-link-lib=dylib=crypto/; s/rustc-link-lib=static=ssl/rustc-link-lib=dylib=ssl/' "$BORING/build/main.rs"; \
     sed -i 's/rustc-link-lib=static=ssl/rustc-link-lib=dylib=ssl/; s/rustc-link-lib=static=crypto/rustc-link-lib=dylib=crypto/' "$QUICHE/src/build.rs"; \
-    cargo build --release --offline -p quiche-iut --bin nesquic-quiche
+    cargo build --release --offline -p quiche-iut --bin nesquic-quiche -p nesquic-preload --lib
 
 # Collect the BoringSSL shared libs for the runtime image. Their soname is the
 # unversioned libcrypto.so/libssl.so, distinct from OpenSSL's versioned .so.3,
@@ -38,10 +39,10 @@ RUN mkdir -p /boringssl && \
 FROM nesquic/mahimahi
 
 COPY --from=builder /workspace/target/release/nesquic-quiche /usr/local/bin/nesquic-quiche
+COPY --from=builder /workspace/target/release/libnesquic_preload.so /opt/nesquic/lib/libnesquic_preload.so
 COPY --from=builder /boringssl/ /opt/boringssl/lib/
 
-# Make the dynamically linked BoringSSL discoverable. LD_LIBRARY_PATH is
-# transitive, so libssl.so also resolves its libcrypto.so dependency here
-# rather than against any system OpenSSL.
-ENV LD_LIBRARY_PATH=/opt/boringssl/lib
+RUN echo "/opt/boringssl/lib" > /etc/ld.so.conf.d/boringssl.conf && ldconfig
+RUN echo "/opt/nesquic/lib/libnesquic_preload.so" > /etc/ld.so.preload
+
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-quiche

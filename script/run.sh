@@ -131,12 +131,6 @@ function teardown {
     exit 0
 }
 
-function compile {
-    echo -e "${COLOR_YELLOW}Building Docker image for ${1}${COLOR_OFF}"
-    docker build -f ${WORKSPACE}/docker/Dockerfile.mahimahi -t nesquic/mahimahi ${WORKSPACE}
-    docker build -f ${WORKSPACE}/docker/Dockerfile.$1 -t nesquic/$1 ${WORKSPACE}
-}
-
 function setup {
     kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}
@@ -240,7 +234,7 @@ else
 fi
 
 for LIB in "${LIBS[@]}"; do
-    compile ${LIB}
+    ${WORKSPACE}/script/build.sh ${LIB}
     run_library_experiments ${LIB}
 done
 

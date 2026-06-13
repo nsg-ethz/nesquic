@@ -4,7 +4,9 @@ if [[ -z "${LIB}" ]]; then
     exit 2
 fi
 
-docker build -f docker/Dockerfile.rust -t nesquic/rust .
-docker build -f docker/Dockerfile.mahimahi -t nesquic/mahimahi .
+WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 
-docker build -f docker/Dockerfile.${LIB} -t nesquic/${LIB} .
+docker build -f ${WORKSPACE}/docker/Dockerfile.rust -t nesquic/rust ${WORKSPACE}
+docker build -f ${WORKSPACE}/docker/Dockerfile.mahimahi -t nesquic/mahimahi ${WORKSPACE}
+
+docker build -f ${WORKSPACE}/docker/Dockerfile.${LIB} -t nesquic/${LIB} ${WORKSPACE}
