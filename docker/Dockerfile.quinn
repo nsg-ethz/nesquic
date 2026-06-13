@@ -1,5 +1,11 @@
 FROM nesquic/rust AS builder
 
+RUN apt-get update && apt-get install -y \
+    curl git build-essential pkg-config \
+    clang llvm libclang-dev \
+    cmake nasm golang-go \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /workspace
 COPY Cargo.toml Cargo.lock ./
 COPY iut/ iut/
@@ -7,10 +13,26 @@ COPY nesquic/ nesquic/
 COPY utils/ utils/
 COPY res/ res/
 
-RUN cargo build --release --locked -p quinn-iut --bin nesquic-quinn
+# Build AWS-LC dynamically so quinn's crypto symbols resolve through the PLT and
+# can be interposed by the LD_PRELOAD monitor (libnesquic_preload.so). STATIC=0
+# emits a shared libcrypto.so; NO_PREFIX=1 keeps the plain BoringSSL symbol names
+# (e.g. EVP_AEAD_CTX_seal_scatter) that the monitor hooks, instead of aws-lc-sys's
+# default versioned prefix. NO_PREFIX forces a bindgen run (aws-lc-sys bindgen feature).
+RUN AWS_LC_SYS_STATIC=0 AWS_LC_SYS_NO_PREFIX=1 \
+    cargo build --release --locked -p quinn-iut --bin nesquic-quinn
+
+# Collect the AWS-LC shared lib for the runtime image. Its soname is the
+# unversioned libcrypto.so, distinct from OpenSSL's versioned .so.3, so it can
+# coexist with any system OpenSSL.
+RUN mkdir -p /awslc && \
+    find target/release/build -path '*aws-lc-sys*/out/*' \
+        -name 'libcrypto.so*' -exec cp -av {} /awslc/ \;
 
 FROM nesquic/mahimahi
 
 COPY --from=builder /workspace/target/release/nesquic-quinn /usr/local/bin/nesquic-quinn
+COPY --from=builder /awslc/ /opt/awslc/lib/
 
+# Make the dynamically linked AWS-LC discoverable rather than any system OpenSSL.
+ENV LD_LIBRARY_PATH=/opt/awslc/lib
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-quinn
