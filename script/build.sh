@@ -1,3 +1,7 @@
+#!/usr/bin/env bash
+
+set -eu
+
 LIB="${1:-}"
 if [[ -z "${LIB}" ]]; then
     echo "usage: $0 <library>" >&2

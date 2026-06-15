@@ -85,6 +85,8 @@ async fn run_client<C: Client>(args: ClientArgs) -> Result<()> {
     stats.add_bytes(req.len())?;
     stats.stop_measurement()?;
 
+    println!("throughput: {}", stats.throughputs().mean());
+
     // THROUGHPUT_SAMPLES
     //     .lock()
     //     .unwrap()

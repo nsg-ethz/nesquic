@@ -6,7 +6,10 @@
 //!   - `AES_ecb_encrypt`           — AES header-protection mask
 //!   - `CRYPTO_chacha_20`          — ChaCha20 header-protection mask
 
-use super::{arm_reporter, AES_HP_CALLS, CHACHA_HP_CALLS, OPEN_BYTES, OPEN_CALLS, SEAL_BYTES, SEAL_CALLS};
+use super::{
+    arm_reporter, parse_quic_header, print_quic_header_5_tuple, AES_HP_CALLS, CHACHA_HP_CALLS,
+    OPEN_BYTES, OPEN_CALLS, SEAL_BYTES, SEAL_CALLS,
+};
 use libc::{c_int, c_void};
 use std::sync::atomic::Ordering;
 
@@ -20,6 +23,15 @@ redhook::hook! {
         arm_reporter();
         SEAL_CALLS.fetch_add(1, Ordering::Relaxed);
         SEAL_BYTES.fetch_add(in_len as u64, Ordering::Relaxed);
+
+        // `ad` is the unprotected QUIC header (AEAD associated data),
+        // observed here before header protection masks the packet number.
+        let header = std::slice::from_raw_parts(ad, ad_len);
+        if let Some(header) = parse_quic_header(header) {
+            SEAL_CALLS.fetch_add(1, Ordering::Relaxed);
+            // print_quic_header_5_tuple(&header);
+        }
+
         redhook::real!(EVP_AEAD_CTX_seal_scatter)(
             ctx, out, out_tag, out_tag_len, max_out_tag_len, nonce, nonce_len,
             inp, in_len, extra_in, extra_in_len, ad, ad_len

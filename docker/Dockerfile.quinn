@@ -14,7 +14,7 @@ COPY utils/ utils/
 COPY res/ res/
 
 # Build AWS-LC dynamically so quinn's crypto symbols resolve through the PLT and
-# can be interposed by the LD_PRELOAD monitor (libnesquic_preload.so). STATIC=0
+# can be interposed by the LD_PRELOAD monitor (libnesquic.so). STATIC=0
 # emits a shared libcrypto.so; NO_PREFIX=1 keeps the plain BoringSSL symbol names
 # (e.g. EVP_AEAD_CTX_seal_scatter) that the monitor hooks, instead of aws-lc-sys's
 # default versioned prefix. NO_PREFIX forces a bindgen run (aws-lc-sys bindgen feature).
