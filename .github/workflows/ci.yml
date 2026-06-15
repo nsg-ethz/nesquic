@@ -77,7 +77,7 @@ jobs:
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
             - name: Build base rust image
-              uses: docker/build-push-action@v6
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   file: docker/Dockerfile.rust
@@ -86,7 +86,7 @@ jobs:
                   cache-from: type=gha,scope=rust
                   cache-to: type=gha,mode=max,scope=rust
             - name: Build mahimahi image
-              uses: docker/build-push-action@v6
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   file: docker/Dockerfile.mahimahi
