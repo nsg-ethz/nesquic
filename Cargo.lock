@@ -2247,20 +2247,6 @@ dependencies = [
 
 [[package]]
 name = "neqo-common"
-version = "0.28.1"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
-dependencies = [
- "enum-map",
- "env_logger",
- "log",
- "qlog 0.16.0",
- "strum",
- "thiserror 2.0.18",
- "windows",
-]
-
-[[package]]
-name = "neqo-common"
 version = "0.29.1"
 source = "git+https://github.com/mozilla/neqo.git?tag=v0.29.1#aca513a91ac4bf95d00f1291c2fe891268570639"
 dependencies = [
@@ -2280,7 +2266,7 @@ dependencies = [
  "anyhow",
  "built",
  "iut-common",
- "neqo-common 0.28.1",
+ "neqo-common",
  "neqo-transport",
  "neqo-udp",
  "nss-rs 0.9.0",
@@ -2301,7 +2287,7 @@ dependencies = [
  "indexmap 2.14.0",
  "log",
  "mtu",
- "neqo-common 0.29.1",
+ "neqo-common",
  "nss-rs 0.13.2",
  "qlog 0.16.0",
  "rustc-hash",
@@ -2319,7 +2305,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "log",
- "neqo-common 0.29.1",
+ "neqo-common",
  "quinn-udp 0.6.1",
  "windows",
 ]
