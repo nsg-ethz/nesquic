@@ -2313,13 +2313,13 @@ dependencies = [
 
 [[package]]
 name = "neqo-udp"
-version = "0.28.1"
-source = "git+https://github.com/mozilla/neqo.git?tag=v0.28.1#006442de909e35d9ab9d6fcb86155f77779d3090"
+version = "0.29.1"
+source = "git+https://github.com/mozilla/neqo.git?tag=v0.29.1#aca513a91ac4bf95d00f1291c2fe891268570639"
 dependencies = [
  "cfg_aliases",
  "libc",
  "log",
- "neqo-common 0.28.1",
+ "neqo-common 0.29.1",
  "quinn-udp 0.6.1",
  "windows",
 ]
