@@ -45,7 +45,7 @@ jobs:
                   tc_var RUSTFLAGS
                   tc_var CFLAGS
                   tc_var CXXFLAGS
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: dtolnay/rust-toolchain@master
               with:
                   toolchain: ${{ matrix.rust }}
@@ -73,7 +73,7 @@ jobs:
         name: Build base images
         runs-on: ubuntu-24.04
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v4
             - name: Build base rust image
@@ -109,7 +109,7 @@ jobs:
             matrix:
                 library: [quinn, quiche, neqo, noq, msquic]
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: actions/download-artifact@v8
               with:
                   name: base-images
