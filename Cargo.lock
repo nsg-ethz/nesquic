@@ -348,11 +348,12 @@ dependencies = [
 
 [[package]]
 name = "bpf-tracing"
-version = "0.0.3"
+version = "0.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12454fda23315ab908bc9e3e383fde5a79f0575a787b153f54bb479c786945ff"
+checksum = "03afc6160907ec9ab6c9b81d830c65351789472986f17d8c9279fca8929c851d"
 dependencies = [
- "nix 0.31.2",
+ "bpf-tracing-include 0.0.5",
+ "libbpf-rs",
  "tracing",
 ]
 
@@ -361,6 +362,15 @@ name = "bpf-tracing-include"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fba959a1f365a9db9ce00259ce9febedd44881ecd5ea6c70ff488bab2ed0dc83"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
+name = "bpf-tracing-include"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d87c0f987c14b007d890dfe989b2428a6749973f17e584e012aeeedfeeb627d"
 dependencies = [
  "tracing",
 ]
@@ -2369,7 +2379,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bpf-tracing",
- "bpf-tracing-include",
+ "bpf-tracing-include 0.0.3",
  "built",
  "byte-unit",
  "clap",
