@@ -2241,11 +2241,14 @@ dependencies = [
  "anyhow",
  "built",
  "byte-unit",
+ "bytes",
  "clap",
  "futures",
  "lazy_static",
  "libc",
  "plain",
+ "qlog 0.15.2",
+ "quinn-proto",
  "redhook",
  "reqwest",
  "tokio",
@@ -2853,6 +2856,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "qlog"
+version = "0.15.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f15b83c59e6b945f2261c95a1dd9faf239187f32ff0a96af1d1d28c4557f919"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smallvec",
 ]
 
 [[package]]

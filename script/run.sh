@@ -85,9 +85,13 @@ function run_server {
     # Remove any stale container with the same name
     may_fail docker rm -f ${SERVER_CONTAINER}
 
+    mkdir -p ${RES_DIR}/qlog/$1
+
     CMD="docker run --rm --network=host "
     CMD+="--user $(id -u):$(id -g) "
     CMD+="--name ${SERVER_CONTAINER} "
+    CMD+="-v ${RES_DIR}/qlog/$1:/workspace/qlog "
+    CMD+="-e NQ_QLOG=/workspace/qlog/$1/${EXP_NAME}.qlog "
     CMD+="-e INFLUX_URL=http://127.0.0.1:8086 "
     CMD+="-e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} "
     CMD+="-e INFLUX_ORG=${INFLUX_ORG:-nesquic} "
@@ -134,6 +138,8 @@ function teardown {
 }
 
 function setup {
+    docker compose -f ${WORKSPACE}/docker/backend.yml up -d
+
     kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}
 
@@ -218,13 +224,6 @@ function run_library_experiments {
 
     echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 }
-
-# check if the pushgateway is running
-docker ps --filter "name=influxdb" --filter "status=running" --format '{{.Names}}' | grep -wq influxdb
-if [ $? -ne 0 ]; then
-  echo -e "${COLOR_RED}InfluxDB is not running${COLOR_OFF}"
-  exit 1
-fi
 
 setup
 trap teardown INT TERM
