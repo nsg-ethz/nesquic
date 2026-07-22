@@ -8,14 +8,14 @@ name = "nesquic-quinn"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.102"
-bytes = "1.11.1"
+anyhow = "1.0.104"
+bytes = "1.12.1"
 tracing = "0.1.44"
-quinn = { version = "0.11.9", features = ["rustls"] }
-quinn-proto = "0.11.14"
-rustls = { version = "0.23.38", default-features = false, features = ["ring"] }
-socket2 = "0.6.3"
-tokio = { version = "1.51.1", features = ["macros", "full"] }
+quinn = { version = "0.11.11", features = ["rustls"] }
+quinn-proto = "0.11.16"
+rustls = { version = "0.23.42", default-features = false, features = ["ring"] }
+socket2 = "0.6.5"
+tokio = { version = "1.53.1", features = ["macros", "full"] }
 url = "2.5.8"
 utils = { path = "../../utils" }
 iut-common = { path = "../common" }

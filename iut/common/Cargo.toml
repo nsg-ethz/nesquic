@@ -7,17 +7,17 @@ edition = "2021"
 name = "common"
 
 [dependencies]
-anyhow = "1.0.102"
-clap = "4.6.0"
-libc = "0.2.185"
-tokio = { version = "1.51.1", features = ["signal", "sync"] }
+anyhow = "1.0.104"
+clap = "4.6.4"
+libc = "0.2.189"
+tokio = { version = "1.53.1", features = ["signal", "sync"] }
 utils = { path = "../../utils" }
 tracing-subscriber = "0.3.23"
 tracing = "0.1.44"
 lazy_static = "1.5.0"
-reqwest = { version = "0.13.2", default-features = false, features = ["http2"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["http2"] }
 plain = "0.2.3"
 core_affinity = "0.8.3"
-futures = "0.3.32"
-byte-unit = "5.2.0"
-socket2 = "0.6.3"
+futures = "0.3.33"
+byte-unit = "5.2.5"
+socket2 = "0.6.5"

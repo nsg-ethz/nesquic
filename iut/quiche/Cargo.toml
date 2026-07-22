@@ -8,15 +8,15 @@ name = "nesquic-quiche"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.102"
-bytes = "1.11.1"
+anyhow = "1.0.104"
+bytes = "1.12.1"
 tracing = "0.1.44"
-quiche = "0.29.1"
+quiche = "0.29.3"
 url = "2.5.8"
 utils = { path = "../../utils" }
-tokio-quiche = "0.18.0"
-tokio = { version = "1.51.1", features = ["full"] }
-futures = "0.3.32"
+tokio-quiche = "0.19.1"
+tokio = { version = "1.53.1", features = ["full"] }
+futures = "0.3.33"
 iut-common = { path = "../common" }
 
 [build-dependencies]
