@@ -26,7 +26,7 @@ bpf-tracing = "0.0.5"
 byte-unit = "5.2.5"
 
 [build-dependencies]
-libbpf-cargo = "0.26.2"
+libbpf-cargo = "0.27.0"
 built = { version = "0.8", features = ["cargo-lock", "dependency-tree"] }
 bpf-tracing-include = "0.0.6"
 
