@@ -14,7 +14,7 @@ wheels = [
 [[package]]
 name = "grafanalib"
 version = "0.7.1"
-source = { git = "https://github.com/lbrndnr/grafanalib?rev=main#faa9cfca25c71b8126122ed805d34a50ce1b3644" }
+source = { git = "https://github.com/lerboe/grafanalib?rev=main#faa9cfca25c71b8126122ed805d34a50ce1b3644" }
 dependencies = [
     { name = "attrs" },
 ]
@@ -30,7 +30,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "grafanalib", git = "https://github.com/lbrndnr/grafanalib?rev=main" },
+    { name = "grafanalib", git = "https://github.com/lerboe/grafanalib?rev=main" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 

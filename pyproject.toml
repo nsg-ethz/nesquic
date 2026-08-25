@@ -9,4 +9,4 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-grafanalib = { git = "https://github.com/lbrndnr/grafanalib", rev = "main" }
+grafanalib = { git = "https://github.com/lerboe/grafanalib", rev = "main" }
