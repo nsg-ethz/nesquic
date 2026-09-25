@@ -1,7 +1,6 @@
 //! Hooks for the libc I/O calls QUIC libraries use to move datagrams.
 //!
-//! Replaces the eBPF syscall tracepoints of earlier versions. Unlike those,
-//! only calls on UDP sockets are counted (not e.g. stdout or the metrics
+//! Only calls on UDP sockets are counted (not e.g. stdout or the metrics
 //! upload), and the volume is the number of bytes the call actually
 //! transferred rather than the buffer size it was passed.
 

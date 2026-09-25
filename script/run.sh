@@ -8,7 +8,6 @@ COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
 VETH_MM="veth-mm"
-VETH_METRICS="veth-metrics"
 
 CPU_ALL=0-39
 CPU_SYSTEM=0-7,12-39
