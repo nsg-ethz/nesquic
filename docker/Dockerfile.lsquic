@@ -1,0 +1,56 @@
+FROM ubuntu:24.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG LSQUIC_VERSION=v4.10.0
+# The BoringSSL release lsquic is tested against (see its README).
+ARG BORINGSSL_REF=0.20250807.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git ca-certificates perl zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build BoringSSL as shared libraries so its crypto symbols resolve through the
+# PLT and can be interposed by the LD_PRELOAD monitor (libnesquic.so).
+RUN git clone -q --depth 1 --branch "${BORINGSSL_REF}" https://github.com/google/boringssl /boringssl \
+    && cmake -S /boringssl -B /boringssl/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=1 -DBUILD_TESTING=OFF \
+    && ninja -C /boringssl/build ssl crypto \
+    && mkdir -p /opt/boringssl/lib \
+    && cp -r /boringssl/include /opt/boringssl/ \
+    && find /boringssl/build -maxdepth 2 \( -name 'libssl.so' -o -name 'libcrypto.so' \) \
+        -exec cp -v {} /opt/boringssl/lib/ \;
+
+# lsquic itself is linked statically.
+RUN git clone -q --depth 1 --branch "${LSQUIC_VERSION}" --recurse-submodules --shallow-submodules \
+        https://github.com/litespeedtech/lsquic /lsquic \
+    && cmake -S /lsquic -B /lsquic/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local -DLSQUIC_BIN=OFF -DLSQUIC_TESTS=OFF \
+        -DBORINGSSL_INCLUDE=/opt/boringssl/include \
+        -DBORINGSSL_LIB_ssl=/opt/boringssl/lib/libssl.so \
+        -DBORINGSSL_LIB_crypto=/opt/boringssl/lib/libcrypto.so \
+    && ninja -C /lsquic/build install
+
+COPY iut/c-common /src/c-common
+COPY iut/lsquic /src/lsquic
+RUN cmake -S /src/lsquic -B /src/lsquic/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DLSQUIC_PREFIX=/usr/local -DBORINGSSL_PREFIX=/opt/boringssl \
+    && ninja -C /src/lsquic/build \
+    && cmake --install /src/lsquic/build --prefix /usr/local
+
+FROM nesquic/mahimahi
+
+ARG LSQUIC_VERSION
+
+COPY --from=builder /usr/local/bin/nesquic-lsquic /usr/local/bin/nesquic-lsquic
+COPY --from=builder /opt/boringssl/lib/ /opt/boringssl/lib/
+
+# BoringSSL's sonames (libssl.so/libcrypto.so) differ from OpenSSL's versioned
+# ones, so they can coexist with the system OpenSSL.
+RUN echo "/opt/boringssl/lib" > /etc/ld.so.conf.d/boringssl.conf && ldconfig
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
+# The C IUT cannot export its version to libnesquic.so like the Rust ones.
+ENV NQ_LIBRARY_VERSION=${LSQUIC_VERSION}
+
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-lsquic
