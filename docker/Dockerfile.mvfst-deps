@@ -22,8 +22,13 @@ RUN FIZZ_REV="$(git ls-remote https://github.com/facebookincubator/fizz "refs/ta
     && echo "Subproject commit ${FIZZ_REV}" > /mvfst/build/deps/github_hashes/facebookincubator/fizz-rev.txt
 
 WORKDIR /mvfst
-RUN apt-get update \
-    && python3 build/fbcode_builder/getdeps.py install-system-deps --recursive mvfst \
+# The packages `getdeps.py install-system-deps --recursive mvfst` lists, minus
+# its `pip install pex` step (test-only, and blocked by PEP 668 on Ubuntu).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        autoconf automake libaio-dev libdwarf-dev libevent-dev libgflags-dev \
+        libiberty-dev liblz4-dev libsnappy-dev libsodium-dev libssl-dev libtool \
+        libzstd-dev zlib1g-dev zstd libboost-all-dev libdouble-conversion-dev \
+        libgoogle-glog-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Keep only the installed artifacts to stay within the CI runner's disk.
