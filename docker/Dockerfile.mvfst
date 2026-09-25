@@ -1,10 +1,13 @@
 # Built on docker/Dockerfile.mvfst-deps (script/build.sh builds it first).
+# fizz's and mvfst's CMake configs need Find modules (e.g. FindSodium) that
+# are not installed, so they come from the mvfst checkout in that image.
 FROM nesquic/mvfst-deps AS builder
 
 COPY iut/c-common /src/c-common
 COPY iut/mvfst /src/mvfst
 RUN cmake -S /src/mvfst -B /src/mvfst/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
         "-DCMAKE_PREFIX_PATH=$(find /getdeps/installed -mindepth 1 -maxdepth 1 -type d | paste -sd ';')" \
+        "-DCMAKE_MODULE_PATH=/mvfst/cmake;/mvfst/build/fbcode_builder/CMake" \
     && ninja -C /src/mvfst/build \
     && cmake --install /src/mvfst/build --prefix /usr/local
 
