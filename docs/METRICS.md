@@ -28,13 +28,8 @@ library defaults to the binary name without its `nesquic-` prefix.
 The I/O hooks interpose on libc, so libraries that issue raw syscalls or use
 io_uring are not covered. The QUIC counters need a dynamically linked,
 BoringSSL-compatible libcrypto: noq (ring), neqo (NSS), msquic (statically
-linked OpenSSL), mvfst (fizz on OpenSSL's EVP_CIPHER API) and quic-go (Go's
-crypto) report I/O only.
-
-Go issues raw syscalls instead of calling libc, so the quic-go IUT routes its
-socket I/O through a cgo `net.PacketConn` backed by libc `recvfrom`/`sendto`
-and exits through libc `exit()` (see `iut/quic-go/libcconn.go`). This makes
-the I/O metrics available but disables quic-go's GSO/GRO and batched I/O.
+linked OpenSSL) and mvfst (fizz on OpenSSL's EVP_CIPHER API) report
+I/O only.
 
 ## Debugging
 

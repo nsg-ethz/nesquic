@@ -10,7 +10,6 @@
 | [ngtcp2](https://github.com/ngtcp2/ngtcp2)        | ✅    | C, BoringSSL backend |
 | [LSQUIC](https://github.com/litespeedtech/lsquic) | ✅    | C, BoringSSL |
 | [XQUIC](https://github.com/alibaba/xquic)         | ✅    | C, BoringSSL. Client stream receive window pinned to 6 MiB to stay below XQUIC's 8192-frame reassembly limit |
-| [quic-go](https://github.com/quic-go/quic-go)     | ✅    | Go. Socket I/O goes through libc so the monitor sees it, which disables GSO/GRO (see [metrics](METRICS.md)) |
 | [mvfst](https://github.com/facebook/mvfst)        | WIP    | C++, fizz/OpenSSL. Flow control windows raised from mvfst's 65 KiB default |
 
 The C IUTs (ngtcp2, LSQUIC, XQUIC) share the protocol and CLI helpers in
