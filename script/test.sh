@@ -10,7 +10,7 @@
 # network emulation (see docker/mm-entrypoint.sh).
 #
 # Usage:
-#   script/test.sh <library>        # e.g. quinn, quiche, neqo, noq, msquic
+#   script/test.sh <library>        # e.g. quinn, quiche, ngtcp2, lsquic
 #
 # Environment overrides:
 #   PORT      UDP port                              (default 4433)
@@ -67,6 +67,7 @@ docker run -d --network=host --name "${SERVER_CONTAINER}" "${IMAGE}" \
 # health-check loop in test::connectivity. A successful client run is itself the
 # connectivity assertion (connect + transfer the blob).
 healthy=false
+client_log=""
 for ((i = 1; i <= ATTEMPTS; i++)); do
     if [[ -z "$(docker ps -q --filter "name=${SERVER_CONTAINER}")" ]]; then
         echo -e "${COLOR_RED}error: server exited before becoming reachable${COLOR_OFF}" >&2
@@ -74,8 +75,8 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
         exit 1
     fi
 
-    if timeout "${TIMEOUT}" docker run --rm --network=host "${IMAGE}" \
-            client "${URL}" --cert "${CERT}" --blob "${BLOB}" >/dev/null 2>&1; then
+    if client_log="$(timeout -k 5 "${TIMEOUT}" docker run --rm --network=host "${IMAGE}" \
+            client "${URL}" --cert "${CERT}" --blob "${BLOB}" 2>&1)"; then
         healthy=true
         break
     fi
@@ -89,6 +90,8 @@ if [[ "${healthy}" == true ]]; then
 fi
 
 echo -e "${COLOR_RED}fail: ${LIB} client could not connect after ${ATTEMPTS} attempts${COLOR_OFF}" >&2
+echo "--- last client output ---" >&2
+echo "${client_log}" >&2
 echo "--- server log ---" >&2
 docker logs "${SERVER_CONTAINER}" 2>&1 || true
 exit 1
