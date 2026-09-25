@@ -116,6 +116,46 @@ def io_panels(library, mode, job):
     return [num, vol]
 
 
+def flux_quic_query(library, job, field):
+    return "\n".join([
+        f'from(bucket: "{BUCKET}")',
+        "  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)",
+        f'  |> filter(fn: (r) => r._measurement == "nesquic_quic" and r._field == "{field}")',
+        f'  |> filter(fn: (r) => r.library == "{library}" and r.job == "{job}")',
+        RUN_FILTER,
+        f'  |> rename(columns: {{"_value": "{field}"}})',
+        "  |> group()",
+    ])
+
+
+def quic_panels(library, job):
+    """Packet and ACK counts, available for libraries whose crypto is hooked."""
+    y = y_offset()
+    acks = BarChart(
+        title="ACK Frames Sent",
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(flux_quic_query(library, job, "acks_sent"))],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=0, y=y),
+        xField="mode",
+        axisLabel="ACK frames",
+    )
+
+    packets = BarChart(
+        title="Packets Sent",
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(flux_quic_query(library, job, "packets_sent"))],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=DASHBOARD_MID, y=y),
+        xField="mode",
+        axisLabel="Packets",
+    )
+
+    return [acks, packets]
+
+
 def throughput_panel(library):
     return BarChart(
         title="Throughput With Varying Connection Delay",
@@ -152,6 +192,7 @@ def experiments_panels(experiment, library):
         ),
         *io_panels(library, "server", job),
         *io_panels(library, "client", job),
+        *quic_panels(library, job),
     ]
 
 

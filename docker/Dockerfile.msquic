@@ -36,6 +36,7 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release .. \
 FROM nesquic/mahimahi
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG MSQUIC_VERSION
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates wget gpg \
     && wget -q https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb \
@@ -47,5 +48,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/nesquic-msquic /usr/local/bin/nesquic-msquic
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
+# The C++ IUT cannot export its version to libnesquic.so like the Rust ones.
+ENV NQ_LIBRARY_VERSION=${MSQUIC_VERSION}
 
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-msquic

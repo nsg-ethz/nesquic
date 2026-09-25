@@ -1,7 +1,8 @@
 //! Emits a qlog trace of observed QUIC packet headers.
 //!
-//! Enabled by setting `NESQUIC_QLOG` to an output path; if unset, no qlog
-//! file is written and [`emit_packet`] is a no-op.
+//! Enabled by setting `NQ_QLOG` to an output path; if unset, no qlog file
+//! is written. This is meant for debugging only: every packet goes through a
+//! global lock and a serializer, which slows down the monitored library.
 
 use std::fs::OpenOptions;
 use std::sync::{Mutex, OnceLock};
@@ -65,10 +66,23 @@ fn packet_type(ty: QuicPacketType) -> PacketType {
     }
 }
 
+/// Whether `NQ_QLOG` is set and the qlog file could be opened.
+pub(crate) fn enabled() -> bool {
+    QLOG.get_or_init(init_streamer).is_some()
+}
+
+/// Flushes and closes the qlog trace, if one is being written.
+pub(crate) fn finish() {
+    if let Some(Some(streamer)) = QLOG.get() {
+        if let Ok(mut streamer) = streamer.lock() {
+            let _ = streamer.finish_log();
+        }
+    }
+}
+
 /// Records `header` as a `packet_sent` (if `sent`) or `packet_received` qlog
 /// event, grouped by its destination connection ID. `len` is the packet's
-/// on-wire length (the AEAD ciphertext length, since that's what the crypto
-/// hooks observe).
+/// payload length, as observed by the crypto hooks.
 pub(crate) fn emit_packet(header: &QuicHeader, len: usize, sent: bool) {
     let Some(streamer) = QLOG.get_or_init(init_streamer) else {
         return;

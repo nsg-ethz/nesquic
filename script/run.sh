@@ -85,13 +85,15 @@ function run_server {
     # Remove any stale container with the same name
     may_fail docker rm -f ${SERVER_CONTAINER}
 
-    mkdir -p ${RES_DIR}/qlog/$1
-
     CMD="docker run --rm --network=host "
     CMD+="--user $(id -u):$(id -g) "
     CMD+="--name ${SERVER_CONTAINER} "
-    CMD+="-v ${RES_DIR}/qlog/$1:/workspace/qlog "
-    CMD+="-e NQ_QLOG=/workspace/qlog/$1/${EXP_NAME}.qlog "
+    # qlog tracing is for debugging only: it slows down the monitored library.
+    if [[ "${NQ_QLOG:-0}" == "1" ]]; then
+        mkdir -p ${RES_DIR}/qlog/$1
+        CMD+="-v ${RES_DIR}/qlog/$1:/workspace/qlog "
+        CMD+="-e NQ_QLOG=/workspace/qlog/${EXP_NAME}.qlog "
+    fi
     CMD+="-e INFLUX_URL=http://127.0.0.1:8086 "
     CMD+="-e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} "
     CMD+="-e INFLUX_ORG=${INFLUX_ORG:-nesquic} "

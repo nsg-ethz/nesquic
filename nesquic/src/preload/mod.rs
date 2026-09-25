@@ -1,27 +1,80 @@
-use std::io::{self, Write};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Once;
+//! The `LD_PRELOAD` monitor.
+//!
+//! Loaded into every process of an IUT container (via `/etc/ld.so.preload`),
+//! it activates only in the IUT binary itself (see [`context::enabled`]).
+//! There it interposes on:
+//!   - libc I/O calls on UDP sockets ([`io`]), for syscall counts, volumes
+//!     and throughput, which works for every library;
+//!   - the BoringSSL AEAD calls ([`crypto`]), for packet and ACK counts, for
+//!     the libraries that link a BoringSSL-compatible libcrypto dynamically
+//!     (quiche and quinn).
+//!
+//! Everything is aggregated in memory ([`metrics`]) and, when the process
+//! exits, pushed to InfluxDB if a job (`-j`) and the `INFLUX_*` variables are
+//! set, or printed to stdout otherwise.
+
+use std::io::Cursor;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bytes::{Buf, BytesMut};
 use quinn_proto::{ConnectionId, ConnectionIdParser, LongType, PacketDecodeError, ProtectedHeader};
 
+mod context;
+mod crypto;
+mod frame;
+mod influx;
+mod io;
+mod metrics;
 mod qlog;
-mod quiche;
-mod quinn;
 
-static REPORTER: Once = Once::new();
+static ENABLED: AtomicBool = AtomicBool::new(false);
 
-/// Register the exit reporter the first time any crypto function is hooked, so
-/// processes that never touch the monitored library produce no output.
-pub(crate) fn arm_reporter() {
-    REPORTER.call_once(|| unsafe {
-        libc::atexit(report);
-    });
+/// Whether this process is being monitored; hooks pass straight through to
+/// the real functions otherwise.
+#[inline]
+pub(crate) fn enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed)
+}
+
+/// Runs when the library is loaded, before the program's `main`.
+#[cfg(not(test))]
+#[used]
+#[link_section = ".init_array"]
+static INIT: extern "C" fn() = init;
+
+#[cfg_attr(test, allow(dead_code))]
+extern "C" fn init() {
+    if context::enabled() {
+        ENABLED.store(true, Ordering::Relaxed);
+        // SAFETY: `report` is a plain `extern "C" fn()` that lives as long as
+        // the process (the preloaded library is never unloaded).
+        unsafe { libc::atexit(report) };
+    }
 }
 
 extern "C" fn report() {
-    // TODO: parse qlog and upload it to influxDB
-    println!("nesquic upload");
+    // Stop measuring: the upload below is not part of the benchmark.
+    ENABLED.store(false, Ordering::Relaxed);
+    qlog::finish();
+
+    let ctx = context::Context::current();
+    let timestamp_ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let body = metrics::METRICS.line_protocol(&ctx.tags(), timestamp_ns);
+    if body.is_empty() {
+        return;
+    }
+
+    match (ctx.job.is_some(), influx::Influx::from_env()) {
+        (true, Some(influx)) => match influx.write(body) {
+            Ok(()) => eprintln!("nesquic: metrics written to {}", influx.url()),
+            Err(e) => eprintln!("nesquic: error pushing metrics to InfluxDB: {e}"),
+        },
+        _ => print!("{body}"),
+    }
 }
 
 /// The type of a QUIC packet, as encoded in the two type-specific bits of a
@@ -104,7 +157,7 @@ pub(crate) fn parse_quic_header(buf: &[u8]) -> Option<QuicHeader> {
     };
     let supported_versions = [version.unwrap_or(0)];
 
-    let mut cursor = io::Cursor::new(BytesMut::from(buf));
+    let mut cursor = Cursor::new(BytesMut::from(buf));
     let cid_parser = RemainderConnectionIdParser { pn_len };
     // `grease_quic_bit: true` skips the fixed-bit check, matching the
     // previous hand-rolled parser, which didn't enforce it either.

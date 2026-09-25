@@ -40,5 +40,8 @@ COPY --from=builder /dist/Release/lib/*.so /neqo/lib/
 
 RUN echo "/neqo/lib" > /etc/ld.so.conf.d/neqo-nss.conf && ldconfig
 
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-neqo \
     NSS_DB_PATH=/workspace/res/nssdb

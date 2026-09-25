@@ -35,4 +35,7 @@ COPY --from=builder /awslc/ /opt/awslc/lib/
 
 # Make the dynamically linked AWS-LC discoverable rather than any system OpenSSL.
 ENV LD_LIBRARY_PATH=/opt/awslc/lib
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-quinn
