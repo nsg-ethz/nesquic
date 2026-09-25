@@ -74,7 +74,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
         exit 1
     fi
 
-    if timeout "${TIMEOUT}" docker run --rm --network=host "${IMAGE}" \
+    if timeout -k 5 "${TIMEOUT}" docker run --rm --network=host "${IMAGE}" \
             client "${URL}" --cert "${CERT}" --blob "${BLOB}" >/dev/null 2>&1; then
         healthy=true
         break

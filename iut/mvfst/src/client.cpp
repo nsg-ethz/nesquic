@@ -1,5 +1,7 @@
+#include <csignal>
 #include <cstdio>
 #include <memory>
+#include <unistd.h>
 
 #include <fizz/backend/openssl/certificate/OpenSSLCertificateVerifier.h>
 #include <fizz/client/FizzClientContext.h>
@@ -28,8 +30,10 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
     }
 
     bool ok() const { return ok_; }
+    bool ready() const { return ready_; }
 
     void onTransportReady() noexcept override {
+        ready_ = true;
         auto stream = transport_->createBidirectionalStream();
         if (stream.hasError()) {
             fail("createBidirectionalStream failed");
@@ -102,7 +106,12 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
     uint64_t requested_;
     uint64_t received_{0};
     bool ok_{false};
+    bool ready_{false};
 };
+
+// mvfst's idle timeout does not cover the handshake, so an unreachable server
+// would keep the client retransmitting Initials forever.
+constexpr uint32_t kHandshakeTimeoutMs = 10000;
 
 // Trusts only the supplied certificate and checks it against the URL host
 // (see docs/PROTOCOL.md). The host/IP check is set on the store's
@@ -173,7 +182,21 @@ int runClient(const nq_args& args) {
     transport->setTransportSettings(transportSettings());
     client.setTransport(transport);
 
+    // SIGINT/SIGTERM cancel the job (docs/CLI.md). Without a handler they
+    // would be ignored when the client runs as PID 1 in its container.
+    auto onSignal = [](int) { _exit(1); };
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
+
     transport->start(&client, &client);
+    evb.runAfterDelay(
+        [&] {
+            if (!client.ready()) {
+                fprintf(stderr, "handshake timed out\n");
+                evb.terminateLoopSoon();
+            }
+        },
+        kHandshakeTimeoutMs);
     evb.loopForever();
 
     // Detach from the transport before the event base goes away.
