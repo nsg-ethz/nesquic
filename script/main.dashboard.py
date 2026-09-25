@@ -201,6 +201,7 @@ DISPLAY_NAMES = {
     "ngtcp2": "ngtcp2",
     "lsquic": "LSQUIC",
     "xquic": "XQUIC",
+    "picoquic": "picoquic",
     "mvfst": "mvfst",
 }
 

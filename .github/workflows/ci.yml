@@ -100,7 +100,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                library: [quinn, quiche, neqo, noq, msquic, ngtcp2, lsquic, xquic, mvfst]
+                library: [quinn, quiche, neqo, noq, msquic, ngtcp2, lsquic, xquic, picoquic, mvfst]
         steps:
             - uses: actions/checkout@v7
             - uses: actions/download-artifact@v8

@@ -28,8 +28,8 @@ library defaults to the binary name without its `nesquic-` prefix.
 The I/O hooks interpose on libc, so libraries that issue raw syscalls or use
 io_uring are not covered. The QUIC counters need a dynamically linked,
 BoringSSL-compatible libcrypto: noq (ring), neqo (NSS), msquic (statically
-linked OpenSSL) and mvfst (fizz on OpenSSL's EVP_CIPHER API) report
-I/O only.
+linked OpenSSL), picoquic (picotls' own AEAD API) and mvfst
+(fizz on OpenSSL's EVP_CIPHER API) report I/O only.
 
 ## Debugging
 

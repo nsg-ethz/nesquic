@@ -1,0 +1,38 @@
+FROM ubuntu:24.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PICOQUIC_VERSION=v2026.09.24.61fcd56
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git ca-certificates pkg-config \
+        libssl-dev libbrotli-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# picoquic and picotls (fetched at the commit picoquic pins) are linked
+# statically; picotls uses the system OpenSSL, linked dynamically.
+RUN git clone -q --depth 1 --branch "${PICOQUIC_VERSION}" https://github.com/private-octopus/picoquic /picoquic \
+    && cmake -S /picoquic -B /picoquic/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/picoquic -DPICOQUIC_FETCH_PTLS=ON \
+        -Dpicoquic_BUILD_TESTS=OFF -DBUILD_PICO_SIM=OFF -DBUILD_DEMO=OFF -DBUILD_HTTP=OFF \
+        -DBUILD_PQBENCH=OFF -DBUILD_LOGREADER=OFF \
+    && ninja -C /picoquic/build install
+
+COPY iut/c-common /src/c-common
+COPY iut/picoquic /src/picoquic
+RUN cmake -S /src/picoquic -B /src/picoquic/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH=/opt/picoquic \
+    && ninja -C /src/picoquic/build \
+    && cmake --install /src/picoquic/build --prefix /usr/local
+
+FROM nesquic/mahimahi
+
+ARG PICOQUIC_VERSION
+
+COPY --from=builder /usr/local/bin/nesquic-picoquic /usr/local/bin/nesquic-picoquic
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
+# The C IUT cannot export its version to libnesquic.so like the Rust ones.
+ENV NQ_LIBRARY_VERSION=${PICOQUIC_VERSION}
+
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-picoquic
