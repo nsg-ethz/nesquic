@@ -111,7 +111,7 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
 
 // mvfst's idle timeout does not cover the handshake, so an unreachable server
 // would keep the client retransmitting Initials forever.
-constexpr uint32_t kHandshakeTimeoutMs = 10000;
+constexpr uint32_t kHandshakeTimeoutMs = 5000;
 
 // Trusts only the supplied certificate and checks it against the URL host
 // (see docs/PROTOCOL.md). The host/IP check is set on the store's

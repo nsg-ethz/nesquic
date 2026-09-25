@@ -31,3 +31,5 @@ RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
 ENV NQ_LIBRARY_VERSION=v2026.09.21.00
 
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-mvfst
+# TEMPORARY: verbose mvfst logs to debug the CI handshake failure.
+ENV GLOG_v=4 GLOG_logtostderr=1
