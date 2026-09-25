@@ -1,0 +1,26 @@
+# Builds libnesquic.so, the LD_PRELOAD monitor shared by all IUT images.
+# Each library's Dockerfile copies it from this image and registers it in
+# /etc/ld.so.preload (see nesquic/src/preload/mod.rs).
+#
+# Self-contained rather than FROM nesquic/rust so CI can build it with
+# buildx (and its layer cache), which cannot see locally built base images.
+# Same Ubuntu release as the IUT images, so the glibc it links against matches.
+FROM ubuntu:24.04 AS builder
+
+RUN apt-get update && apt-get install -y \
+    curl ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY iut/ iut/
+COPY nesquic/ nesquic/
+COPY utils/ utils/
+
+RUN cargo build --release --locked -p nesquic --lib
+
+FROM scratch
+COPY --from=builder /workspace/target/release/libnesquic.so /libnesquic.so
