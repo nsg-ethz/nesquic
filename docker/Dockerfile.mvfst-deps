@@ -1,0 +1,32 @@
+# mvfst and its Meta dependencies (folly, fizz), built with getdeps.
+#
+# This takes long, so it is a separate, self-contained image that CI builds
+# with buildx and its layer cache (see .github/workflows/ci.yml);
+# docker/Dockerfile.mvfst builds the IUT on top of it.
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+# folly, fizz and mvfst are tagged together every week.
+ARG MVFST_VERSION=v2026.09.21.00
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git ca-certificates python3 sudo pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone -q --depth 1 --branch "${MVFST_VERSION}" https://github.com/facebook/mvfst /mvfst
+
+# mvfst pins folly; pin fizz to the same weekly tag instead of its main branch.
+RUN FIZZ_REV="$(git ls-remote https://github.com/facebookincubator/fizz "refs/tags/${MVFST_VERSION}" | cut -f1)" \
+    && test -n "${FIZZ_REV}" \
+    && mkdir -p /mvfst/build/deps/github_hashes/facebookincubator \
+    && echo "Subproject commit ${FIZZ_REV}" > /mvfst/build/deps/github_hashes/facebookincubator/fizz-rev.txt
+
+WORKDIR /mvfst
+RUN apt-get update \
+    && python3 build/fbcode_builder/getdeps.py install-system-deps --recursive mvfst \
+    && rm -rf /var/lib/apt/lists/*
+
+# Keep only the installed artifacts to stay within the CI runner's disk.
+RUN python3 build/fbcode_builder/getdeps.py build --no-tests --allow-system-packages \
+        --scratch-path /getdeps mvfst \
+    && rm -rf /getdeps/build /getdeps/downloads /getdeps/extracted /getdeps/repos

@@ -202,7 +202,7 @@ static inline int nq_split_host_port(const char *in, char *host, size_t hostlen,
     end = rest + strcspn(rest, "/");
 
     if (*rest == '[') {
-        const char *close = memchr(rest, ']', (size_t)(end - rest));
+        const char *close = (const char *)memchr(rest, ']', (size_t)(end - rest));
         if (!close) {
             return -1;
         }
