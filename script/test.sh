@@ -10,7 +10,7 @@
 # network emulation (see docker/mm-entrypoint.sh).
 #
 # Usage:
-#   script/test.sh <library>        # e.g. quinn, quiche, neqo, noq, msquic
+#   script/test.sh <library>        # e.g. quinn, quiche, ngtcp2, quic-go
 #
 # Environment overrides:
 #   PORT      UDP port                              (default 4433)

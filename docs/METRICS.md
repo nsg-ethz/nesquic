@@ -23,12 +23,18 @@ library defaults to the binary name without its `nesquic-` prefix.
 |----------------|--------|------|--------|-----------|
 | `nesquic`      | `throughput` | | UDP bytes received / time between first and last received datagram, in bytes / 10^6 / s (the unit of `utils::perf::Stats`). Clients only. | all |
 | `nesquic_io`   | `count`, `volume_kb_sum` | `syscall` | Calls of `write`, `writev`, `send`, `sendto`, `sendmsg`, `sendmmsg`, `read`, `readv`, `recv`, `recvfrom`, `recvmsg`, `recvmmsg` on UDP sockets, and the bytes they actually transferred (kB). Failed calls (e.g. `EAGAIN`) count with 0 bytes. | all |
-| `nesquic_quic` | `packets_sent`, `packets_received`, `acks_sent`, `acks_received` | | Packets sealed/opened via the BoringSSL AEAD API and the ACK frames in their payloads. | quinn, quiche |
+| `nesquic_quic` | `packets_sent`, `packets_received`, `acks_sent`, `acks_received` | | Packets sealed/opened via the BoringSSL AEAD API (`EVP_AEAD_CTX_seal`, `EVP_AEAD_CTX_seal_scatter`, `EVP_AEAD_CTX_open`) and the ACK frames in their payloads. | quinn, quiche, ngtcp2, lsquic, xquic |
 
 The I/O hooks interpose on libc, so libraries that issue raw syscalls or use
 io_uring are not covered. The QUIC counters need a dynamically linked,
-BoringSSL-compatible libcrypto: noq (ring), neqo (NSS) and msquic (statically
-linked OpenSSL) report I/O only.
+BoringSSL-compatible libcrypto: noq (ring), neqo (NSS), msquic (statically
+linked OpenSSL), mvfst (fizz on OpenSSL's EVP_CIPHER API) and quic-go (Go's
+crypto) report I/O only.
+
+Go issues raw syscalls instead of calling libc, so the quic-go IUT routes its
+socket I/O through a cgo `net.PacketConn` backed by libc `recvfrom`/`sendto`
+and exits through libc `exit()` (see `iut/quic-go/libcconn.go`). This makes
+the I/O metrics available but disables quic-go's GSO/GRO and batched I/O.
 
 ## Debugging
 

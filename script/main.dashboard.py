@@ -196,10 +196,18 @@ def experiments_panels(experiment, library):
     ]
 
 
+DISPLAY_NAMES = {
+    "msquic": "MsQuic",
+    "ngtcp2": "ngtcp2",
+    "lsquic": "LSQUIC",
+    "xquic": "XQUIC",
+    "quic-go": "quic-go",
+    "mvfst": "mvfst",
+}
+
+
 def display_name(library):
-    if library == "msquic":
-        return "MsQuic"
-    return library.capitalize()
+    return DISPLAY_NAMES.get(library, library.capitalize())
 
 
 library = os.environ.get("LIBRARY")
