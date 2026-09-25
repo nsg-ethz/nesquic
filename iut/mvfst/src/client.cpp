@@ -69,7 +69,10 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
             }
             transport_->setReadCallback(id, nullptr);
             // Single exchange done: close the connection (application close).
+            // mvfst drops the connection callbacks on a local close, so
+            // onConnectionEnd never fires; leave the loop here instead.
             transport_->close(std::nullopt);
+            evb_->terminateLoopSoon();
         }
     }
 
@@ -111,7 +114,7 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
 
 // mvfst's idle timeout does not cover the handshake, so an unreachable server
 // would keep the client retransmitting Initials forever.
-constexpr uint32_t kHandshakeTimeoutMs = 5000;
+constexpr uint32_t kHandshakeTimeoutMs = 10000;
 
 // Trusts only the supplied certificate and checks it against the URL host
 // (see docs/PROTOCOL.md). The host/IP check is set on the store's

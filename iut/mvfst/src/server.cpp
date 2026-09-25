@@ -147,9 +147,8 @@ class TransportFactory : public quic::QuicServerTransportFactory {
 
     quic::QuicServerTransport::Ptr make(
         folly::EventBase* evb, std::unique_ptr<quic::FollyAsyncUDPSocketAlias> sock,
-        const folly::SocketAddress& peer, quic::QuicVersion,
+        const folly::SocketAddress&, quic::QuicVersion,
         std::shared_ptr<const fizz::server::FizzServerContext> ctx) noexcept override {
-        fprintf(stderr, "new connection from %s\n", peer.describe().c_str());
         auto handler = std::make_unique<Handler>(evb);
         auto transport = quic::QuicServerTransport::make(evb, std::move(sock), handler.get(),
                                                          handler.get(), ctx);
