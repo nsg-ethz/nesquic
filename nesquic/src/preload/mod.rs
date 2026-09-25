@@ -7,7 +7,7 @@
 //!     and throughput, which works for every library;
 //!   - the BoringSSL AEAD calls ([`crypto`]), for packet and ACK counts, for
 //!     the libraries that link a BoringSSL-compatible libcrypto dynamically
-//!     (quiche and quinn).
+//!     (quiche, quinn, ngtcp2, lsquic and xquic).
 //!
 //! Everything is aggregated in memory ([`metrics`]) and, when the process
 //! exits, pushed to InfluxDB if a job (`-j`) and the `INFLUX_*` variables are

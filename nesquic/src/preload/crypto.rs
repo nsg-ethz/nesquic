@@ -5,6 +5,10 @@
 //!   - `EVP_AEAD_CTX_seal_scatter` — encrypt (seal) the packet payload
 //!   - `EVP_AEAD_CTX_open`         — decrypt (open) the packet payload
 //!
+//! ngtcp2 and lsquic seal with `EVP_AEAD_CTX_seal` instead. BoringSSL
+//! implements it through the AEAD's method table rather than by calling
+//! `EVP_AEAD_CTX_seal_scatter`, so hooking both never counts a packet twice.
+//!
 //! The IUT images link both libraries dynamically so these calls go through
 //! the PLT and can be interposed; AWS-LC is built with `AWS_LC_SYS_NO_PREFIX`
 //! so it exports the plain BoringSSL names (see docker/Dockerfile.quinn).
@@ -73,6 +77,22 @@ redhook::hook! {
         redhook::real!(EVP_AEAD_CTX_seal_scatter)(
             ctx, out, out_tag, out_tag_len, max_out_tag_len, nonce, nonce_len,
             inp, in_len, extra_in, extra_in_len, ad, ad_len
+        )
+    }
+}
+
+redhook::hook! {
+    unsafe fn EVP_AEAD_CTX_seal(
+        ctx: *const c_void, out: *mut u8, out_len: *mut usize, max_out_len: usize,
+        nonce: *const u8, nonce_len: usize, inp: *const u8, in_len: usize,
+        ad: *const u8, ad_len: usize
+    ) -> c_int => hook_seal {
+        if !inp.is_null() {
+            observe(ad, ad_len, std::slice::from_raw_parts(inp, in_len), true);
+        }
+
+        redhook::real!(EVP_AEAD_CTX_seal)(
+            ctx, out, out_len, max_out_len, nonce, nonce_len, inp, in_len, ad, ad_len
         )
     }
 }

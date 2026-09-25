@@ -1,0 +1,59 @@
+FROM ubuntu:24.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG NGTCP2_VERSION=v1.25.0
+# The BoringSSL commit ngtcp2 is tested against (see its README).
+ARG BORINGSSL_REF=22a0079b189c391b95689813a41982ce11876f0a
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build BoringSSL as shared libraries so its crypto symbols resolve through the
+# PLT and can be interposed by the LD_PRELOAD monitor (libnesquic.so).
+RUN git init -q /boringssl \
+    && git -C /boringssl fetch -q --depth 1 https://github.com/google/boringssl "${BORINGSSL_REF}" \
+    && git -C /boringssl checkout -q FETCH_HEAD \
+    && cmake -S /boringssl -B /boringssl/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=1 -DBUILD_TESTING=OFF \
+    && ninja -C /boringssl/build ssl crypto \
+    && mkdir -p /opt/boringssl/lib \
+    && cp -r /boringssl/include /opt/boringssl/ \
+    && find /boringssl/build -maxdepth 2 \( -name 'libssl.so' -o -name 'libcrypto.so' \) \
+        -exec cp -v {} /opt/boringssl/lib/ \;
+
+# ngtcp2 itself is linked statically; its BoringSSL crypto helper only exists
+# as a static library anyway.
+RUN git clone -q --depth 1 --branch "${NGTCP2_VERSION}" https://github.com/ngtcp2/ngtcp2 /ngtcp2 \
+    && cmake -S /ngtcp2 -B /ngtcp2/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DENABLE_LIB_ONLY=ON -DBUILD_TESTING=OFF -DENABLE_SHARED_LIB=OFF \
+        -DENABLE_OPENSSL=OFF -DENABLE_BORINGSSL=ON \
+        -DBORINGSSL_INCLUDE_DIR=/opt/boringssl/include \
+        "-DBORINGSSL_LIBRARIES=/opt/boringssl/lib/libssl.so;/opt/boringssl/lib/libcrypto.so" \
+    && ninja -C /ngtcp2/build install
+
+COPY iut/c-common /src/c-common
+COPY iut/ngtcp2 /src/ngtcp2
+RUN cmake -S /src/ngtcp2 -B /src/ngtcp2/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DNGTCP2_PREFIX=/usr/local -DBORINGSSL_PREFIX=/opt/boringssl \
+    && ninja -C /src/ngtcp2/build \
+    && cmake --install /src/ngtcp2/build --prefix /usr/local
+
+FROM nesquic/mahimahi
+
+ARG NGTCP2_VERSION
+
+COPY --from=builder /usr/local/bin/nesquic-ngtcp2 /usr/local/bin/nesquic-ngtcp2
+COPY --from=builder /opt/boringssl/lib/ /opt/boringssl/lib/
+
+# BoringSSL's sonames (libssl.so/libcrypto.so) differ from OpenSSL's versioned
+# ones, so they can coexist with the system OpenSSL.
+RUN echo "/opt/boringssl/lib" > /etc/ld.so.conf.d/boringssl.conf && ldconfig
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
+# The C IUT cannot export its version to libnesquic.so like the Rust ones.
+ENV NQ_LIBRARY_VERSION=${NGTCP2_VERSION}
+
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-ngtcp2
