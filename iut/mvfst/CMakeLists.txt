@@ -16,8 +16,12 @@ add_executable(nesquic-mvfst
 
 target_compile_options(nesquic-mvfst PRIVATE -Wall -Wextra -Wno-unused-parameter)
 target_include_directories(nesquic-mvfst PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../c-common)
-target_link_libraries(nesquic-mvfst PRIVATE
-    ${mvfst_LIBRARIES}
-)
+# mvfst_LIBRARIES also names targets that are no longer exported; link the
+# ones that exist.
+foreach(lib IN LISTS mvfst_LIBRARIES)
+    if(TARGET ${lib})
+        target_link_libraries(nesquic-mvfst PRIVATE ${lib})
+    endif()
+endforeach()
 
 install(TARGETS nesquic-mvfst RUNTIME DESTINATION bin)
