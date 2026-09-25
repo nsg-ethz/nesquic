@@ -1,7 +1,7 @@
 FROM nesquic/rust AS builder
 
 RUN apt-get update && apt-get install -y \
-    clang libclang-dev gyp ninja-build python-is-python3 curl gzip build-essential \
+    clang libclang-dev gyp ninja-build python-is-python3 zlib1g-dev curl gzip build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NSS_DIR=/nss \
