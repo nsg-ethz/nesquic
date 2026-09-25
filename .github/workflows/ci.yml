@@ -57,15 +57,10 @@ jobs:
                   load: true
                   cache-from: type=gha,scope=mahimahi
                   cache-to: type=gha,mode=max,scope=mahimahi
+            # Plain docker build: buildx's container driver cannot see the
+            # nesquic/rust image loaded above.
             - name: Build preload image
-              uses: docker/build-push-action@v6
-              with:
-                  context: .
-                  file: docker/Dockerfile.preload
-                  tags: nesquic/preload
-                  load: true
-                  cache-from: type=gha,scope=preload
-                  cache-to: type=gha,mode=max,scope=preload
+              run: docker build -f docker/Dockerfile.preload -t nesquic/preload .
             - name: Export base images
               run: docker save nesquic/rust nesquic/mahimahi nesquic/preload -o base-images.tar
             - uses: actions/upload-artifact@v4
