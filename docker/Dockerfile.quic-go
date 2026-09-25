@@ -1,0 +1,30 @@
+FROM ubuntu:24.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Ubuntu's Go is older than quic-go requires; it fetches the toolchain named
+# in go.mod (GOTOOLCHAIN=auto). Building on the runtime's Ubuntu release keeps
+# the cgo binary compatible with its glibc.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        golang-go build-essential ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src/quic-go
+COPY iut/quic-go/go.mod iut/quic-go/go.sum ./
+RUN go mod download
+COPY iut/quic-go/ ./
+# cgo is required: all socket I/O goes through libc so the LD_PRELOAD monitor
+# can observe it (see libcconn.go).
+RUN CGO_ENABLED=1 go build -trimpath -o /usr/local/bin/nesquic-quic-go .
+
+FROM nesquic/mahimahi
+
+COPY --from=builder /usr/local/bin/nesquic-quic-go /usr/local/bin/nesquic-quic-go
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
+# Keep in sync with go.mod. The Go IUT cannot export its version to
+# libnesquic.so like the Rust ones.
+ENV NQ_LIBRARY_VERSION=v0.63.0
+
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-quic-go
