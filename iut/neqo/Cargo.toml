@@ -8,11 +8,11 @@ name = "nesquic-neqo"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1.0.102"
+anyhow = "1.0.104"
 socket2 = "0.6"
 tracing = "0.1"
 quinn-udp = "0.6.1"
-tokio = { version = "1.51.1", features = ["macros", "full"] }
+tokio = { version = "1.53.1", features = ["macros", "full"] }
 utils = { path = "../../utils" }
 iut-common = { path = "../common" }
 neqo-transport = { git = "https://github.com/mozilla/neqo.git",   package = "neqo-transport", tag = "v0.28.1" }

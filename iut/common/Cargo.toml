@@ -7,12 +7,12 @@ edition = "2021"
 name = "common"
 
 [dependencies]
-anyhow = "1.0.102"
-clap = "4.6.0"
-tokio = { version = "1.51.1", features = ["signal", "sync"] }
+anyhow = "1.0.104"
+clap = "4.6.4"
+tokio = { version = "1.53.1", features = ["signal", "sync"] }
 utils = { path = "../../utils" }
 tracing-subscriber = "0.3.23"
 tracing = "0.1.44"
 core_affinity = "0.8.3"
-futures = "0.3.32"
-socket2 = "0.6.3"
+futures = "0.3.33"
+socket2 = "0.6.5"

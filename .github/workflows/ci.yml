@@ -24,7 +24,28 @@ jobs:
         # Anything nightly is treated as informational-only.
         continue-on-error: ${{ matrix.rust == 'nightly' }}
         steps:
-            - uses: actions/checkout@v4
+            - name: "Set environmental variables"
+              shell: bash
+              run: |
+                  #RUST_BACKTRACE_nightly='1'
+                  #CFLAGS_nightly='-fsanitize=leak'
+                  #CXXFLAGS_nightly='-fsanitize=leak'
+                  #RUSTFLAGS_nightly='-Zsanitizer=leak'
+
+                  # A function for defining a variable conditional on the toolchain in
+                  # use.
+                  tc_var() {
+                    # Replace any dots in the toolchain name with underscores. Necessary
+                    # due to shell imposed variable naming restrictions.
+                    var="${1}_$(echo ${{ matrix.rust }} | tr . _)"
+                    echo "${1}=${!var}" >> ${GITHUB_ENV}
+                  }
+
+                  tc_var RUST_BACKTRACE
+                  tc_var RUSTFLAGS
+                  tc_var CFLAGS
+                  tc_var CXXFLAGS
+            - uses: actions/checkout@v7
             - uses: dtolnay/rust-toolchain@master
               with:
                   toolchain: ${{ matrix.rust }}
@@ -36,11 +57,11 @@ jobs:
         name: Build base images
         runs-on: ubuntu-24.04
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
+              uses: docker/setup-buildx-action@v4
             - name: Build base rust image
-              uses: docker/build-push-action@v6
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   file: docker/Dockerfile.rust
@@ -49,7 +70,7 @@ jobs:
                   cache-from: type=gha,scope=rust
                   cache-to: type=gha,mode=max,scope=rust
             - name: Build mahimahi image
-              uses: docker/build-push-action@v6
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   file: docker/Dockerfile.mahimahi
@@ -68,7 +89,7 @@ jobs:
                   cache-to: type=gha,mode=max,scope=preload
             - name: Export base images
               run: docker save nesquic/rust nesquic/mahimahi nesquic/preload -o base-images.tar
-            - uses: actions/upload-artifact@v4
+            - uses: actions/upload-artifact@v7
               with:
                   name: base-images
                   path: base-images.tar
@@ -81,8 +102,8 @@ jobs:
             matrix:
                 library: [quinn, quiche, neqo, noq, msquic]
         steps:
-            - uses: actions/checkout@v4
-            - uses: actions/download-artifact@v4
+            - uses: actions/checkout@v7
+            - uses: actions/download-artifact@v8
               with:
                   name: base-images
             - name: Load base images
