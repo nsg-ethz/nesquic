@@ -20,7 +20,6 @@
 use super::metrics::METRICS;
 use super::{frame, parse_quic_header, qlog};
 use libc::{c_int, c_void};
-use std::sync::atomic::Ordering::Relaxed;
 
 /// A cheap plausibility check that `ad` is a QUIC packet header rather than
 /// some other use of the AEAD (e.g. session ticket encryption): long headers
@@ -43,16 +42,7 @@ unsafe fn observe(ad: *const u8, ad_len: usize, payload: &[u8], sent: bool) {
         return;
     }
 
-    let acks = frame::count_acks(payload);
-    let (packets, ack_frames) = if sent {
-        (&METRICS.packets_sent, &METRICS.acks_sent)
-    } else {
-        (&METRICS.packets_received, &METRICS.acks_received)
-    };
-    packets.fetch_add(1, Relaxed);
-    if acks > 0 {
-        ack_frames.fetch_add(acks, Relaxed);
-    }
+    METRICS.record_packet(sent, &frame::summarize(payload));
 
     if qlog::enabled() {
         if let Some(header) = parse_quic_header(ad) {
