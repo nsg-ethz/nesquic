@@ -5,8 +5,9 @@
 # reachable, then run the client container and assert the transfer succeeds.
 #
 # It also asserts that libnesquic.so sees the IUT's packets through its crypto
-# hooks: the client must report QUIC packet counts, and both sides must write a
-# qlog trace (NQ_QLOG) with sent and received packets.
+# hooks: the client must report QUIC packet counts, TTFB and request latency,
+# and both sides must write a qlog trace (NQ_QLOG) with sent and received
+# packets.
 #
 # Runs the IUT inside its docker image (nesquic/<library>) so the test is
 # language independent and exercises the same artifact CI ships. The MM_* knobs
@@ -110,6 +111,13 @@ if [[ "${healthy}" == true ]]; then
         echo -e "${COLOR_GREEN}ok: ${LIB} client reported QUIC packet counts${COLOR_OFF}"
     else
         echo -e "${COLOR_RED}fail: ${LIB} client reported no QUIC packet counts (crypto hooks)${COLOR_OFF}" >&2
+        failed=true
+    fi
+    if latency="$(grep -m1 '^nesquic_latency,' <<< "${client_log}")" \
+            && [[ "${latency}" == *ttfb_ms=* && "${latency}" == *request_latency_ms=* ]]; then
+        echo -e "${COLOR_GREEN}ok: ${LIB} client reported TTFB and request latency${COLOR_OFF}"
+    else
+        echo -e "${COLOR_RED}fail: ${LIB} client reported no TTFB/request latency${COLOR_OFF}" >&2
         failed=true
     fi
     for side in client server; do

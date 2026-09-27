@@ -40,7 +40,7 @@ plaintext the frames. This needs the crypto library to be linked dynamically.
 | NSS | `SSL_AeadEncrypt`, `SSL_AeadDecrypt` (via `SSL_GetExperimentalAPI`) | neqo |
 
 `script/test.sh` checks for every library that the client reports packet
-counts and that both sides write a qlog trace with sent and received packets.
+counts, TTFB and request latency, and that both sides write a qlog trace with sent and received packets.
 
 ## Debugging
 
