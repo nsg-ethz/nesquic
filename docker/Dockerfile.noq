@@ -1,5 +1,11 @@
 FROM nesquic/rust AS builder
 
+RUN apt-get update && apt-get install -y \
+    curl git build-essential pkg-config \
+    clang llvm libclang-dev \
+    cmake nasm golang-go \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /workspace
 COPY Cargo.toml Cargo.lock ./
 COPY iut/ iut/
@@ -7,12 +13,21 @@ COPY nesquic/ nesquic/
 COPY utils/ utils/
 COPY res/ res/
 
-RUN cargo build --release --locked -p noq-iut --bin nesquic-noq
+# Like docker/Dockerfile.quinn: link AWS-LC dynamically, with plain BoringSSL
+# symbol names, so libnesquic.so can interpose on its AEAD calls.
+RUN AWS_LC_SYS_STATIC=0 AWS_LC_SYS_NO_PREFIX=1 \
+    cargo build --release --locked -p noq-iut --bin nesquic-noq
+
+RUN mkdir -p /awslc && \
+    find target/release/build -path '*aws-lc-sys*/out/*' \
+        -name 'libcrypto.so*' -exec cp -av {} /awslc/ \;
 
 FROM nesquic/mahimahi
 
 COPY --from=builder /workspace/target/release/nesquic-noq /usr/local/bin/nesquic-noq
+COPY --from=builder /awslc/ /opt/awslc/lib/
 
+ENV LD_LIBRARY_PATH=/opt/awslc/lib
 COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
 RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
 
