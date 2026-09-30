@@ -169,6 +169,46 @@ def throughput_panel(library):
     )
 
 
+def flux_latency_query(library, field):
+    return "\n".join([
+        f'from(bucket: "{BUCKET}")',
+        "  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)",
+        f'  |> filter(fn: (r) => r._measurement == "nesquic_latency" and r._field == "{field}")',
+        f'  |> filter(fn: (r) => r.library == "{library}")',
+        RUN_FILTER,
+        f'  |> rename(columns: {{"_value": "{field}"}})',
+        "  |> group()",
+    ])
+
+
+def latency_panels(library):
+    """TTFB and request latency, available for libraries whose crypto is hooked."""
+    y = y_offset()
+    ttfb = BarChart(
+        title="Time to First Byte",
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(flux_latency_query(library, "ttfb_ms"))],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=0, y=y),
+        xField="job",
+        axisLabel="TTFB [ms]",
+    )
+
+    request = BarChart(
+        title="Request Latency",
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(flux_latency_query(library, "request_latency_ms"))],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=DASHBOARD_MID, y=y),
+        xField="job",
+        axisLabel="Request latency [ms]",
+    )
+
+    return [ttfb, request]
+
+
 def overview_panels(library):
     return [
         RowPanel(
@@ -176,6 +216,7 @@ def overview_panels(library):
             gridPos=GridPos(h=1, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
         ),
         throughput_panel(library),
+        *latency_panels(library),
     ]
 
 
@@ -196,10 +237,18 @@ def experiments_panels(experiment, library):
     ]
 
 
+DISPLAY_NAMES = {
+    "msquic": "MsQuic",
+    "ngtcp2": "ngtcp2",
+    "lsquic": "LSQUIC",
+    "xquic": "XQUIC",
+    "picoquic": "picoquic",
+    "mvfst": "mvfst",
+}
+
+
 def display_name(library):
-    if library == "msquic":
-        return "MsQuic"
-    return library.capitalize()
+    return DISPLAY_NAMES.get(library, library.capitalize())
 
 
 library = os.environ.get("LIBRARY")

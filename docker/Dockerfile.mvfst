@@ -1,0 +1,33 @@
+# Built on docker/Dockerfile.mvfst-deps (script/build.sh builds it first).
+# fizz's and mvfst's CMake configs need Find modules (e.g. FindSodium) that
+# are not installed, so they come from the mvfst checkout in that image.
+FROM nesquic/mvfst-deps AS builder
+
+COPY iut/c-common /src/c-common
+COPY iut/mvfst /src/mvfst
+RUN cmake -S /src/mvfst -B /src/mvfst/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        "-DCMAKE_PREFIX_PATH=$(find /getdeps/installed -mindepth 1 -maxdepth 1 -type d | paste -sd ';')" \
+        "-DCMAKE_MODULE_PATH=/mvfst/cmake;/mvfst/build/fbcode_builder/CMake" \
+    && ninja -C /src/mvfst/build \
+    && cmake --install /src/mvfst/build --prefix /usr/local
+
+# folly, fizz and mvfst are linked statically; collect the shared libraries
+# they pull in (OpenSSL, glog, libevent, ...) that the runtime image lacks.
+RUN mkdir -p /mvfst-libs \
+    && ldd /usr/local/bin/nesquic-mvfst | awk '/=> \// { print $3 }' \
+        | grep -vE '/(ld-linux|libc|libm|libpthread|libdl|librt|libgcc_s|libstdc\+\+)\.so' \
+        | xargs -r cp -vL -t /mvfst-libs/
+
+FROM nesquic/mahimahi
+
+COPY --from=builder /usr/local/bin/nesquic-mvfst /usr/local/bin/nesquic-mvfst
+COPY --from=builder /mvfst-libs/ /opt/mvfst/lib/
+RUN echo "/opt/mvfst/lib" > /etc/ld.so.conf.d/mvfst.conf && ldconfig
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
+# Keep in sync with docker/Dockerfile.mvfst-deps. The C++ IUT cannot export
+# its version to libnesquic.so like the Rust ones.
+ENV NQ_LIBRARY_VERSION=v2026.09.21.00
+
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-mvfst

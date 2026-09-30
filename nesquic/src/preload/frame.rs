@@ -1,6 +1,6 @@
 //! A minimal QUIC frame walker (RFC 9000 section 19, plus the ACK
-//! frequency extension), just enough to find the ACK frames in a decrypted
-//! packet payload.
+//! frequency extension), just enough to find the ACK and STREAM frames in a
+//! decrypted packet payload.
 
 /// Reads a QUIC variable-length integer (RFC 9000 section 16).
 fn varint(buf: &mut &[u8]) -> Option<u64> {
@@ -33,23 +33,45 @@ fn skip_prefixed(buf: &mut &[u8]) -> Option<()> {
     skip(buf, len)
 }
 
-/// Number of ACK frames in a decrypted packet `payload`.
-///
-/// Frames are walked in order; parsing stops at the first unknown or
-/// malformed frame, in which case only the ACKs before it are counted.
-pub(crate) fn count_acks(mut payload: &[u8]) -> u64 {
-    let mut acks = 0;
-    while !payload.is_empty() {
-        let Some(is_ack) = next_frame(&mut payload) else {
-            break;
-        };
-        acks += is_ack as u64;
-    }
-    acks
+/// What a decrypted packet payload carries.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Summary {
+    /// Number of ACK frames.
+    pub acks: u64,
+    /// Stream data bytes, summed over all STREAM frames.
+    pub stream_bytes: u64,
+    /// Whether any STREAM frame has the FIN bit set.
+    pub stream_fin: bool,
 }
 
-/// Advances `buf` past one frame and returns whether it was an ACK frame.
-fn next_frame(buf: &mut &[u8]) -> Option<bool> {
+enum Frame {
+    Ack,
+    Stream { len: u64, fin: bool },
+    Other,
+}
+
+/// Summarizes the frames in a decrypted packet `payload`.
+///
+/// Frames are walked in order; parsing stops at the first unknown or
+/// malformed frame, in which case only the frames before it are counted.
+pub(crate) fn summarize(mut payload: &[u8]) -> Summary {
+    let mut summary = Summary::default();
+    while !payload.is_empty() {
+        match next_frame(&mut payload) {
+            Some(Frame::Ack) => summary.acks += 1,
+            Some(Frame::Stream { len, fin }) => {
+                summary.stream_bytes += len;
+                summary.stream_fin |= fin;
+            }
+            Some(Frame::Other) => {}
+            None => break,
+        }
+    }
+    summary
+}
+
+/// Advances `buf` past one frame and returns what it was.
+fn next_frame(buf: &mut &[u8]) -> Option<Frame> {
     let ty = varint(buf)?;
     match ty {
         // PADDING, PING, HANDSHAKE_DONE, IMMEDIATE_ACK
@@ -66,7 +88,7 @@ fn next_frame(buf: &mut &[u8]) -> Option<bool> {
             if ty == 0x03 {
                 skip_varints(buf, 3)?; // ECT0, ECT1, ECN-CE counts
             }
-            return Some(true);
+            return Some(Frame::Ack);
         }
         // RESET_STREAM
         0x04 => skip_varints(buf, 3)?,
@@ -85,11 +107,20 @@ fn next_frame(buf: &mut &[u8]) -> Option<bool> {
             if ty & 0x04 != 0 {
                 varint(buf)?; // offset
             }
-            if ty & 0x02 != 0 {
-                skip_prefixed(buf)?;
+            let len = if ty & 0x02 != 0 {
+                let len = varint(buf)?;
+                skip(buf, len)?;
+                len
             } else {
+                // Without LEN, the data runs to the end of the packet.
+                let len = buf.len() as u64;
                 *buf = &[];
-            }
+                len
+            };
+            return Some(Frame::Stream {
+                len,
+                fin: ty & 0x01 != 0,
+            });
         }
         // MAX_DATA, MAX_STREAMS, DATA_BLOCKED, STREAMS_BLOCKED,
         // RETIRE_CONNECTION_ID
@@ -116,7 +147,7 @@ fn next_frame(buf: &mut &[u8]) -> Option<bool> {
         0xaf => skip_varints(buf, 4)?,
         _ => return None,
     }
-    Some(false)
+    Some(Frame::Other)
 }
 
 #[cfg(test)]
@@ -142,6 +173,10 @@ mod tests {
         assert_eq!(varint(&mut &[0x40][..]), None);
     }
 
+    fn count_acks(payload: &[u8]) -> u64 {
+        summarize(payload).acks
+    }
+
     #[test]
     fn counts_acks() {
         let payload = [
@@ -152,6 +187,27 @@ mod tests {
             0x00, 0x00, // PADDING
         ];
         assert_eq!(count_acks(&payload), 2);
+    }
+
+    #[test]
+    fn sums_stream_data_and_fin() {
+        let payload = [
+            0x0e, 0x00, 0x04, 0x03, 0xaa, 0xbb, 0xcc, // STREAM, OFF, LEN 3
+            0x0b, 0x00, 0x02, 0xdd, 0xee, // STREAM, LEN 2, FIN
+        ];
+        assert_eq!(
+            summarize(&payload),
+            Summary {
+                acks: 0,
+                stream_bytes: 5,
+                stream_fin: true
+            }
+        );
+        // No LEN: the data is the rest of the packet.
+        assert_eq!(summarize(&[0x08, 0x00, 1, 2, 3, 4]).stream_bytes, 4);
+        // An empty STREAM frame with FIN carries no data.
+        let fin_only = summarize(&[0x0f, 0x00, 0x08, 0x00]);
+        assert_eq!((fin_only.stream_bytes, fin_only.stream_fin), (0, true));
     }
 
     #[test]

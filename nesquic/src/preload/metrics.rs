@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
+use super::frame::Summary;
+
 /// The I/O calls hooked in [`super::io`], in reporting order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Syscall {
@@ -90,9 +92,7 @@ impl Window {
     }
 
     fn record(&self, now: u64) {
-        if self.first.load(Relaxed) == 0 {
-            let _ = self.first.compare_exchange(0, now, Relaxed, Relaxed);
-        }
+        set_once(&self.first, now);
         self.last.fetch_max(now, Relaxed);
     }
 
@@ -102,10 +102,29 @@ impl Window {
     }
 }
 
+/// Stores `now` in a timestamp that is still unset (0).
+fn set_once(slot: &AtomicU64, now: u64) {
+    if slot.load(Relaxed) == 0 {
+        let _ = slot.compare_exchange(0, now, Relaxed, Relaxed);
+    }
+}
+
+/// Nanoseconds from `start` to `end`, if both are set and ordered.
+fn elapsed_ns(start: u64, end: u64) -> Option<u64> {
+    (start != 0 && end >= start).then(|| end - start)
+}
+
 pub(crate) struct Metrics {
     io: [IoCounter; Syscall::ALL.len()],
     rx_bytes: AtomicU64,
     rx_window: Window,
+    /// First UDP datagram sent: the start of the connection.
+    tx_first: AtomicU64,
+    /// First sealed packet carrying stream data: the request.
+    request_sent: AtomicU64,
+    /// Opened packets carrying stream data: the response, from its first
+    /// to its last byte.
+    response: Window,
     pub packets_sent: AtomicU64,
     pub packets_received: AtomicU64,
     pub acks_sent: AtomicU64,
@@ -136,6 +155,9 @@ impl Metrics {
             io: [ZERO; Syscall::ALL.len()],
             rx_bytes: AtomicU64::new(0),
             rx_window: Window::new(),
+            tx_first: AtomicU64::new(0),
+            request_sent: AtomicU64::new(0),
+            response: Window::new(),
             packets_sent: AtomicU64::new(0),
             packets_received: AtomicU64::new(0),
             acks_sent: AtomicU64::new(0),
@@ -155,7 +177,51 @@ impl Metrics {
         if syscall.is_rx() {
             self.rx_bytes.fetch_add(bytes, Relaxed);
             self.rx_window.record(now_ns());
+        } else {
+            set_once(&self.tx_first, now_ns());
         }
+    }
+
+    /// Records one packet sealed (`sent`) or opened by the library's crypto,
+    /// given what its decrypted payload carries.
+    pub fn record_packet(&self, sent: bool, frames: &Summary) {
+        let (packets, acks) = if sent {
+            (&self.packets_sent, &self.acks_sent)
+        } else {
+            (&self.packets_received, &self.acks_received)
+        };
+        packets.fetch_add(1, Relaxed);
+        if frames.acks > 0 {
+            acks.fetch_add(frames.acks, Relaxed);
+        }
+
+        if frames.stream_bytes > 0 || frames.stream_fin {
+            if sent {
+                set_once(&self.request_sent, now_ns());
+            } else {
+                self.response.record(now_ns());
+            }
+        }
+    }
+
+    /// Time to first byte (ms): from the first datagram the client sent,
+    /// i.e. including the handshake, to the first packet with response data.
+    fn ttfb_ms(&self) -> Option<f64> {
+        let ns = elapsed_ns(
+            self.tx_first.load(Relaxed),
+            self.response.first.load(Relaxed),
+        )?;
+        Some(ns as f64 / 1e6)
+    }
+
+    /// Request latency (ms): from the first packet with request data to the
+    /// last packet with response data (normally the one with the FIN).
+    fn request_latency_ms(&self) -> Option<f64> {
+        let ns = elapsed_ns(
+            self.request_sent.load(Relaxed),
+            self.response.last.load(Relaxed),
+        )?;
+        Some(ns as f64 / 1e6)
     }
 
     /// Receive throughput in the unit the IUTs historically reported
@@ -169,6 +235,8 @@ impl Metrics {
     /// Renders all metrics as InfluxDB line protocol.
     ///
     /// - `nesquic`: `throughput`, for clients only (the receiving side)
+    /// - `nesquic_latency`: `ttfb_ms` and `request_latency_ms`, for clients
+    ///   whose library's crypto was hooked (see [`super::crypto`])
     /// - `nesquic_io`: per-syscall `count` and `volume_kb_sum`
     /// - `nesquic_quic`: packets and ACK frames sent and received, if the
     ///   library's crypto was hooked (see [`super::crypto`])
@@ -181,6 +249,21 @@ impl Metrics {
                 let _ = writeln!(
                     lines,
                     "nesquic{tags} throughput={throughput} {timestamp_ns}"
+                );
+            }
+
+            let latency: Vec<String> = [
+                ("ttfb_ms", self.ttfb_ms()),
+                ("request_latency_ms", self.request_latency_ms()),
+            ]
+            .into_iter()
+            .filter_map(|(name, value)| Some(format!("{name}={}", value?)))
+            .collect();
+            if !latency.is_empty() {
+                let _ = writeln!(
+                    lines,
+                    "nesquic_latency{tags} {} {timestamp_ns}",
+                    latency.join(",")
                 );
             }
         }
@@ -284,6 +367,79 @@ mod tests {
         assert!(client.starts_with("nesquic,mode=client throughput=2 1\n"));
         let server = m.line_protocol(&tags(&[("mode", "server")]), 1);
         assert!(!server.contains("throughput"));
+    }
+
+    fn stream(bytes: u64, fin: bool) -> Summary {
+        Summary {
+            acks: 0,
+            stream_bytes: bytes,
+            stream_fin: fin,
+        }
+    }
+
+    #[test]
+    fn records_packets_and_acks() {
+        let m = Metrics::new();
+        m.record_packet(
+            true,
+            &Summary {
+                acks: 2,
+                ..Default::default()
+            },
+        );
+        m.record_packet(false, &Summary::default());
+        assert_eq!(m.packets_sent.load(Relaxed), 1);
+        assert_eq!(m.acks_sent.load(Relaxed), 2);
+        assert_eq!(m.packets_received.load(Relaxed), 1);
+        // Handshake and ACK-only packets say nothing about the request.
+        assert_eq!(m.request_sent.load(Relaxed), 0);
+        assert_eq!(m.response.first.load(Relaxed), 0);
+    }
+
+    #[test]
+    fn latency_timestamps() {
+        let m = Metrics::new();
+        m.record_io(Syscall::Sendmsg, 1200);
+        m.record_packet(true, &stream(8, true));
+        m.record_packet(false, &stream(1000, false));
+        m.record_packet(false, &stream(0, true));
+
+        let (tx, req) = (m.tx_first.load(Relaxed), m.request_sent.load(Relaxed));
+        let (first, last) = (
+            m.response.first.load(Relaxed),
+            m.response.last.load(Relaxed),
+        );
+        assert!(tx != 0 && tx <= req && req <= first && first <= last);
+        // Only the first request packet counts.
+        m.record_packet(true, &stream(8, false));
+        assert_eq!(m.request_sent.load(Relaxed), req);
+    }
+
+    #[test]
+    fn renders_latency_for_clients_only() {
+        let m = Metrics::new();
+        m.tx_first.store(1_000_001, Relaxed);
+        m.request_sent.store(3_000_001, Relaxed);
+        m.response.first.store(4_000_001, Relaxed);
+        m.response.last.store(10_000_001, Relaxed);
+        assert_eq!(m.ttfb_ms(), Some(3.0));
+        assert_eq!(m.request_latency_ms(), Some(7.0));
+
+        let client = m.line_protocol(&tags(&[("mode", "client")]), 1);
+        assert!(client.contains("nesquic_latency,mode=client ttfb_ms=3,request_latency_ms=7 1\n"));
+        let server = m.line_protocol(&tags(&[("mode", "server")]), 1);
+        assert!(!server.contains("nesquic_latency"));
+    }
+
+    #[test]
+    fn no_latency_without_crypto_hooks() {
+        let m = Metrics::new();
+        m.record_io(Syscall::Sendmsg, 1200);
+        m.record_io(Syscall::Recvmsg, 1200);
+        assert_eq!(m.ttfb_ms(), None);
+        assert_eq!(m.request_latency_ms(), None);
+        let client = m.line_protocol(&tags(&[("mode", "client")]), 1);
+        assert!(!client.contains("nesquic_latency"));
     }
 
     #[test]

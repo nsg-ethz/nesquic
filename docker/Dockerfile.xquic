@@ -1,0 +1,54 @@
+FROM ubuntu:24.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG XQUIC_VERSION=v1.9.7
+# xquic follows BoringSSL master; this release is known to build with it.
+ARG BORINGSSL_REF=0.20250807.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git ca-certificates perl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build BoringSSL as shared libraries so its crypto symbols resolve through the
+# PLT and can be interposed by the LD_PRELOAD monitor (libnesquic.so).
+RUN git clone -q --depth 1 --branch "${BORINGSSL_REF}" https://github.com/google/boringssl /boringssl \
+    && cmake -S /boringssl -B /boringssl/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=1 -DBUILD_TESTING=OFF \
+    && ninja -C /boringssl/build ssl crypto \
+    && mkdir -p /opt/boringssl/lib \
+    && cp -r /boringssl/include /opt/boringssl/ \
+    && find /boringssl/build -maxdepth 2 \( -name 'libssl.so' -o -name 'libcrypto.so' \) \
+        -exec cp -v {} /opt/boringssl/lib/ \;
+
+# xquic itself is linked statically (its shared target would re-export
+# BoringSSL via --whole-archive).
+RUN git clone -q --depth 1 --branch "${XQUIC_VERSION}" https://github.com/alibaba/xquic /xquic \
+    && cmake -S /xquic -B /xquic/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DSSL_TYPE=boringssl -DSSL_PATH=/opt/boringssl -DSSL_DYNAMIC=1 \
+        -DXQC_ENABLE_TESTING=OFF \
+    && ninja -C /xquic/build xquic-static
+
+COPY iut/c-common /src/c-common
+COPY iut/xquic /src/xquic
+RUN cmake -S /src/xquic -B /src/xquic/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DXQUIC_SOURCE_DIR=/xquic -DBORINGSSL_PREFIX=/opt/boringssl \
+    && ninja -C /src/xquic/build \
+    && cmake --install /src/xquic/build --prefix /usr/local
+
+FROM nesquic/mahimahi
+
+ARG XQUIC_VERSION
+
+COPY --from=builder /usr/local/bin/nesquic-xquic /usr/local/bin/nesquic-xquic
+COPY --from=builder /opt/boringssl/lib/ /opt/boringssl/lib/
+
+# BoringSSL's sonames (libssl.so/libcrypto.so) differ from OpenSSL's versioned
+# ones, so they can coexist with the system OpenSSL.
+RUN echo "/opt/boringssl/lib" > /etc/ld.so.conf.d/boringssl.conf && ldconfig
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
+
+# The C IUT cannot export its version to libnesquic.so like the Rust ones.
+ENV NQ_LIBRARY_VERSION=${XQUIC_VERSION}
+
+ENV NESQUIC_BIN=/usr/local/bin/nesquic-xquic

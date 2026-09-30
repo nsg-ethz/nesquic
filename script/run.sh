@@ -55,6 +55,13 @@ function run_client {
 
     may_fail docker rm -f ${CLIENT_CONTAINER}
 
+    # qlog tracing is for debugging only: it slows down the monitored library.
+    QLOG_ARGS=""
+    if [[ "${NQ_QLOG:-0}" == "1" ]]; then
+        mkdir -p ${RES_DIR}/qlog/$1
+        QLOG_ARGS="-v ${RES_DIR}/qlog/$1:/workspace/qlog -e NQ_QLOG=/workspace/qlog/${EXP_NAME}.client.qlog"
+    fi
+
     LOCALHOST_IP="127.0.0.1"
     if [[ -n "${EXP_DELAY}" || -n "${EXP_LOSS}" || -n "${EXP_LINK}" ]]; then
         LOCALHOST_IP="10.0.0.1" # MAHIMAHI_BASE
@@ -73,6 +80,7 @@ function run_client {
         -e INFLUX_ORG=${INFLUX_ORG:-nesquic} \
         -e INFLUX_BUCKET=${INFLUX_BUCKET:-nesquic} \
         --name ${CLIENT_CONTAINER} \
+        ${QLOG_ARGS} \
         nesquic/$1 \
         client -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --blob ${EXP_BLOB} \
         https://${LOCALHOST_IP}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL}
@@ -91,7 +99,7 @@ function run_server {
     if [[ "${NQ_QLOG:-0}" == "1" ]]; then
         mkdir -p ${RES_DIR}/qlog/$1
         CMD+="-v ${RES_DIR}/qlog/$1:/workspace/qlog "
-        CMD+="-e NQ_QLOG=/workspace/qlog/${EXP_NAME}.qlog "
+        CMD+="-e NQ_QLOG=/workspace/qlog/${EXP_NAME}.server.qlog "
     fi
     CMD+="-e INFLUX_URL=http://127.0.0.1:8086 "
     CMD+="-e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} "

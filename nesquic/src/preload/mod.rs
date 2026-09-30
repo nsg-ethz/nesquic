@@ -5,9 +5,9 @@
 //! There it interposes on:
 //!   - libc I/O calls on UDP sockets ([`io`]), for syscall counts, volumes
 //!     and throughput, which works for every library;
-//!   - the BoringSSL AEAD calls ([`crypto`]), for packet and ACK counts, for
-//!     the libraries that link a BoringSSL-compatible libcrypto dynamically
-//!     (quiche and quinn).
+//!   - the AEAD calls that protect QUIC packets ([`crypto`]: BoringSSL,
+//!     OpenSSL and NSS), for packet, ACK and latency metrics and qlog, which
+//!     works for every library whose crypto library is linked dynamically.
 //!
 //! Everything is aggregated in memory ([`metrics`]) and, when the process
 //! exits, pushed to InfluxDB if a job (`-j`) and the `INFLUX_*` variables are
