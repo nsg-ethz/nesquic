@@ -27,7 +27,8 @@ FROM nesquic/mahimahi
 COPY --from=builder /workspace/target/release/nesquic-noq /usr/local/bin/nesquic-noq
 COPY --from=builder /awslc/ /opt/awslc/lib/
 
-ENV LD_LIBRARY_PATH=/opt/awslc/lib
+# Not LD_LIBRARY_PATH: the setuid mahimahi shells strip it.
+RUN echo "/opt/awslc/lib" > /etc/ld.so.conf.d/awslc.conf && ldconfig
 COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
 RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
 

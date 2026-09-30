@@ -64,7 +64,9 @@ function run_client {
 
     LOCALHOST_IP="127.0.0.1"
     if [[ -n "${EXP_DELAY}" || -n "${EXP_LOSS}" || -n "${EXP_LINK}" ]]; then
-        LOCALHOST_IP="10.0.0.1" # MAHIMAHI_BASE
+        # Expanded by mm-entrypoint.sh: mahimahi's base is not 10.0.0.1 if the
+        # host already uses that address, and the server answers from the base.
+        LOCALHOST_IP='$MAHIMAHI_BASE'
     fi
 
     docker run --rm --network=host \
@@ -142,8 +144,6 @@ function teardown {
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_ALL}
     sudo systemctl set-property --runtime system.slice AllowedCPUs=${CPU_ALL}
     sudo systemctl set-property --runtime init.scope AllowedCPUs=${CPU_ALL}
-
-    exit 0
 }
 
 function setup {
@@ -235,7 +235,8 @@ function run_library_experiments {
 }
 
 setup
-trap teardown INT TERM
+trap teardown EXIT
+trap 'exit 1' INT TERM
 
 if [ "$#" -eq 0 ]; then
     LIBS=(${NQ_LIBS})
@@ -247,5 +248,3 @@ for LIB in "${LIBS[@]}"; do
     ${WORKSPACE}/script/build.sh ${LIB}
     run_library_experiments ${LIB}
 done
-
-teardown
