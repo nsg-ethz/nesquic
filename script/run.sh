@@ -1,12 +1,13 @@
 #!/bin/bash
 
+set -eu
+
 COLOR_RED='\033[0;31m'
 COLOR_GREEN='\033[0;32m'
 COLOR_YELLOW='\033[0;33m'
 COLOR_OFF='\033[0m' # No Color
 
 VETH_MM="veth-mm"
-VETH_METRICS="veth-metrics"
 
 CPU_ALL=0-39
 CPU_SYSTEM=0-7,12-39
@@ -86,6 +87,12 @@ function run_server {
     CMD="docker run --rm --network=host "
     CMD+="--user $(id -u):$(id -g) "
     CMD+="--name ${SERVER_CONTAINER} "
+    # qlog tracing is for debugging only: it slows down the monitored library.
+    if [[ "${NQ_QLOG:-0}" == "1" ]]; then
+        mkdir -p ${RES_DIR}/qlog/$1
+        CMD+="-v ${RES_DIR}/qlog/$1:/workspace/qlog "
+        CMD+="-e NQ_QLOG=/workspace/qlog/${EXP_NAME}.qlog "
+    fi
     CMD+="-e INFLUX_URL=http://127.0.0.1:8086 "
     CMD+="-e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} "
     CMD+="-e INFLUX_ORG=${INFLUX_ORG:-nesquic} "
@@ -131,13 +138,9 @@ function teardown {
     exit 0
 }
 
-function compile {
-    echo -e "${COLOR_YELLOW}Building Docker image for ${1}${COLOR_OFF}"
-    docker build -f ${WORKSPACE}/docker/Dockerfile.mahimahi -t nesquic/mahimahi ${WORKSPACE}
-    docker build -f ${WORKSPACE}/docker/Dockerfile.$1 -t nesquic/$1 ${WORKSPACE}
-}
-
 function setup {
+    docker compose -f ${WORKSPACE}/docker/backend.yml up -d
+
     kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}
 
@@ -223,13 +226,6 @@ function run_library_experiments {
     echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 }
 
-# check if the pushgateway is running
-docker ps --filter "name=influxdb" --filter "status=running" --format '{{.Names}}' | grep -wq influxdb
-if [ $? -ne 0 ]; then
-  echo -e "${COLOR_RED}InfluxDB is not running${COLOR_OFF}"
-  exit 1
-fi
-
 setup
 trap teardown INT TERM
 
@@ -240,7 +236,7 @@ else
 fi
 
 for LIB in "${LIBS[@]}"; do
-    compile ${LIB}
+    ${WORKSPACE}/script/build.sh ${LIB}
     run_library_experiments ${LIB}
 done
 

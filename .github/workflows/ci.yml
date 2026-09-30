@@ -50,24 +50,8 @@ jobs:
               with:
                   toolchain: ${{ matrix.rust }}
                   components: rustfmt
-            - uses: awalsh128/cache-apt-pkgs-action@latest
-              with:
-                  packages: clang-18 libelf-dev zlib1g-dev libnuma-dev
-                  version: latest
-            - name: Configure LLVM
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install --yes --no-install-recommends linux-headers-$(uname -r)
-                  sudo ln -s /usr/include/asm-generic /usr/include/asm
-                  sudo rm -f /bin/clang && sudo ln -s /usr/bin/clang-18 /bin/clang && sudo ln -s /usr/bin/llvm-strip-18 /bin/llvm-strip
-                  git clone --recurse-submodules https://github.com/libbpf/bpftool.git
-                  cd bpftool/src && make && sudo make install
-            - name: Dump BTF
-              run: |
-                  mkdir -p include
-                  bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h
             - name: Run tests
-              run: cargo test --bin nesquic --locked --verbose
+              run: cargo test -p nesquic --locked --verbose
             - uses: Swatinem/rust-cache@v2
     base:
         name: Build base images
@@ -94,8 +78,17 @@ jobs:
                   load: true
                   cache-from: type=gha,scope=mahimahi
                   cache-to: type=gha,mode=max,scope=mahimahi
+            - name: Build preload image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: docker/Dockerfile.preload
+                  tags: nesquic/preload
+                  load: true
+                  cache-from: type=gha,scope=preload
+                  cache-to: type=gha,mode=max,scope=preload
             - name: Export base images
-              run: docker save nesquic/rust nesquic/mahimahi -o base-images.tar
+              run: docker save nesquic/rust nesquic/mahimahi nesquic/preload -o base-images.tar
             - uses: actions/upload-artifact@v7
               with:
                   name: base-images

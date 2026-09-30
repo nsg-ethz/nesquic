@@ -4,12 +4,9 @@ use core_affinity::{self, CoreId};
 use futures::future::Either::*;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
-use std::{collections::HashMap, env, future::Future, mem::MaybeUninit};
-use tokio::{
-    signal::unix::{signal, SignalKind},
-    sync::oneshot,
-};
-use tracing::{error, info, trace, warn};
+use std::{env, future::Future};
+use tokio::signal::unix::{signal, SignalKind};
+use tracing::{info, trace};
 use utils::{
     bin::{Client, ClientArgs, Server, ServerArgs},
     perf::{Request, Stats},
@@ -51,9 +48,6 @@ pub struct CommonArgs {
 
     #[clap(long)]
     pub quic_cpu: Option<usize>,
-
-    #[clap(long)]
-    pub metric_cpu: Option<usize>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -85,10 +79,7 @@ async fn run_client<C: Client>(args: ClientArgs) -> Result<()> {
     stats.add_bytes(req.len())?;
     stats.stop_measurement()?;
 
-    // THROUGHPUT_SAMPLES
-    //     .lock()
-    //     .unwrap()
-    //     .push(stats.throughputs().mean());
+    println!("throughput: {}", stats.throughputs().mean());
 
     Ok(())
 }
@@ -96,35 +87,6 @@ async fn run_client<C: Client>(args: ClientArgs) -> Result<()> {
 async fn run_server<S: Server>(args: ServerArgs) -> Result<()> {
     let mut s = S::new(args)?;
     s.listen().await
-}
-
-fn build_labels(cli: &Cli, lib_name: &str, lib_version: &str) -> HashMap<String, String> {
-    let log_level = tracing::level_filters::LevelFilter::current().to_string();
-    let mode = match cli.command {
-        Command::Client(_) => String::from("client"),
-        Command::Server(_) => String::from("server"),
-    };
-
-    let run_labels = cli
-        .command
-        .args()
-        .labels
-        .clone()
-        .unwrap_or_default()
-        .iter()
-        .map(|h| {
-            let hs: Vec<&str> = h.split_terminator(':').map(|s| s.trim()).collect();
-            (hs[0].to_string(), hs[1].to_string())
-        })
-        .collect::<HashMap<String, String>>();
-
-    let mut labels = HashMap::new();
-    labels.insert(String::from("log_level"), log_level);
-    labels.insert(String::from("library"), lib_name.to_string());
-    labels.insert(String::from("mode"), mode);
-    labels.insert(String::from("version"), lib_version.to_string());
-    labels.extend(run_labels);
-    labels
 }
 
 fn get_core_id(idx: usize) -> Result<CoreId> {
@@ -147,65 +109,29 @@ async fn select_with_term_signals<T>(future: impl Future<Output = T>) -> Option<
     }
 }
 
-/// Run the IUT binary: parse CLI, collect eBPF metrics, and execute client or server.
+/// Run the IUT binary: parse CLI and execute client or server.
 ///
-/// `lib_name` and `lib_version` are embedded as InfluxDB tags on every measurement.
+/// Metrics are collected and uploaded by the preloaded `libnesquic.so`, which
+/// reads `lib_name` and `lib_version` from `NQ_LIBRARY`/`NQ_LIBRARY_VERSION`
+/// to tag every measurement.
 pub async fn run<C: Client, S: Server>(lib_name: &str, lib_version: &str) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
         .init();
 
-    let cli = Cli::parse();
-    let labels = build_labels(&cli, lib_name, lib_version);
-    let job = cli.command.args().job.clone();
+    // Read by libnesquic.so when it reports at exit.
+    env::set_var("NQ_LIBRARY", lib_name);
+    env::set_var("NQ_LIBRARY_VERSION", lib_version);
 
-    // let (job_start_tx, job_start_rx) = oneshot::channel();
-    // let (job_done_tx, job_done_rx) = oneshot::channel();
+    let cli = Cli::parse();
 
     let quic_core = cli.command.args().quic_cpu.map(get_core_id).transpose()?;
-    let metric_core = cli.command.args().metric_cpu.map(get_core_id).transpose()?;
-
-    // let monitor_handle = tokio::spawn(async move {
-    //     if let Some(core) = metric_core {
-    //         trace!("Set metric core to {}", core.id);
-    //         core_affinity::set_for_current(core);
-    //     }
-
-    //     let mut open_obj = MaybeUninit::uninit();
-    //     let mut monitor = MetricsCollector::new(&mut open_obj).expect("metrics collector");
-    //     monitor.monitor_io().expect("monitor IO");
-
-    //     _ = job_start_tx.send(());
-    //     _ = job_done_rx.await;
-
-    //     if let Some(job) = job {
-    //         if let (Ok(url), Ok(token), Ok(org), Ok(bucket)) = (
-    //             env::var("INFLUX_URL"),
-    //             env::var("INFLUX_TOKEN"),
-    //             env::var("INFLUX_ORG"),
-    //             env::var("INFLUX_BUCKET"),
-    //         ) {
-    //             info!("Pushing metrics to InfluxDB at {}", url);
-
-    //             if let Some(Err(e)) =
-    //                 select_with_term_signals(monitor.push_all(url, token, org, bucket, job, labels))
-    //                     .await
-    //             {
-    //                 error!("Error pushing metrics to InfluxDB: {}", e);
-    //             }
-    //         }
-    //     } else if let Err(e) = monitor.report() {
-    //         error!("Error reporting metrics: {}", e);
-    //     }
-    // });
 
     if let Some(core) = quic_core {
         trace!("Set quic core to {}", core.id);
         core_affinity::set_for_current(core);
     }
-
-    // job_start_rx.await.expect("Failed to start job");
 
     let job = match &cli.command {
         Command::Client(args) => Left(run_client::<C>(args.client.clone())),
@@ -217,12 +143,6 @@ pub async fn run<C: Client, S: Server>(lib_name: &str, lib_version: &str) -> Res
         Some(Err(e)) => bail!(e),
         _ => trace!("Job cancelled"),
     }
-
-    // if job_done_tx.send(()).is_ok() {
-    //     monitor_handle.await?;
-    // } else {
-    //     warn!("Pushing metrics potentially failed");
-    // }
 
     Ok(())
 }

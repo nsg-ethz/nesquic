@@ -1,7 +1,7 @@
 FROM nesquic/rust AS builder
 
 RUN apt-get update && apt-get install -y \
-    clang libclang-dev gyp ninja-build python-is-python3 libelf-dev curl gzip build-essential \
+    clang libclang-dev gyp ninja-build python-is-python3 zlib1g-dev curl gzip build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NSS_DIR=/nss \
@@ -39,6 +39,9 @@ COPY --from=builder /workspace/target/release/nesquic-neqo /usr/local/bin/nesqui
 COPY --from=builder /dist/Release/lib/*.so /neqo/lib/
 
 RUN echo "/neqo/lib" > /etc/ld.so.conf.d/neqo-nss.conf && ldconfig
+
+COPY --from=nesquic/preload /libnesquic.so /opt/nesquic/lib/libnesquic.so
+RUN echo "/opt/nesquic/lib/libnesquic.so" > /etc/ld.so.preload
 
 ENV NESQUIC_BIN=/usr/local/bin/nesquic-neqo \
     NSS_DB_PATH=/workspace/res/nssdb
