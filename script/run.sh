@@ -19,6 +19,8 @@ WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 RES_DIR="${WORKSPACE}/res"
 
 NESQUIC_RUN_LABEL="${NESQUIC_RUN_LABEL:-default}"
+# The dashboard shows only the newest invocation of a run label.
+NESQUIC_INVOCATION=$(date +%s)
 
 # Names of containers currently running (set by run_server / run_client)
 SERVER_CONTAINER=""
@@ -85,7 +87,7 @@ function run_client {
         ${QLOG_ARGS} \
         nesquic/$1 \
         client -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --blob ${EXP_BLOB} \
-        https://${LOCALHOST_IP}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL}
+        https://${LOCALHOST_IP}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION}
 }
 
 function run_server {
@@ -108,7 +110,7 @@ function run_server {
     CMD+="-e INFLUX_ORG=${INFLUX_ORG:-nesquic} "
     CMD+="-e INFLUX_BUCKET=${INFLUX_BUCKET:-nesquic} "
     CMD+="nesquic/$1 "
-    CMD+="server -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --key /workspace/res/pem/key.pem 0.0.0.0:4433  -L nesquic_run:${NESQUIC_RUN_LABEL} &"
+    CMD+="server -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --key /workspace/res/pem/key.pem 0.0.0.0:4433  -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION} &"
 
     eval ${CMD}
 }

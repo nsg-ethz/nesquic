@@ -52,6 +52,31 @@ def nesquic_run_variable(library):
     }
 
 
+def latest_invocation(library):
+    # Results uploaded before script/run.sh tagged its invocations count as
+    # invocation "".
+    return "\n".join([
+        'import "array"',
+        'import "influxdata/influxdb/schema"',
+        "latest = (union(tables: [",
+        '    array.from(rows: [{_value: ""}]),',
+        f'    schema.tagValues(bucket: "{BUCKET}", tag: "nesquic_invocation", start: 0,',
+        f'      predicate: (r) => r.library == "{library}" and r.nesquic_run =~ /^${{nesquic_run:regex}}$/),',
+        "  ]) |> sort() |> last() |> findRecord(fn: (key) => true, idx: 0))._value",
+    ])
+
+
+INVOCATION_FILTER = '  |> filter(fn: (r) => (if exists r.nesquic_invocation then r.nesquic_invocation else "") == latest)'
+
+
+def last_per(column):
+    return "\n".join([
+        f'  |> group(columns: ["{column}"])',
+        '  |> sort(columns: ["_time"])',
+        "  |> last()",
+    ])
+
+
 def y_offset():
     global Y
     res = Y
@@ -77,11 +102,14 @@ class FluxTarget:
 
 def flux_throughput_query(library):
     return "\n".join([
+        latest_invocation(library),
         f'from(bucket: "{BUCKET}")',
         "  |> range(start: 0)",
         '  |> filter(fn: (r) => r._measurement == "nesquic" and r._field == "throughput")',
         f'  |> filter(fn: (r) => r.library == "{library}")',
         RUN_FILTER,
+        INVOCATION_FILTER,
+        last_per("job"),
         '  |> rename(columns: {"_value": "throughput"})',
         "  |> group()",
     ])
@@ -90,11 +118,14 @@ def flux_throughput_query(library):
 def flux_io_query(library, mode, job, field):
     rename_to = "count" if field == "count" else "volume_kb_sum"
     return "\n".join([
+        latest_invocation(library),
         f'from(bucket: "{BUCKET}")',
         "  |> range(start: 0)",
         f'  |> filter(fn: (r) => r._measurement == "nesquic_io" and r._field == "{field}")',
         f'  |> filter(fn: (r) => r.library == "{library}" and r.mode == "{mode}" and r.job == "{job}")',
         RUN_FILTER,
+        INVOCATION_FILTER,
+        last_per("syscall"),
         f'  |> rename(columns: {{"_value": "{rename_to}"}})',
         "  |> group()",
     ])
@@ -128,11 +159,14 @@ def io_panels(library, mode, job):
 
 def flux_quic_query(library, job, field):
     return "\n".join([
+        latest_invocation(library),
         f'from(bucket: "{BUCKET}")',
         "  |> range(start: 0)",
         f'  |> filter(fn: (r) => r._measurement == "nesquic_quic" and r._field == "{field}")',
         f'  |> filter(fn: (r) => r.library == "{library}" and r.job == "{job}")',
         RUN_FILTER,
+        INVOCATION_FILTER,
+        last_per("mode"),
         f'  |> rename(columns: {{"_value": "{field}"}})',
         "  |> group()",
     ])
@@ -181,11 +215,14 @@ def throughput_panel(library):
 
 def flux_latency_query(library, field):
     return "\n".join([
+        latest_invocation(library),
         f'from(bucket: "{BUCKET}")',
         "  |> range(start: 0)",
         f'  |> filter(fn: (r) => r._measurement == "nesquic_latency" and r._field == "{field}")',
         f'  |> filter(fn: (r) => r.library == "{library}")',
         RUN_FILTER,
+        INVOCATION_FILTER,
+        last_per("job"),
         f'  |> rename(columns: {{"_value": "{field}"}})',
         "  |> group()",
     ])
