@@ -1,8 +1,10 @@
 # pyright: reportCallIssue=none
 import os
 
+import attr
 import yaml
 from grafanalib.core import (
+    DEFAULT_TIME_PICKER,
     BarChart,
     Dashboard,
     GridPos,
@@ -22,24 +24,32 @@ Y = 0
 # the ${...} syntax is not interpreted by Python's f-string engine.
 RUN_FILTER = '  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)'
 
-NESQUIC_RUN_VARIABLE = {
-    "name": "nesquic_run",
-    "label": "Run",
-    "type": "query",
-    "datasource": {"type": "influxdb", "uid": "influxdb"},
-    "query": (
-        'import "influxdata/influxdb/schema"\n'
-        'schema.tagValues(bucket: "nesquic", tag: "nesquic_run")'
-    ),
-    "refresh": 2,
-    "includeAll": True,
-    "allValue": ".*",
-    "multi": False,
-    "sort": 1,
-    "current": {},
-    "options": [],
-    "hide": 0,
-}
+def nesquic_run_variable(library):
+    # Newest run first; Grafana selects the first option by default.
+    return {
+        "name": "nesquic_run",
+        "label": "Run",
+        "type": "query",
+        "datasource": {"type": "influxdb", "uid": "influxdb"},
+        "query": "\n".join([
+            f'from(bucket: "{BUCKET}")',
+            "  |> range(start: 0)",
+            f'  |> filter(fn: (r) => r.library == "{library}")',
+            '  |> keep(columns: ["_time", "nesquic_run"])',
+            '  |> group(columns: ["nesquic_run"])',
+            '  |> max(column: "_time")',
+            "  |> group()",
+            '  |> sort(columns: ["_time"], desc: true)',
+            "  |> map(fn: (r) => ({_value: r.nesquic_run}))",
+        ]),
+        "refresh": 1,
+        "includeAll": False,
+        "multi": False,
+        "sort": 0,
+        "current": {},
+        "options": [],
+        "hide": 0,
+    }
 
 
 def y_offset():
@@ -68,7 +78,7 @@ class FluxTarget:
 def flux_throughput_query(library):
     return "\n".join([
         f'from(bucket: "{BUCKET}")',
-        "  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)",
+        "  |> range(start: 0)",
         '  |> filter(fn: (r) => r._measurement == "nesquic" and r._field == "throughput")',
         f'  |> filter(fn: (r) => r.library == "{library}")',
         RUN_FILTER,
@@ -81,7 +91,7 @@ def flux_io_query(library, mode, job, field):
     rename_to = "count" if field == "count" else "volume_kb_sum"
     return "\n".join([
         f'from(bucket: "{BUCKET}")',
-        "  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)",
+        "  |> range(start: 0)",
         f'  |> filter(fn: (r) => r._measurement == "nesquic_io" and r._field == "{field}")',
         f'  |> filter(fn: (r) => r.library == "{library}" and r.mode == "{mode}" and r.job == "{job}")',
         RUN_FILTER,
@@ -119,7 +129,7 @@ def io_panels(library, mode, job):
 def flux_quic_query(library, job, field):
     return "\n".join([
         f'from(bucket: "{BUCKET}")',
-        "  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)",
+        "  |> range(start: 0)",
         f'  |> filter(fn: (r) => r._measurement == "nesquic_quic" and r._field == "{field}")',
         f'  |> filter(fn: (r) => r.library == "{library}" and r.job == "{job}")',
         RUN_FILTER,
@@ -172,7 +182,7 @@ def throughput_panel(library):
 def flux_latency_query(library, field):
     return "\n".join([
         f'from(bucket: "{BUCKET}")',
-        "  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)",
+        "  |> range(start: 0)",
         f'  |> filter(fn: (r) => r._measurement == "nesquic_latency" and r._field == "{field}")',
         f'  |> filter(fn: (r) => r.library == "{library}")',
         RUN_FILTER,
@@ -269,6 +279,7 @@ dashboard = Dashboard(
     title=display_name(library),
     tags="nesquic",
     timezone="browser",
+    timePicker=attr.evolve(DEFAULT_TIME_PICKER, hidden=True),
     panels=[*ov_panels, *exp_panels],
-    templating=Templating(list=[NESQUIC_RUN_VARIABLE]),
+    templating=Templating(list=[nesquic_run_variable(library)]),
 ).auto_panel_ids()
