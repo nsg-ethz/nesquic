@@ -26,6 +26,28 @@ library defaults to the binary name without its `nesquic-` prefix.
 | `nesquic_io`   | `count`, `volume_kb_sum` | `syscall` | Calls of `write`, `writev`, `send`, `sendto`, `sendmsg`, `sendmmsg`, `read`, `readv`, `recv`, `recvfrom`, `recvmsg`, `recvmmsg` on UDP sockets, and the bytes they actually transferred (kB). Failed calls (e.g. `EAGAIN`) count with 0 bytes. | all |
 | `nesquic_quic` | `packets_sent`, `packets_received`, `acks_sent`, `acks_received` | | Packets sealed/opened by the library's AEAD (see below) and the ACK frames in their payloads. | all |
 
+
+`script/run.sh` runs every experiment three times:
+
+1. `detached`: without `libnesquic.so` (`/etc/ld.so.preload` is masked);
+2. `attached`: `libnesquic.so` reports all measurements above;
+3. `qlog`: `libnesquic.so` writes qlog traces (see [Debugging](#debugging))
+   and no metrics are uploaded.
+
+Independently of `libnesquic.so`, every client prints its own measurement to
+stdout, from writing the request to reading the end of the response
+(`nq_report` in `iut/c-common`, `run_client` in `iut/common`):
+
+```
+nesquic_app throughput=<bytes / 10^6 / s>,request_latency_ms=<ms>
+```
+
+It is not uploaded to InfluxDB.
+
+The dashboard derives *Packets Dropped* from these: the server's `packets_sent`
+minus the client's `packets_received`. The server also counts packets it sends
+after the client is gone.
+
 The I/O hooks interpose on libc, so libraries that issue raw syscalls or use
 io_uring are not covered.
 
@@ -46,6 +68,6 @@ counts, TTFB and request latency, and that both sides write a qlog trace with se
 
 `NQ_QLOG=<path>` additionally writes a qlog trace (JSON-SEQ) of all observed
 packet headers. This takes a global lock per packet and slows the library
-down, so it is off by default. `NQ_QLOG=1 script/run.sh` enables it for both
-sides and writes `<job>.client.qlog` and `<job>.server.qlog` to
-`<results>/qlog/<library>/`.
+down, so it is off by default. `script/run.sh` enables it in a separate run of
+every experiment and writes `<job>.client.qlog` and `<job>.server.qlog` to
+`res/qlog/<library>/`.

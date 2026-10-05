@@ -52,23 +52,38 @@ function wait_for_term {
     done
 }
 
+function mode_args {
+    case ${EXP_MODE} in
+        detached)
+            echo "-v /dev/null:/etc/ld.so.preload:ro"
+            ;;
+        attached)
+            echo "-e INFLUX_URL=http://$3:8086 -e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token}" \
+                "-e INFLUX_ORG=${INFLUX_ORG:-nesquic} -e INFLUX_BUCKET=${INFLUX_BUCKET:-nesquic}"
+            ;;
+        qlog)
+            mkdir -p ${RES_DIR}/qlog/$1
+            echo "-v ${RES_DIR}/qlog/$1:/workspace/qlog -e NQ_QLOG=/workspace/qlog/${EXP_NAME}.$2.qlog"
+            ;;
+    esac
+}
+
 function run_client {
     CLIENT_CONTAINER="nesquic-client-$1"
 
     may_fail docker rm -f ${CLIENT_CONTAINER}
-
-    # qlog tracing is for debugging only: it slows down the monitored library.
-    QLOG_ARGS=""
-    if [[ "${NQ_QLOG:-0}" == "1" ]]; then
-        mkdir -p ${RES_DIR}/qlog/$1
-        QLOG_ARGS="-v ${RES_DIR}/qlog/$1:/workspace/qlog -e NQ_QLOG=/workspace/qlog/${EXP_NAME}.client.qlog"
-    fi
 
     LOCALHOST_IP="127.0.0.1"
     if [[ -n "${EXP_DELAY}" || -n "${EXP_LOSS}" || -n "${EXP_LINK}" ]]; then
         # Expanded by mm-entrypoint.sh: mahimahi's base is not 10.0.0.1 if the
         # host already uses that address, and the server answers from the base.
         LOCALHOST_IP='$MAHIMAHI_BASE'
+    fi
+
+    # Without InfluxDB, libnesquic.so prints its metrics instead.
+    local out=/dev/stdout
+    if [[ ${EXP_MODE} == qlog ]]; then
+        out=/dev/null
     fi
 
     docker run --rm --network=host \
@@ -79,15 +94,11 @@ function run_client {
         -e MM_DELAY=${EXP_DELAY} \
         -e MM_LOSS=${EXP_LOSS} \
         -e MM_LINK=${EXP_LINK} \
-        -e INFLUX_URL=http://${LOCALHOST_IP}:8086 \
-        -e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} \
-        -e INFLUX_ORG=${INFLUX_ORG:-nesquic} \
-        -e INFLUX_BUCKET=${INFLUX_BUCKET:-nesquic} \
         --name ${CLIENT_CONTAINER} \
-        ${QLOG_ARGS} \
+        $(mode_args $1 client ${LOCALHOST_IP}) \
         nesquic/$1 \
         client -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --blob ${EXP_BLOB} \
-        https://${LOCALHOST_IP}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION}
+        https://${LOCALHOST_IP}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION} > ${out}
 }
 
 function run_server {
@@ -99,18 +110,14 @@ function run_server {
     CMD="docker run --rm --network=host "
     CMD+="--user $(id -u):$(id -g) "
     CMD+="--name ${SERVER_CONTAINER} "
-    # qlog tracing is for debugging only: it slows down the monitored library.
-    if [[ "${NQ_QLOG:-0}" == "1" ]]; then
-        mkdir -p ${RES_DIR}/qlog/$1
-        CMD+="-v ${RES_DIR}/qlog/$1:/workspace/qlog "
-        CMD+="-e NQ_QLOG=/workspace/qlog/${EXP_NAME}.server.qlog "
-    fi
-    CMD+="-e INFLUX_URL=http://127.0.0.1:8086 "
-    CMD+="-e INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token} "
-    CMD+="-e INFLUX_ORG=${INFLUX_ORG:-nesquic} "
-    CMD+="-e INFLUX_BUCKET=${INFLUX_BUCKET:-nesquic} "
+    CMD+="$(mode_args $1 server 127.0.0.1) "
     CMD+="nesquic/$1 "
-    CMD+="server -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --key /workspace/res/pem/key.pem 0.0.0.0:4433  -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION} &"
+    CMD+="server -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --key /workspace/res/pem/key.pem 0.0.0.0:4433  -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION} "
+    # Without InfluxDB, libnesquic.so prints its metrics instead.
+    if [[ ${EXP_MODE} == qlog ]]; then
+        CMD+="> /dev/null "
+    fi
+    CMD+="&"
 
     eval ${CMD}
 }
@@ -205,15 +212,20 @@ function config_exp_driving {
 }
 
 function run_experiment {
-    echo -e "run ${EXP_NAME}... "
+    # detached: without libnesquic.so; only the client's own report is printed.
+    # attached: collects the metrics.
+    # qlog: only writes qlog traces, which slows down the monitored library.
+    for EXP_MODE in detached attached qlog; do
+        echo -e "run ${EXP_NAME} (${EXP_MODE})... "
 
-    run_server $1
-    wait_for_launch
-    run_client $1
+        run_server $1
+        wait_for_launch
+        run_client $1
 
-    # kill server and give it time to upload its metrics
-    kill_nesquic
-    wait_for_term
+        # kill server and give it time to upload its metrics
+        kill_nesquic
+        wait_for_term
+    done
 
     echo -e "${COLOR_GREEN}ok${COLOR_OFF}"
 }

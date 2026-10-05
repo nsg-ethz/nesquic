@@ -26,6 +26,7 @@ static void on_signal(int sig) {
 
 struct client {
     uint8_t request[NQ_REQUEST_LEN];
+    uint64_t request_ns;
     uint64_t requested;
     uint64_t received;
     int ok;
@@ -41,10 +42,19 @@ static int client_callback(picoquic_cnx_t *cnx, uint64_t stream_id, uint8_t *byt
     (void)stream_ctx;
 
     switch (event) {
+        /* The request is queued before the handshake and leaves once the
+         * 1-RTT keys are available. */
+        case picoquic_callback_almost_ready:
+        case picoquic_callback_ready:
+            if (!c->request_ns) {
+                c->request_ns = nq_now_ns();
+            }
+            break;
         case picoquic_callback_stream_data:
         case picoquic_callback_stream_fin:
             c->received += length;
             if (event == picoquic_callback_stream_fin) {
+                nq_report(c->received, c->request_ns);
                 c->ok = c->received == c->requested;
                 if (!c->ok) {
                     fprintf(stderr,

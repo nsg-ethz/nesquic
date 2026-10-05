@@ -4,12 +4,13 @@ use core_affinity::{self, CoreId};
 use futures::future::Either::*;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
+use std::time::Instant;
 use std::{env, future::Future};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{info, trace};
 use utils::{
     bin::{Client, ClientArgs, Server, ServerArgs},
-    perf::{Request, Stats},
+    perf::Request,
 };
 
 pub mod test;
@@ -69,17 +70,18 @@ pub struct ServerLibArgs {
 }
 
 async fn run_client<C: Client>(args: ClientArgs) -> Result<()> {
-    let req = Request::try_from(args.blob.clone())?;
+    let bytes = Request::try_from(args.blob.clone())?.len();
     let mut client = C::new(args)?;
     client.connect().await?;
 
-    let mut stats = Stats::new();
-    stats.start_measurement();
+    let start = Instant::now();
     client.run().await?;
-    stats.add_bytes(req.len())?;
-    stats.stop_measurement()?;
-
-    println!("throughput: {}", stats.throughputs().mean());
+    let secs = start.elapsed().as_secs_f64();
+    println!(
+        "nesquic_app throughput={},request_latency_ms={}",
+        bytes as f64 / 1e6 / secs,
+        secs * 1e3
+    );
 
     Ok(())
 }

@@ -43,6 +43,7 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
 
         uint8_t request[NQ_REQUEST_LEN];
         nq_request_encode(requested_, request);
+        requestNs_ = nq_now_ns();
         // Write the request and finish the send side (FIN).
         auto res = transport_->writeChain(*stream, folly::IOBuf::copyBuffer(request, sizeof(request)),
                                           true);
@@ -61,6 +62,7 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
             received_ += res->first->computeChainDataLength();
         }
         if (res->second) {
+            nq_report(received_, requestNs_);
             ok_ = received_ == requested_;
             if (!ok_) {
                 fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",
@@ -108,6 +110,7 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
     std::shared_ptr<quic::QuicClientTransport> transport_;
     uint64_t requested_;
     uint64_t received_{0};
+    uint64_t requestNs_{0};
     bool ok_{false};
     bool ready_{false};
 };

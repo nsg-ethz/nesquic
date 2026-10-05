@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include "common.h"
+#include "nesquic.h"
 #include "protocol.h"
 
 namespace nesquic {
@@ -14,6 +15,7 @@ struct ClientState {
     HQUIC connection = nullptr;   // owning connection, closed on SHUTDOWN_COMPLETE
     uint64_t requested = 0;       // bytes expected in the response
     uint64_t received = 0;        // bytes received so far
+    uint64_t request_ns = 0;
     uint8_t request[8];           // serialised request header (kept alive for send)
     QUIC_BUFFER send_buffer;
     bool ok = false;              // set as events progress; reported at the end
@@ -38,6 +40,7 @@ QUIC_STATUS QUIC_API stream_callback(HQUIC stream, void* context, QUIC_STREAM_EV
             state->received += event->RECEIVE.TotalBufferLength;
             break;
         case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+            nq_report(state->received, state->request_ns);
             // Server finished sending the blob; verify the length.
             state->ok = (state->received == state->requested);
             if (!state->ok) {
@@ -81,6 +84,7 @@ QUIC_STATUS QUIC_API connection_callback(HQUIC connection, void* context,
             // Send the 8-byte request and close our send direction (FIN).
             state->send_buffer.Length = 8;
             state->send_buffer.Buffer = state->request;
+            state->request_ns = nq_now_ns();
             status = MsQuic->StreamSend(stream, &state->send_buffer, 1,
                                         QUIC_SEND_FLAG_FIN, nullptr);
             if (QUIC_FAILED(status)) {

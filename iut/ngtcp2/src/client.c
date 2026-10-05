@@ -20,6 +20,7 @@ struct client {
     int64_t stream_id;              /* -1 until the request stream is open */
     uint8_t request[NQ_REQUEST_LEN];
     size_t request_sent;            /* request bytes accepted by ngtcp2 */
+    uint64_t request_ns;
     uint64_t requested;             /* bytes expected in the response */
     uint64_t received;              /* bytes received so far */
     int done;                       /* response fully received */
@@ -42,6 +43,7 @@ static int extend_max_local_streams_bidi(ngtcp2_conn *conn, uint64_t max_streams
     if (ngtcp2_conn_open_bidi_stream(conn, &c->stream_id, NULL) != 0) {
         c->stream_id = -1;
     }
+    c->request_ns = nq_now_ns();
     return 0;
 }
 
@@ -60,6 +62,7 @@ static int recv_stream_data(ngtcp2_conn *conn, uint32_t flags, int64_t stream_id
 
     if (flags & NGTCP2_STREAM_DATA_FLAG_FIN) {
         c->done = 1;
+        nq_report(c->received, c->request_ns);
         c->ok = c->received == c->requested;
         if (!c->ok) {
             fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",

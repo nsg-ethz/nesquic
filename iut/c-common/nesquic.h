@@ -278,6 +278,12 @@ static inline uint64_t nq_now_ns(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
+static inline void nq_report(uint64_t bytes, uint64_t request_ns) {
+    double secs = (double)(nq_now_ns() - request_ns) / 1e9;
+    printf("nesquic_app throughput=%f,request_latency_ms=%f\n", (double)bytes / 1e6 / secs,
+           secs * 1e3);
+}
+
 #ifdef __cplusplus
 }
 #endif

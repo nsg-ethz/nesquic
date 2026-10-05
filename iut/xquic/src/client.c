@@ -12,6 +12,7 @@ struct client {
     const char *host;
     X509_STORE *trust;          /* holds only the --cert certificate */
     uint8_t request[NQ_REQUEST_LEN];
+    uint64_t request_ns;
     uint64_t requested;
     uint64_t received;
     int ok;
@@ -63,6 +64,7 @@ static void handshake_finished(xqc_connection_t *conn, void *user_data, void *pr
         xqc_conn_close(c->engine, &c->cid);
         return;
     }
+    c->request_ns = nq_now_ns();
     /* The 8-byte request always fits the initial flow control window. */
     if (xqc_stream_send(stream, c->request, NQ_REQUEST_LEN, 1) != NQ_REQUEST_LEN) {
         fprintf(stderr, "xqc_stream_send failed\n");
@@ -112,6 +114,7 @@ static int stream_read_notify(xqc_stream_t *stream, void *user_data) {
     } while (n > 0 && !fin);
 
     if (fin) {
+        nq_report(c->received, c->request_ns);
         c->ok = c->received == c->requested;
         if (!c->ok) {
             fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",

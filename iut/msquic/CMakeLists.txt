@@ -12,6 +12,7 @@ add_executable(nesquic-msquic
 )
 
 target_compile_options(nesquic-msquic PRIVATE -Wall -Wextra)
+target_include_directories(nesquic-msquic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../c-common)
 
 # libmsquic and its headers are installed system-wide (see Dockerfile.msquic).
 # Allow overriding the include/library locations for non-standard installs.

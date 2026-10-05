@@ -11,6 +11,7 @@ struct client {
     X509_STORE *trust;          /* holds only the --cert certificate */
     uint8_t request[NQ_REQUEST_LEN];
     size_t request_sent;
+    uint64_t request_ns;
     uint64_t requested;
     uint64_t received;
     int fin;                    /* response fully received */
@@ -60,6 +61,7 @@ static void on_write(lsquic_stream_t *stream, lsquic_stream_ctx_t *h) {
     }
     c->request_sent += (size_t)n;
     if (c->request_sent == NQ_REQUEST_LEN) {
+        c->request_ns = nq_now_ns();
         /* Finish the send side (FIN) and wait for the blob. */
         lsquic_stream_shutdown(stream, 1);
         lsquic_stream_wantwrite(stream, 0);
@@ -88,6 +90,7 @@ static void on_read(lsquic_stream_t *stream, lsquic_stream_ctx_t *h) {
         return;
     }
     if (n == 0 || c->fin) {
+        nq_report(c->received, c->request_ns);
         c->ok = c->received == c->requested;
         if (!c->ok) {
             fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",

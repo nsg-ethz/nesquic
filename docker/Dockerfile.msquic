@@ -27,6 +27,7 @@ RUN for h in msquic.h msquic_posix.h quic_sal_stub.h; do \
             -O "/usr/include/$h"; \
     done
 
+COPY iut/c-common /src/c-common
 COPY iut/msquic /src/msquic
 WORKDIR /src/msquic/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release .. \
