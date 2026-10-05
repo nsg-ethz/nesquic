@@ -1,6 +1,8 @@
 # pyright: reportCallIssue=none
+import argparse
 import json
 import os
+import sys
 
 import attr
 import yaml
@@ -13,6 +15,7 @@ from grafanalib.core import (
     Templating,
     Text,
 )
+from grafanalib._gen import write_dashboard
 
 BUCKET = "nesquic"
 DATASOURCE = "influxdb"
@@ -34,8 +37,9 @@ COLOR_BY_MODE = {
 # the ${...} syntax is not interpreted by Python's f-string engine.
 RUN_FILTER = '  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)'
 
-def nesquic_run_variable(library):
+def nesquic_run_variable(library=None):
     # Newest run first; Grafana selects the first option by default.
+    library_filter = [f'  |> filter(fn: (r) => r.library == "{library}")'] if library else []
     return {
         "name": "nesquic_run",
         "label": "Run",
@@ -44,7 +48,7 @@ def nesquic_run_variable(library):
         "query": "\n".join([
             f'from(bucket: "{BUCKET}")',
             "  |> range(start: 0)",
-            f'  |> filter(fn: (r) => r.library == "{library}")',
+            *library_filter,
             '  |> keep(columns: ["_time", "nesquic_run"])',
             '  |> group(columns: ["nesquic_run"])',
             '  |> max(column: "_time")',
@@ -365,25 +369,113 @@ def display_name(library):
     return DISPLAY_NAMES.get(library, library.capitalize())
 
 
-library = os.environ.get("LIBRARY")
-if library is None:
-    raise ValueError("LIBRARY environment variable is not set")
+def flux_comparison_query(measurement, field, job):
+    # Per library: average the repetitions of each invocation, then keep the
+    # newest invocation. Untagged (older) results count as invocation "".
+    names = ", ".join(f'"{k}": "{v}"' for k, v in DISPLAY_NAMES.items())
+    return "\n".join([
+        'import "dict"',
+        'import "strings"',
+        f"names = [{names}]",
+        f'from(bucket: "{BUCKET}")',
+        "  |> range(start: 0)",
+        f'  |> filter(fn: (r) => r._measurement == "{measurement}" and r._field == "{field}")',
+        f'  |> filter(fn: (r) => r.job == "{job}")',
+        RUN_FILTER,
+        '  |> map(fn: (r) => ({r with nesquic_invocation: if exists r.nesquic_invocation then r.nesquic_invocation else ""}))',
+        '  |> group(columns: ["library", "nesquic_invocation"])',
+        "  |> mean()",
+        '  |> group(columns: ["library"])',
+        '  |> sort(columns: ["nesquic_invocation"])',
+        "  |> last()",
+        "  |> group()",
+        '  |> sort(columns: ["library"])',
+        "  |> map(fn: (r) => ({r with library: dict.get(dict: names, key: r.library, default: strings.title(v: r.library))}))",
+        f'  |> rename(columns: {{"_value": "{field}"}})',
+    ])
 
-exps_path = os.environ.get("EXPERIMENTS")
-if exps_path is None:
-    raise ValueError("EXPERIMENTS environment variable is not set")
 
-with open(exps_path, "r") as f:
+def comparison_chart(title, query, axis_label, x, y):
+    return BarChart(
+        title=title,
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(query)],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=x, y=y),
+        xField="library",
+        colorMode="fixed",
+        fixedColor="red",
+        axisLabel=axis_label,
+    )
+
+
+def comparison_panels(experiment):
+    job = experiment["job"]
+    row = RowPanel(
+        title=experiment["title"],
+        gridPos=GridPos(h=1, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
+    )
+    y = y_offset()
+    return [
+        row,
+        comparison_chart(
+            "Request Latency",
+            flux_comparison_query("nesquic_latency", "request_latency_ms", job),
+            "Request latency [ms]",
+            0,
+            y,
+        ),
+        comparison_chart(
+            "Throughput",
+            flux_comparison_query("nesquic", "throughput", job),
+            "Throughput [Mbps]",
+            DASHBOARD_MID,
+            y,
+        ),
+    ]
+
+
+def iut_dashboard(library, exps):
+    return Dashboard(
+        title=display_name(library),
+        tags="nesquic",
+        timezone="browser",
+        timePicker=attr.evolve(DEFAULT_TIME_PICKER, hidden=True),
+        panels=[
+            *overview_panels(library),
+            *(p for e in exps for p in experiments_panels(e, library)),
+        ],
+        templating=Templating(list=[nesquic_run_variable(library)]),
+    ).auto_panel_ids()
+
+
+def overview_dashboard(exps):
+    return Dashboard(
+        title="Overview",
+        tags="nesquic",
+        timezone="browser",
+        timePicker=attr.evolve(DEFAULT_TIME_PICKER, hidden=True),
+        panels=[p for e in exps for p in comparison_panels(e)],
+        templating=Templating(list=[nesquic_run_variable()]),
+    ).auto_panel_ids()
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("dashboard", help='library name, or "overview"')
+parser.add_argument("-o", "--output", type=argparse.FileType("w"), default=sys.stdout)
+parser.add_argument(
+    "--experiments",
+    default=os.path.join(os.path.dirname(__file__), "..", "res", "experiments.yaml"),
+)
+args = parser.parse_args()
+
+with open(args.experiments, "r") as f:
     exps = yaml.safe_load(f)
 
-ov_panels = overview_panels(library)
-exp_panels = [p for e in exps for p in experiments_panels(e, library)]
+if args.dashboard == "overview":
+    dashboard = overview_dashboard(exps)
+else:
+    dashboard = iut_dashboard(args.dashboard, exps)
 
-dashboard = Dashboard(
-    title=display_name(library),
-    tags="nesquic",
-    timezone="browser",
-    timePicker=attr.evolve(DEFAULT_TIME_PICKER, hidden=True),
-    panels=[*ov_panels, *exp_panels],
-    templating=Templating(list=[nesquic_run_variable(library)]),
-).auto_panel_ids()
+write_dashboard(dashboard, args.output)

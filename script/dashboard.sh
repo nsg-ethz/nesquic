@@ -4,7 +4,7 @@ set -e
 
 function generate_dashboard {
     OUT=${WORKSPACE}/docker/grafana/dashboard/$1.json
-    LIBRARY=$1 EXPERIMENTS=${WORKSPACE}/res/experiments.yaml uv tool run --with pyyaml --from git+https://github.com/lerboe/grafanalib@main generate-dashboard -o ${OUT} ${WORKSPACE}/script/main.dashboard.py
+    uv run --project ${WORKSPACE} python ${WORKSPACE}/script/dashboard.py -o ${OUT} $1
     chmod o+r ${OUT}
 }
 
@@ -17,5 +17,6 @@ fi
 for LIB in "${LIBS[@]}"; do
     generate_dashboard ${LIB}
 done
+generate_dashboard overview
 
 docker compose -f ${WORKSPACE}/docker/backend.yml restart grafana
