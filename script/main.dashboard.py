@@ -20,6 +20,15 @@ DASHBOARD_WIDTH = 24
 DASHBOARD_MID = DASHBOARD_WIDTH / 2
 Y = 0
 
+MODE_COLORS = {"client": "green", "server": "blue"}
+COLOR_BY_MODE = {
+    "mappings": [{
+        "type": "value",
+        "options": {m: {"color": c, "index": i} for i, (m, c) in enumerate(MODE_COLORS.items())},
+    }],
+    "extraJson": {"options": {"colorByField": "mode"}},
+}
+
 # Grafana template variable filter — kept as a plain string so that
 # the ${...} syntax is not interpreted by Python's f-string engine.
 RUN_FILTER = '  |> filter(fn: (r) => r.nesquic_run =~ /^${nesquic_run:regex}$/)'
@@ -140,6 +149,8 @@ def io_panels(library, mode, job):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=0, y=y_offset()),
         xField="syscall",
+        colorMode="fixed",
+        fixedColor=MODE_COLORS[mode],
         axisLabel="Invocations",
     )
 
@@ -151,6 +162,8 @@ def io_panels(library, mode, job):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=DASHBOARD_MID, y=y_offset()),
         xField="syscall",
+        colorMode="fixed",
+        fixedColor=MODE_COLORS[mode],
         axisLabel="Data Volume [kB]",
     )
 
@@ -172,6 +185,23 @@ def flux_quic_query(library, job, field):
     ])
 
 
+def flux_packets_dropped_query(library, job):
+    return "\n".join([
+        latest_invocation(library),
+        f'from(bucket: "{BUCKET}")',
+        "  |> range(start: 0)",
+        '  |> filter(fn: (r) => r._measurement == "nesquic_quic")',
+        '  |> filter(fn: (r) => (r._field == "packets_sent" and r.mode == "server") or (r._field == "packets_received" and r.mode == "client"))',
+        f'  |> filter(fn: (r) => r.library == "{library}" and r.job == "{job}")',
+        RUN_FILTER,
+        INVOCATION_FILTER,
+        last_per("_field"),
+        "  |> group()",
+        '  |> pivot(rowKey: ["job"], columnKey: ["_field"], valueColumn: "_value")',
+        '  |> map(fn: (r) => ({mode: "client", packets_dropped: r.packets_sent - r.packets_received}))',
+    ])
+
+
 def quic_panels(library, job):
     """Packet and ACK counts, available for libraries whose crypto is hooked."""
     y = y_offset()
@@ -183,6 +213,7 @@ def quic_panels(library, job):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=0, y=y),
         xField="mode",
+        **COLOR_BY_MODE,
         axisLabel="ACK frames",
     )
 
@@ -194,10 +225,39 @@ def quic_panels(library, job):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=DASHBOARD_MID, y=y),
         xField="mode",
+        **COLOR_BY_MODE,
         axisLabel="Packets",
     )
 
-    return [acks, packets]
+    y = y_offset()
+    received = BarChart(
+        title="Packets Received",
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(
+            flux_quic_query(library, job, "packets_received")
+            + '\n  |> filter(fn: (r) => r.mode == "client")'
+        )],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=0, y=y),
+        xField="mode",
+        **COLOR_BY_MODE,
+        axisLabel="Packets",
+    )
+
+    dropped = BarChart(
+        title="Packets Dropped",
+        dataSource=DATASOURCE,
+        orientation="vertical",
+        targets=[FluxTarget(flux_packets_dropped_query(library, job))],
+        showLegend=False,
+        gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=DASHBOARD_MID, y=y),
+        xField="mode",
+        **COLOR_BY_MODE,
+        axisLabel="Packets",
+    )
+
+    return [acks, packets, received, dropped]
 
 
 def throughput_panel(library):
@@ -209,6 +269,8 @@ def throughput_panel(library):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_WIDTH, x=0, y=y_offset()),
         xField="job",
+        colorMode="fixed",
+        fixedColor="red",
         axisLabel="Throughput [Mbps]",
     )
 
@@ -239,6 +301,8 @@ def latency_panels(library):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=0, y=y),
         xField="job",
+        colorMode="fixed",
+        fixedColor="red",
         axisLabel="TTFB [ms]",
     )
 
@@ -250,6 +314,8 @@ def latency_panels(library):
         showLegend=False,
         gridPos=GridPos(h=PANEL_HEIGHT, w=DASHBOARD_MID, x=DASHBOARD_MID, y=y),
         xField="job",
+        colorMode="fixed",
+        fixedColor="red",
         axisLabel="Request latency [ms]",
     )
 
