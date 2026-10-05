@@ -27,12 +27,16 @@ library defaults to the binary name without its `nesquic-` prefix.
 | `nesquic_quic` | `packets_sent`, `packets_received`, `acks_sent`, `acks_received` | | Packets sealed/opened by the library's AEAD (see below) and the ACK frames in their payloads. | all |
 
 
-`script/run.sh` runs every experiment three times:
+`script/run.sh` runs every experiment in three modes:
 
 1. `detached`: without `libnesquic.so` (`/etc/ld.so.preload` is masked);
 2. `attached`: `libnesquic.so` reports all measurements above;
 3. `qlog`: `libnesquic.so` writes qlog traces (see [Debugging](#debugging))
    and no metrics are uploaded.
+
+`NQ_REPETITIONS` (default 1) repeats the `detached` and `attached` modes that
+many times; the dashboard shows the mean of the newest `script/run.sh`
+invocation's repetitions.
 
 Independently of `libnesquic.so`, every client prints its own measurement to
 stdout, from writing the request to reading the end of the response

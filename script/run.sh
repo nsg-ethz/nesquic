@@ -19,8 +19,15 @@ WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 RES_DIR="${WORKSPACE}/res"
 
 NESQUIC_RUN_LABEL="${NESQUIC_RUN_LABEL:-default}"
-# The dashboard shows only the newest invocation of a run label.
+# The dashboard shows only the newest invocation of a run label, averaged
+# over its repetitions.
 NESQUIC_INVOCATION=$(date +%s)
+
+NQ_REPETITIONS="${NQ_REPETITIONS:-1}"
+if [[ ! ${NQ_REPETITIONS} =~ ^[1-9][0-9]*$ ]]; then
+    echo -e "${COLOR_RED}error: NQ_REPETITIONS must be a positive integer${COLOR_OFF}" >&2
+    exit 1
+fi
 
 # Names of containers currently running (set by run_server / run_client)
 SERVER_CONTAINER=""
@@ -216,15 +223,23 @@ function run_experiment {
     # attached: collects the metrics.
     # qlog: only writes qlog traces, which slows down the monitored library.
     for EXP_MODE in detached attached qlog; do
-        echo -e "run ${EXP_NAME} (${EXP_MODE})... "
+        # Every repetition overwrites the same qlog trace.
+        local reps=${NQ_REPETITIONS}
+        if [[ ${EXP_MODE} == qlog ]]; then
+            reps=1
+        fi
 
-        run_server $1
-        wait_for_launch
-        run_client $1
+        for ((rep = 1; rep <= reps; rep++)); do
+            echo -e "run ${EXP_NAME} (${EXP_MODE}, ${rep}/${reps})... "
 
-        # kill server and give it time to upload its metrics
-        kill_nesquic
-        wait_for_term
+            run_server $1
+            wait_for_launch
+            run_client $1
+
+            # kill server and give it time to upload its metrics
+            kill_nesquic
+            wait_for_term
+        done
     done
 
     echo -e "${COLOR_GREEN}ok${COLOR_OFF}"

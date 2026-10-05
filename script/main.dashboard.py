@@ -1,4 +1,5 @@
 # pyright: reportCallIssue=none
+import json
 import os
 
 import attr
@@ -78,11 +79,11 @@ def latest_invocation(library):
 INVOCATION_FILTER = '  |> filter(fn: (r) => (if exists r.nesquic_invocation then r.nesquic_invocation else "") == latest)'
 
 
-def last_per(column):
+def mean_per(*columns):
+    # Averages the repetitions (NQ_REPETITIONS in script/run.sh) of the invocation.
     return "\n".join([
-        f'  |> group(columns: ["{column}"])',
-        '  |> sort(columns: ["_time"])',
-        "  |> last()",
+        f'  |> group(columns: {json.dumps(columns)})',
+        "  |> mean()",
     ])
 
 
@@ -118,7 +119,7 @@ def flux_throughput_query(library):
         f'  |> filter(fn: (r) => r.library == "{library}")',
         RUN_FILTER,
         INVOCATION_FILTER,
-        last_per("job"),
+        mean_per("job"),
         '  |> rename(columns: {"_value": "throughput"})',
         "  |> group()",
     ])
@@ -134,7 +135,7 @@ def flux_io_query(library, mode, job, field):
         f'  |> filter(fn: (r) => r.library == "{library}" and r.mode == "{mode}" and r.job == "{job}")',
         RUN_FILTER,
         INVOCATION_FILTER,
-        last_per("syscall"),
+        mean_per("syscall"),
         f'  |> rename(columns: {{"_value": "{rename_to}"}})',
         "  |> group()",
     ])
@@ -179,7 +180,7 @@ def flux_quic_query(library, job, field):
         f'  |> filter(fn: (r) => r.library == "{library}" and r.job == "{job}")',
         RUN_FILTER,
         INVOCATION_FILTER,
-        last_per("mode"),
+        mean_per("mode"),
         f'  |> rename(columns: {{"_value": "{field}"}})',
         "  |> group()",
     ])
@@ -195,7 +196,7 @@ def flux_packets_dropped_query(library, job):
         f'  |> filter(fn: (r) => r.library == "{library}" and r.job == "{job}")',
         RUN_FILTER,
         INVOCATION_FILTER,
-        last_per("_field"),
+        mean_per("_field", "job"),
         "  |> group()",
         '  |> pivot(rowKey: ["job"], columnKey: ["_field"], valueColumn: "_value")',
         '  |> map(fn: (r) => ({mode: "client", packets_dropped: r.packets_sent - r.packets_received}))',
@@ -284,7 +285,7 @@ def flux_latency_query(library, field):
         f'  |> filter(fn: (r) => r.library == "{library}")',
         RUN_FILTER,
         INVOCATION_FILTER,
-        last_per("job"),
+        mean_per("job"),
         f'  |> rename(columns: {{"_value": "{field}"}})',
         "  |> group()",
     ])
