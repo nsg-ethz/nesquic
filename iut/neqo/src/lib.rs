@@ -7,37 +7,21 @@ pub use server::Server;
 use std::{io, net::SocketAddr};
 
 use anyhow::{Context, Result};
+use common::bind_socket;
 use neqo_common::datagram;
+use neqo_transport::{ConnectionParameters, StreamType};
 use neqo_udp::{DatagramIter, RecvBuf};
 use quinn_udp::UdpSocketState;
-use socket2::{Domain, Protocol, Socket, Type};
 use tracing::debug;
+use utils::perf::{CONNECTION_WINDOW, IDLE_TIMEOUT, STREAM_WINDOW};
 
-/// Create and bind a UDP socket. Enables dual-stack IPv6 when the address is IPv6.
-/// Returns a standard std::net::UdpSocket ready to be handed to tokio.
-pub(crate) fn bind_socket(addr: SocketAddr) -> Result<std::net::UdpSocket> {
-    let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))
-        .context("create socket")?;
-
-    if addr.is_ipv6() {
-        socket.set_only_v6(false).context("set_only_v6")?;
-    }
-
-    socket
-        .bind(&socket2::SockAddr::from(addr))
-        .context("binding socket")?;
-
-    socket.set_nonblocking(true).context("set_nonblocking")?;
-
-    Ok(socket.into())
-}
-
-/// Bind a socket and wrap it in a Tokio UdpSocket, returning the local address too.
-/// Used by the server which does not need GSO support.
-pub(crate) fn bind_tokio_socket(addr: SocketAddr) -> Result<(tokio::net::UdpSocket, SocketAddr)> {
-    let socket = tokio::net::UdpSocket::from_std(bind_socket(addr)?)?;
-    let local_addr = socket.local_addr()?;
-    Ok((socket, local_addr))
+/// Connection parameters shared by client and server (see docs/PROTOCOL.md).
+pub(crate) fn connection_parameters() -> ConnectionParameters {
+    ConnectionParameters::default()
+        .idle_timeout(IDLE_TIMEOUT)
+        .max_data(CONNECTION_WINDOW.into())
+        .max_stream_data(StreamType::BiDi, false, STREAM_WINDOW.into())
+        .max_stream_data(StreamType::BiDi, true, STREAM_WINDOW.into())
 }
 
 /// A UDP socket with GSO/GRO support via quinn-udp.
@@ -63,15 +47,17 @@ impl UdpSocket {
         self.inner.readable().await
     }
 
-    pub(crate) async fn writable(&self) -> io::Result<()> {
-        self.inner.writable().await
-    }
-
-    /// Send a datagram batch. Returns `WouldBlock` when the OS send buffer is full.
-    pub(crate) fn send(&self, d: &datagram::Batch) -> io::Result<()> {
-        self.inner.try_io(tokio::io::Interest::WRITABLE, || {
-            neqo_udp::send_inner(&self.state, (&self.inner).into(), d)
-        })
+    /// Send a datagram batch, waiting while the OS send buffer is full.
+    pub(crate) async fn send(&self, d: &datagram::Batch) -> io::Result<()> {
+        loop {
+            let res = self.inner.try_io(tokio::io::Interest::WRITABLE, || {
+                neqo_udp::send_inner(&self.state, (&self.inner).into(), d)
+            });
+            match res {
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => self.inner.writable().await?,
+                res => return res,
+            }
+        }
     }
 
     /// Receive a batch of datagrams. Returns `Ok(None)` when no data is ready.

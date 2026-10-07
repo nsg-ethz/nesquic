@@ -1,9 +1,10 @@
 use anyhow::Result;
+use common::bind_socket;
 use futures::StreamExt as _;
 use tokio_quiche::{metrics::DefaultMetrics, settings::TlsCertificatePaths, ConnectionParams};
 use utils::bin::{self, ServerArgs};
 
-use crate::Benchmark;
+use crate::{settings, Benchmark};
 
 pub struct Server {
     args: ServerArgs,
@@ -15,10 +16,10 @@ impl bin::Server for Server {
     }
 
     async fn listen(&mut self) -> Result<()> {
-        let socket = tokio::net::UdpSocket::bind(self.args.listen).await?;
+        let socket = tokio::net::UdpSocket::from_std(bind_socket(self.args.listen)?)?;
 
         let mut params = ConnectionParams::default();
-        params.settings.alpn = vec![b"perf".to_vec()];
+        params.settings = settings();
         params.tls_cert = Some(TlsCertificatePaths {
             cert: &self.args.cert,
             private_key: &self.args.key,

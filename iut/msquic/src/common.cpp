@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "nesquic.h"
+
 namespace nesquic {
 
 const QUIC_API_TABLE* MsQuic = nullptr;
@@ -18,7 +20,7 @@ bool open_msquic() {
     }
 
     const QUIC_REGISTRATION_CONFIG reg_config = {
-        "nesquic-msquic", QUIC_EXECUTION_PROFILE_LOW_LATENCY};
+        "nesquic-msquic", QUIC_EXECUTION_PROFILE_TYPE_MAX_THROUGHPUT};
     status = MsQuic->RegistrationOpen(&reg_config, &Registration);
     if (QUIC_FAILED(status)) {
         fprintf(stderr, "RegistrationOpen failed: 0x%x\n", status);
@@ -47,8 +49,17 @@ static QUIC_SETTINGS common_settings() {
     settings.IsSet.IdleTimeoutMs = TRUE;
     // The peer's stream-count limit defaults to 0, so the server must explicitly
     // allow the client to open bidirectional streams (see docs Streams.md).
-    settings.PeerBidiStreamCount = 100;
+    settings.PeerBidiStreamCount = NQ_MAX_STREAMS;
     settings.IsSet.PeerBidiStreamCount = TRUE;
+    settings.ConnFlowControlWindow = NQ_CONNECTION_WINDOW;
+    settings.IsSet.ConnFlowControlWindow = TRUE;
+    settings.StreamRecvWindowBidiLocalDefault = NQ_STREAM_WINDOW;
+    settings.IsSet.StreamRecvWindowBidiLocalDefault = TRUE;
+    settings.StreamRecvWindowBidiRemoteDefault = NQ_STREAM_WINDOW;
+    settings.IsSet.StreamRecvWindowBidiRemoteDefault = TRUE;
+    // The response is static, so msquic need not copy it into its own buffer.
+    settings.SendBufferingEnabled = FALSE;
+    settings.IsSet.SendBufferingEnabled = TRUE;
     return settings;
 }
 

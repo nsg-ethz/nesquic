@@ -24,7 +24,7 @@ namespace {
 
 // Response bytes are zeros served from this buffer. Chunks wrap it without
 // copying; it never changes, so mvfst may keep referencing it until acked.
-constexpr size_t kZeroChunk = 64 * 1024;
+constexpr size_t kZeroChunk = NQ_ZERO_CHUNK;
 const uint8_t kZeros[kZeroChunk] = {};
 
 // Serves one connection: reads each request to EOF, then streams the blob as
@@ -213,6 +213,7 @@ int runServer(const nq_args& args) {
     auto server = quic::QuicServer::createQuicServer(transportSettings());
     server->setQuicServerTransportFactory(std::make_unique<TransportFactory>());
     server->setFizzContext(ctx);
+    server->setSocketOptions(socketOptions());
 
     folly::SocketAddress addr(host, port, true);
     // A single worker thread, like the other single-threaded IUTs.

@@ -13,15 +13,11 @@ CPU_ALL=0-39
 CPU_SYSTEM=0-7,12-39
 NUM_CPU=8
 
-NESQUIC_BENCHMARK=0
-
 WORKSPACE=$(dirname "$(readlink -f "$0")")/..
 RES_DIR="${WORKSPACE}/res"
 
-NESQUIC_RUN_LABEL="${NESQUIC_RUN_LABEL:-default}"
-# The dashboard shows only the newest invocation of a run label, averaged
-# over its repetitions.
-NESQUIC_INVOCATION=$(date +%s)
+NQ_RUN_LABEL="${NQ_RUN_LABEL:-default}"
+NQ_INVOCATION=$(date +%s)
 
 NQ_REPETITIONS="${NQ_REPETITIONS:-1}"
 if [[ ! ${NQ_REPETITIONS} =~ ^[1-9][0-9]*$ ]]; then
@@ -105,7 +101,7 @@ function run_client {
         $(mode_args $1 client ${LOCALHOST_IP}) \
         nesquic/$1 \
         client -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --blob ${EXP_BLOB} \
-        https://${LOCALHOST_IP}:4433 -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION} > ${out}
+        https://${LOCALHOST_IP}:4433 -L nesquic_run:${NQ_RUN_LABEL} -L nesquic_invocation:${NQ_INVOCATION} > ${out}
 }
 
 function run_server {
@@ -119,7 +115,7 @@ function run_server {
     CMD+="--name ${SERVER_CONTAINER} "
     CMD+="$(mode_args $1 server 127.0.0.1) "
     CMD+="nesquic/$1 "
-    CMD+="server -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --key /workspace/res/pem/key.pem 0.0.0.0:4433  -L nesquic_run:${NESQUIC_RUN_LABEL} -L nesquic_invocation:${NESQUIC_INVOCATION} "
+    CMD+="server -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --key /workspace/res/pem/key.pem 0.0.0.0:4433  -L nesquic_run:${NQ_RUN_LABEL} -L nesquic_invocation:${NQ_INVOCATION} "
     # Without InfluxDB, libnesquic.so prints its metrics instead.
     if [[ ${EXP_MODE} == qlog ]]; then
         CMD+="> /dev/null "
@@ -152,9 +148,7 @@ function teardown {
 
     may_fail sudo ip link del ${VETH_MM}
 
-    if [ ${NESQUIC_BENCHMARK} -eq 1 ]; then
-        cpu_governor "schedutil"
-    fi
+    cpu_governor "schedutil"
 
     echo -e "${COLOR_YELLOW}Resetting CPU isolation${COLOR_OFF}"
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_ALL}
@@ -172,9 +166,7 @@ function setup {
     sudo ufw allow from 10.0.0.0/24 to any port 8086
     sudo ufw allow from 10.0.0.0/24 to any port 4433
 
-    if [ ${NESQUIC_BENCHMARK} -eq 1 ]; then
-        cpu_governor "performance"
-    fi
+    cpu_governor "performance"
 
     echo -e "${COLOR_YELLOW}Isolating CPUs${COLOR_OFF}"
     sudo systemctl set-property --runtime user.slice AllowedCPUs=${CPU_SYSTEM}

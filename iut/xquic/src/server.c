@@ -4,7 +4,6 @@
 #include <unistd.h>
 
 /* Response bytes are zeros served from this buffer. */
-#define NQ_ZERO_CHUNK (64 * 1024)
 static unsigned char zeros[NQ_ZERO_CHUNK];
 
 struct conn {
@@ -196,6 +195,7 @@ int nq_run_server(const struct nq_args *args) {
         .server_accept = server_accept,
         .server_refuse = server_refuse,
         .write_socket = nq_write_socket,
+        .write_mmsg = nq_write_mmsg,
         .conn_update_cid_notify = update_cid,
         .conn_send_packet_before_accept = nq_write_socket,
     };
@@ -231,6 +231,7 @@ int nq_run_server(const struct nq_args *args) {
         goto out;
     }
     config.cfg_log_level = XQC_LOG_ERROR;
+    config.sendmmsg_on = 1;
 
     memset(&engine_ssl, 0, sizeof(engine_ssl));
     engine_ssl.private_key_file = (char *)args->key;

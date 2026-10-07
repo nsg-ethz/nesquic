@@ -2136,7 +2136,6 @@ dependencies = [
  "neqo-udp",
  "nss-rs",
  "quinn-udp 0.6.1",
- "socket2",
  "tokio",
  "tracing",
  "utils",
@@ -2870,7 +2869,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "built",
- "bytes",
  "futures",
  "iut-common",
  "tokio",

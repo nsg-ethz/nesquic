@@ -1,7 +1,7 @@
+#define _GNU_SOURCE /* sendmmsg, ppoll */
 #include "common.h"
 
 #include <errno.h>
-#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/time.h>
@@ -63,6 +63,41 @@ ssize_t nq_write_socket(const unsigned char *buf, size_t size, const struct sock
     return n;
 }
 
+ssize_t nq_write_mmsg(const struct iovec *msg_iov, unsigned int vlen,
+                      const struct sockaddr *peer, socklen_t peerlen, void *conn_user_data) {
+    struct mmsghdr msgs[XQC_MAX_SEND_MSG_ONCE];
+    int n;
+    (void)conn_user_data;
+
+    if (vlen > XQC_MAX_SEND_MSG_ONCE) {
+        vlen = XQC_MAX_SEND_MSG_ONCE;
+    }
+    memset(msgs, 0, vlen * sizeof(msgs[0]));
+    for (unsigned int i = 0; i < vlen; ++i) {
+        msgs[i].msg_hdr.msg_name = (void *)peer;
+        msgs[i].msg_hdr.msg_namelen = peerlen;
+        msgs[i].msg_hdr.msg_iov = (struct iovec *)&msg_iov[i];
+        msgs[i].msg_hdr.msg_iovlen = 1;
+    }
+
+    do {
+        n = sendmmsg(nq_loop.fd, msgs, vlen, 0);
+    } while (n == -1 && errno == EINTR);
+
+    if (n == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            nq_loop.blocked = 1;
+            return XQC_SOCKET_EAGAIN;
+        }
+        fprintf(stderr, "sendmmsg: %s\n", strerror(errno));
+        return XQC_SOCKET_ERROR;
+    }
+    if ((unsigned int)n < vlen) {
+        nq_loop.blocked = 1;
+    }
+    return n;
+}
+
 void nq_conn_settings(xqc_conn_settings_t *settings) {
     memset(settings, 0, sizeof(*settings));
     settings->pacing_on = 1;
@@ -82,50 +117,52 @@ void nq_conn_settings(xqc_conn_settings_t *settings) {
  */
 #define NQ_RECV_BATCH 32
 
-static void read_packets(xqc_engine_t *engine) {
-    unsigned char buf[65536];
-    unsigned batch = 0;
+struct recv_ctx {
+    xqc_engine_t *engine;
+    unsigned batch;
+};
 
-    for (;;) {
-        struct sockaddr_storage from;
-        socklen_t fromlen = sizeof(from);
-        ssize_t n = recvfrom(nq_loop.fd, buf, sizeof(buf), MSG_DONTWAIT,
-                             (struct sockaddr *)&from, &fromlen);
-        if (n == -1) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                fprintf(stderr, "recvfrom: %s\n", strerror(errno));
-            }
-            break;
-        }
-        xqc_engine_packet_process(engine, buf, (size_t)n,
-                                  (struct sockaddr *)&nq_loop.local_addr, nq_loop.local_addrlen,
-                                  (struct sockaddr *)&from, fromlen, nq_now_us(), NULL);
-        if (++batch == NQ_RECV_BATCH) {
-            xqc_engine_finish_recv(engine);
-            batch = 0;
-        }
+static void packet_in(void *ctx, uint8_t *data, size_t len, struct sockaddr *from,
+                      socklen_t fromlen) {
+    struct recv_ctx *r = ctx;
+
+    xqc_engine_packet_process(r->engine, data, len, (struct sockaddr *)&nq_loop.local_addr,
+                              nq_loop.local_addrlen, from, fromlen, nq_now_us(), NULL);
+    if (++r->batch == NQ_RECV_BATCH) {
+        xqc_engine_finish_recv(r->engine);
+        r->batch = 0;
     }
+}
+
+static void read_packets(xqc_engine_t *engine) {
+    struct recv_ctx r = {.engine = engine};
+
+    nq_recv_packets(nq_loop.fd, packet_in, &r);
     xqc_engine_finish_recv(engine);
 }
 
 int nq_event_loop(xqc_engine_t *engine, const int *done,
                   void (*on_writable)(xqc_engine_t *engine)) {
+    nq_socket_setup(nq_loop.fd);
+
     while (!nq_stop && !(done && *done)) {
         struct pollfd pfd = {.fd = nq_loop.fd, .events = POLLIN};
-        int timeout = -1, n;
+        struct timespec ts = {0}, *timeout = NULL;
+        int n;
 
         if (nq_loop.blocked) {
             pfd.events |= POLLOUT;
         }
         if (nq_loop.timer_deadline) {
+            /* Microsecond resolution: pacing needs sub-millisecond timers. */
             uint64_t now = nq_now_us();
-            uint64_t ms = nq_loop.timer_deadline <= now
-                              ? 0
-                              : (nq_loop.timer_deadline - now + 999) / 1000;
-            timeout = ms > INT_MAX ? INT_MAX : (int)ms;
+            uint64_t us = nq_loop.timer_deadline <= now ? 0 : nq_loop.timer_deadline - now;
+            ts.tv_sec = (time_t)(us / 1000000);
+            ts.tv_nsec = (long)(us % 1000000) * 1000;
+            timeout = &ts;
         }
 
-        n = poll(&pfd, 1, timeout);
+        n = ppoll(&pfd, 1, timeout, NULL);
         if (nq_stop) {
             break;
         }

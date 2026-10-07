@@ -1,6 +1,5 @@
 use std::{
     cell::RefCell,
-    io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     num::NonZeroUsize,
     rc::Rc,
@@ -10,15 +9,15 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use neqo_common::event::Provider as _;
 use neqo_transport::{
-    Connection, ConnectionEvent, ConnectionIdGenerator, ConnectionParameters, OutputBatch,
-    RandomConnectionIdGenerator, State, StreamType,
+    Connection, ConnectionEvent, ConnectionIdGenerator, OutputBatch, RandomConnectionIdGenerator,
+    State, StreamType,
 };
 use neqo_udp::RecvBuf;
 use nss::AuthenticationStatus;
 use tracing::trace;
 use utils::{bin, bin::ClientArgs, perf::Request};
 
-use crate::{init_default_crypto_db, UdpSocket};
+use crate::{connection_parameters, init_default_crypto_db, UdpSocket};
 
 const TARGET: &str = "neqo::client";
 
@@ -69,7 +68,7 @@ impl bin::Client for Client {
             cid_gen,
             local_addr,
             remote,
-            ConnectionParameters::default(),
+            connection_parameters(),
             Instant::now(),
         )
         .context("create QUIC connection")?;
@@ -223,16 +222,7 @@ where
         loop {
             match conn.process_multiple_output(Instant::now(), max_datagrams) {
                 OutputBatch::DatagramBatch(d) => {
-                    // Retry on WouldBlock to respect OS send-buffer backpressure.
-                    loop {
-                        match socket.send(&d) {
-                            Ok(()) => break,
-                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                                socket.writable().await.context("socket writable")?;
-                            }
-                            Err(e) => return Err(e).context("send UDP datagram"),
-                        }
-                    }
+                    socket.send(&d).await.context("send UDP datagram")?;
                 }
                 OutputBatch::Callback(dur) => {
                     timeout = Some(dur);

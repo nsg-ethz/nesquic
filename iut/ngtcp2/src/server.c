@@ -1,7 +1,6 @@
 #include "common.h"
 
 #include <errno.h>
-#include <poll.h>
 #include <unistd.h>
 
 #include <openssl/err.h>
@@ -10,7 +9,6 @@
 #define NQ_MAX_CIDS 16
 /* Response bytes are zeros served from this buffer. ngtcp2 keeps pointers into
  * it until the data is acknowledged, which is fine since it never changes. */
-#define NQ_ZERO_CHUNK (64 * 1024)
 static const uint8_t zeros[NQ_ZERO_CHUNK];
 
 struct stream {
@@ -33,6 +31,7 @@ struct conn {
     ngtcp2_cid cids[NQ_MAX_CIDS];
     size_t ncids;
     struct stream *streams;
+    int dirty; /* received packets since the last write */
     ngtcp2_ccerr last_error;
     struct conn *next;
 };
@@ -178,35 +177,39 @@ static int extend_max_stream_data(ngtcp2_conn *conn, int64_t stream_id, uint64_t
     return 0;
 }
 
+/* Moves the first sendable stream to the list tail, so that streams take turns. */
 static struct stream *next_pending_stream(struct conn *c) {
-    for (struct stream *st = c->streams; st; st = st->next) {
+    for (struct stream **p = &c->streams; *p; p = &(*p)->next) {
+        struct stream *st = *p;
         if (st->responding && !st->fin_sent && !st->blocked) {
+            if (st->next) {
+                struct stream **tail = &st->next;
+                *p = st->next;
+                while (*tail) {
+                    tail = &(*tail)->next;
+                }
+                *tail = st;
+                st->next = NULL;
+            }
             return st;
         }
     }
     return NULL;
 }
 
-/* Writes as many packets as congestion control and pacing allow. */
-static int conn_write(struct server *s, struct conn *c) {
-    uint8_t buf[NQ_MAX_UDP_PAYLOAD];
-    ngtcp2_path_storage ps;
-    ngtcp2_pkt_info pi;
-    ngtcp2_tstamp ts = nq_now_ns();
-    size_t max_pkts = ngtcp2_conn_get_send_quantum2(c->conn) / NQ_MAX_UDP_PAYLOAD + 1;
-    size_t pkts = 0;
+/* ngtcp2_write_pkt callback: writes one packet with response data. */
+static ngtcp2_ssize write_pkt(ngtcp2_conn *conn, ngtcp2_path *path, ngtcp2_pkt_info *pi,
+                              uint8_t *dest, size_t destlen, ngtcp2_tstamp ts,
+                              void *user_data) {
+    struct conn *c = user_data;
 
-    ngtcp2_path_storage_zero(&ps);
-    for (struct stream *st = c->streams; st; st = st->next) {
-        st->blocked = 0;
-    }
-
-    while (pkts < max_pkts) {
+    for (;;) {
         struct stream *st = next_pending_stream(c);
         ngtcp2_vec vec = {0};
         size_t veccnt = 0;
         int64_t stream_id = -1;
-        uint32_t flags = NGTCP2_WRITE_STREAM_FLAG_MORE;
+        /* GSO needs equally sized packets, hence the padding. */
+        uint32_t flags = NGTCP2_WRITE_STREAM_FLAG_MORE | NGTCP2_WRITE_STREAM_FLAG_PADDING;
         ngtcp2_ssize wdatalen = -1;
 
         if (st) {
@@ -219,39 +222,49 @@ static int conn_write(struct server *s, struct conn *c) {
             }
         }
 
-        ngtcp2_ssize n = ngtcp2_conn_writev_stream(c->conn, &ps.path, &pi, buf, sizeof(buf),
-                                                   &wdatalen, flags, stream_id, &vec, veccnt,
-                                                   ts);
+        ngtcp2_ssize n = ngtcp2_conn_writev_stream(conn, path, pi, dest, destlen, &wdatalen,
+                                                   flags, stream_id, &vec, veccnt, ts);
         if (st && wdatalen >= 0) {
             st->remaining -= (uint64_t)wdatalen;
             if (st->remaining == 0 && (flags & NGTCP2_WRITE_STREAM_FLAG_FIN)) {
                 st->fin_sent = 1;
             }
         }
-        if (n < 0) {
-            if (n == NGTCP2_ERR_WRITE_MORE) {
-                continue;
-            }
-            if (st && (n == NGTCP2_ERR_STREAM_DATA_BLOCKED || n == NGTCP2_ERR_STREAM_SHUT_WR ||
-                       n == NGTCP2_ERR_STREAM_NOT_FOUND)) {
-                st->blocked = 1;
-                continue;
-            }
-            fprintf(stderr, "ngtcp2_conn_writev_stream: %s\n", ngtcp2_strerror((int)n));
-            ngtcp2_ccerr_set_liberr(&c->last_error, (int)n, NULL, 0);
-            return -1;
+        if (n == NGTCP2_ERR_WRITE_MORE) {
+            continue;
         }
-        if (n == 0) {
-            break;
+        if (st && (n == NGTCP2_ERR_STREAM_DATA_BLOCKED || n == NGTCP2_ERR_STREAM_SHUT_WR ||
+                   n == NGTCP2_ERR_STREAM_NOT_FOUND)) {
+            st->blocked = 1;
+            continue;
         }
-        if (nq_send_packet(s->fd, &ps.path, buf, (size_t)n) != 0) {
-            return -1;
-        }
-        ++pkts;
+        return n;
+    }
+}
+
+/* Writes as many packets as congestion control and pacing allow, as one GSO batch. */
+static int conn_write(struct server *s, struct conn *c) {
+    static uint8_t buf[NQ_GSO_BUFLEN];
+    ngtcp2_path_storage ps;
+    ngtcp2_pkt_info pi;
+    size_t gsolen;
+
+    ngtcp2_path_storage_zero(&ps);
+    for (struct stream *st = c->streams; st; st = st->next) {
+        st->blocked = 0;
     }
 
-    ngtcp2_conn_update_pkt_tx_time(c->conn, ts);
-    return 0;
+    ngtcp2_ssize n = ngtcp2_conn_write_aggregate_pkt(c->conn, &ps.path, &pi, buf, sizeof(buf),
+                                                     &gsolen, write_pkt, nq_now_ns());
+    if (n < 0) {
+        fprintf(stderr, "ngtcp2_conn_write_aggregate_pkt: %s\n", ngtcp2_strerror((int)n));
+        ngtcp2_ccerr_set_liberr(&c->last_error, (int)n, NULL, 0);
+        return -1;
+    }
+    if (n == 0) {
+        return 0;
+    }
+    return nq_send_packets(s->fd, &ps.path, buf, (size_t)n, gsolen);
 }
 
 static void conn_close(struct server *s, struct conn *c) {
@@ -267,7 +280,7 @@ static void conn_close(struct server *s, struct conn *c) {
                                                         sizeof(buf), &c->last_error,
                                                         nq_now_ns());
     if (n > 0) {
-        nq_send_packet(s->fd, &ps.path, buf, (size_t)n);
+        nq_send_packets(s->fd, &ps.path, buf, (size_t)n, (size_t)n);
     }
 }
 
@@ -324,9 +337,9 @@ static struct conn *accept_conn(struct server *s, const uint8_t *pkt, size_t len
     settings.max_tx_udp_payload_size = NQ_MAX_UDP_PAYLOAD;
 
     ngtcp2_transport_params_default(&params);
-    params.initial_max_streams_bidi = 100;
-    params.initial_max_stream_data_bidi_remote = 64 * 1024;
-    params.initial_max_data = 1024 * 1024;
+    params.initial_max_streams_bidi = NQ_MAX_STREAMS;
+    params.initial_max_stream_data_bidi_remote = NQ_STREAM_WINDOW;
+    params.initial_max_data = NQ_CONNECTION_WINDOW;
     params.max_idle_timeout = NQ_IDLE_TIMEOUT;
     params.original_dcid = hd.dcid;
     params.original_dcid_present = 1;
@@ -359,9 +372,10 @@ static struct conn *accept_conn(struct server *s, const uint8_t *pkt, size_t len
     return c;
 }
 
-/* Feeds one datagram to its connection. Returns -1 if the connection is done. */
-static int handle_packet(struct server *s, const uint8_t *pkt, size_t len,
-                         struct sockaddr_storage *from, socklen_t fromlen) {
+/* Feeds one datagram to its connection, which is written to after the read batch. */
+static void handle_packet(void *ctx, uint8_t *pkt, size_t len, struct sockaddr *from,
+                          socklen_t fromlen) {
+    struct server *s = ctx;
     ngtcp2_version_cid vc;
     ngtcp2_pkt_info pi = {0};
     struct conn *c;
@@ -369,19 +383,19 @@ static int handle_packet(struct server *s, const uint8_t *pkt, size_t len,
 
     rv = ngtcp2_pkt_decode_version_cid(&vc, pkt, len, NQ_SCID_LEN);
     if (rv != 0) {
-        return 0;
+        return;
     }
 
     ngtcp2_path path = {
         .local = {.addr = (struct sockaddr *)&s->local_addr, .addrlen = s->local_addrlen},
-        .remote = {.addr = (struct sockaddr *)from, .addrlen = fromlen},
+        .remote = {.addr = from, .addrlen = fromlen},
     };
 
     c = find_conn(s, vc.dcid, vc.dcidlen);
     if (!c) {
         c = accept_conn(s, pkt, len, &path);
         if (!c) {
-            return 0;
+            return;
         }
     }
 
@@ -407,33 +421,27 @@ static int handle_packet(struct server *s, const uint8_t *pkt, size_t len,
                 break;
         }
         conn_free(s, c);
-        return -1;
+        return;
     }
-
-    if (conn_write(s, c) != 0) {
-        conn_close(s, c);
-        conn_free(s, c);
-        return -1;
-    }
-    return 0;
+    c->dirty = 1;
 }
 
 static int server_read(struct server *s) {
-    uint8_t buf[65536];
-    for (;;) {
-        struct sockaddr_storage from;
-        socklen_t fromlen = sizeof(from);
-        ssize_t n = recvfrom(s->fd, buf, sizeof(buf), MSG_DONTWAIT, (struct sockaddr *)&from,
-                             &fromlen);
-        if (n == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                return 0;
+    int rv = nq_recv_packets(s->fd, handle_packet, s);
+    struct conn *c = s->conns;
+
+    while (c) {
+        struct conn *next = c->next;
+        if (c->dirty) {
+            c->dirty = 0;
+            if (conn_write(s, c) != 0) {
+                conn_close(s, c);
+                conn_free(s, c);
             }
-            fprintf(stderr, "recvfrom: %s\n", strerror(errno));
-            return -1;
         }
-        handle_packet(s, buf, (size_t)n, &from, fromlen);
+        c = next;
     }
+    return rv;
 }
 
 static void server_handle_timers(struct server *s) {
@@ -455,7 +463,7 @@ static void server_handle_timers(struct server *s) {
     }
 }
 
-static int server_timeout(struct server *s) {
+static ngtcp2_tstamp server_expiry(struct server *s) {
     ngtcp2_tstamp expiry = UINT64_MAX;
     for (struct conn *c = s->conns; c; c = c->next) {
         ngtcp2_tstamp e = ngtcp2_conn_get_expiry2(c->conn);
@@ -463,7 +471,7 @@ static int server_timeout(struct server *s) {
             expiry = e;
         }
     }
-    return nq_poll_timeout(expiry, nq_now_ns());
+    return expiry;
 }
 
 int nq_run_server(const struct nq_args *args) {
@@ -491,13 +499,13 @@ int nq_run_server(const struct nq_args *args) {
         fprintf(stderr, "cannot bind %s: %s\n", args->listen, strerror(errno));
         goto out;
     }
+    nq_socket_setup(s.fd);
 
     printf("Listening on %s\n", args->listen);
     fflush(stdout);
 
     while (!nq_stop) {
-        struct pollfd pfd = {.fd = s.fd, .events = POLLIN};
-        int n = poll(&pfd, 1, server_timeout(&s));
+        int n = nq_poll(s.fd, server_expiry(&s));
         if (nq_stop) {
             break;
         }

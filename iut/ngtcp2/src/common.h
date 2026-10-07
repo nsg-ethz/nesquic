@@ -31,15 +31,22 @@ int nq_get_new_connection_id_cb(ngtcp2_conn *conn, ngtcp2_cid *cid,
                                 ngtcp2_stateless_reset_token *token, size_t cidlen,
                                 void *user_data);
 
-/* Sends one UDP datagram, retrying on EINTR. Returns 0 on success. */
-int nq_send_packet(int fd, const ngtcp2_path *path, const uint8_t *data, size_t len);
+/* Send buffer for ngtcp2_conn_write_aggregate_pkt: one GSO batch. */
+#define NQ_GSO_BUFLEN 65535
+
+/*
+ * Sends `len` bytes as datagrams of `gsolen` bytes (the last may be shorter)
+ * with a single sendmsg (UDP_SEGMENT). Returns 0 on success.
+ */
+int nq_send_packets(int fd, const ngtcp2_path *path, const uint8_t *data, size_t len,
+                    size_t gsolen);
 
 /* Builds the TLS contexts: ALPN "perf", TLS 1.3 only. */
 SSL_CTX *nq_client_ssl_ctx(const char *ca_file);
 SSL_CTX *nq_server_ssl_ctx(const char *cert_file, const char *key_file);
 
-/* Milliseconds until `expiry`, clamped to [0, INT_MAX], for poll(). */
-int nq_poll_timeout(ngtcp2_tstamp expiry, ngtcp2_tstamp now);
+/* Waits until `fd` is readable or `expiry` passes. Returns like poll(). */
+int nq_poll(int fd, ngtcp2_tstamp expiry);
 
 int nq_run_client(const struct nq_args *args);
 int nq_run_server(const struct nq_args *args);

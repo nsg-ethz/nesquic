@@ -1,9 +1,13 @@
+#define _GNU_SOURCE /* sendmmsg, ppoll */
 #include "common.h"
 
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/uio.h>
+
+/* Datagrams handed to the kernel with one sendmmsg. */
+#define NQ_SEND_BATCH 64
 
 volatile int nq_stop = 0;
 
@@ -21,6 +25,20 @@ void nq_install_signal_handlers(void) {
     sigaction(SIGTERM, &sa, NULL);
 }
 
+void nq_engine_settings(struct lsquic_engine_settings *settings, unsigned flags) {
+    lsquic_engine_init_settings(settings, flags);
+    settings->es_versions = 1 << LSQVER_I001;
+    settings->es_idle_timeout = NQ_IDLE_TIMEOUT_S;
+    settings->es_cc_algo = 1; /* Cubic; the default picks Cubic or BBR by RTT */
+    /* Fixed windows: the maxima bound auto-tuning. */
+    settings->es_cfcw = settings->es_max_cfcw = NQ_CONNECTION_WINDOW;
+    settings->es_sfcw = settings->es_max_sfcw = NQ_STREAM_WINDOW;
+    settings->es_init_max_data = NQ_CONNECTION_WINDOW;
+    settings->es_init_max_stream_data_bidi_local = NQ_STREAM_WINDOW;
+    settings->es_init_max_stream_data_bidi_remote = NQ_STREAM_WINDOW;
+    settings->es_init_max_streams_bidi = NQ_MAX_STREAMS;
+}
+
 static socklen_t sockaddr_len(const struct sockaddr *sa) {
     return sa->sa_family == AF_INET6 ? sizeof(struct sockaddr_in6)
                                      : sizeof(struct sockaddr_in);
@@ -28,70 +46,74 @@ static socklen_t sockaddr_len(const struct sockaddr *sa) {
 
 int nq_packets_out(void *ctx, const struct lsquic_out_spec *specs, unsigned n_specs) {
     struct nq_socket *sock = ctx;
-    unsigned i;
+    struct mmsghdr msgs[NQ_SEND_BATCH];
+    unsigned sent = 0;
 
-    for (i = 0; i < n_specs; ++i) {
-        struct msghdr msg;
-        ssize_t n;
+    while (sent < n_specs) {
+        unsigned n = n_specs - sent < NQ_SEND_BATCH ? n_specs - sent : NQ_SEND_BATCH;
+        int rv;
 
-        memset(&msg, 0, sizeof(msg));
-        msg.msg_name = (void *)specs[i].dest_sa;
-        msg.msg_namelen = sockaddr_len(specs[i].dest_sa);
-        msg.msg_iov = specs[i].iov;
-        msg.msg_iovlen = specs[i].iovlen;
+        memset(msgs, 0, n * sizeof(msgs[0]));
+        for (unsigned i = 0; i < n; ++i) {
+            const struct lsquic_out_spec *spec = &specs[sent + i];
+            msgs[i].msg_hdr.msg_name = (void *)spec->dest_sa;
+            msgs[i].msg_hdr.msg_namelen = sockaddr_len(spec->dest_sa);
+            msgs[i].msg_hdr.msg_iov = spec->iov;
+            msgs[i].msg_hdr.msg_iovlen = spec->iovlen;
+        }
 
         do {
-            n = sendmsg(sock->fd, &msg, 0);
-        } while (n == -1 && errno == EINTR);
+            rv = sendmmsg(sock->fd, msgs, n, 0);
+        } while (rv == -1 && errno == EINTR);
 
-        if (n == -1) {
+        if (rv > 0) {
+            sent += (unsigned)rv;
+        }
+        if (rv < (int)n) {
+            /* lsquic inspects errno and retries once we report writability. */
+            if (rv >= 0) {
+                errno = EAGAIN;
+            }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 sock->blocked = 1;
             }
-            /* lsquic inspects errno and retries once we report writability. */
-            return i > 0 ? (int)i : -1;
+            break;
         }
     }
-    return (int)n_specs;
+    return sent > 0 ? (int)sent : -1;
 }
 
-int nq_read_packets(lsquic_engine_t *engine, struct nq_socket *sock) {
-    unsigned char buf[65536];
-
-    for (;;) {
-        struct sockaddr_storage from;
-        socklen_t fromlen = sizeof(from);
-        ssize_t n = recvfrom(sock->fd, buf, sizeof(buf), MSG_DONTWAIT,
-                             (struct sockaddr *)&from, &fromlen);
-        if (n == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                return 0;
-            }
-            fprintf(stderr, "recvfrom: %s\n", strerror(errno));
-            return -1;
-        }
-        lsquic_engine_packet_in(engine, buf, (size_t)n,
-                                (struct sockaddr *)&sock->local_addr,
-                                (struct sockaddr *)&from, sock, 0);
-    }
+static void packet_in(void *ctx, uint8_t *data, size_t len, struct sockaddr *from,
+                      socklen_t fromlen) {
+    struct nq_socket *sock = ctx;
+    (void)fromlen;
+    lsquic_engine_packet_in(sock->engine, data, len, (struct sockaddr *)&sock->local_addr, from,
+                            sock, 0);
 }
 
 int nq_event_loop(lsquic_engine_t *engine, struct nq_socket *sock, const int *done) {
+    sock->engine = engine;
+    nq_socket_setup(sock->fd);
     lsquic_engine_process_conns(engine);
 
     while (!nq_stop && !(done && *done)) {
         struct pollfd pfd = {.fd = sock->fd, .events = POLLIN};
-        int timeout = -1, diff, n;
+        struct timespec ts = {0}, *timeout = NULL;
+        int diff, n;
 
         if (sock->blocked) {
             pfd.events |= POLLOUT;
         }
         if (lsquic_engine_earliest_adv_tick(engine, &diff)) {
-            /* diff is in microseconds; round up to whole milliseconds. */
-            timeout = diff <= 0 ? 0 : (diff + 999) / 1000;
+            /* diff is in microseconds: pacing needs sub-millisecond timers. */
+            if (diff > 0) {
+                ts.tv_sec = diff / 1000000;
+                ts.tv_nsec = (long)(diff % 1000000) * 1000;
+            }
+            timeout = &ts;
         }
 
-        n = poll(&pfd, 1, timeout);
+        n = ppoll(&pfd, 1, timeout, NULL);
         if (nq_stop) {
             break;
         }
@@ -107,7 +129,7 @@ int nq_event_loop(lsquic_engine_t *engine, struct nq_socket *sock, const int *do
             sock->blocked = 0;
             lsquic_engine_send_unsent_packets(engine);
         }
-        if (n > 0 && (pfd.revents & POLLIN) && nq_read_packets(engine, sock) != 0) {
+        if (n > 0 && (pfd.revents & POLLIN) && nq_recv_packets(sock->fd, packet_in, sock) != 0) {
             return -1;
         }
         lsquic_engine_process_conns(engine);

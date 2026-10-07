@@ -4,19 +4,23 @@
 #include <vector>
 
 #include "common.h"
+#include "nesquic.h"
 #include "protocol.h"
 
 namespace nesquic {
 
 namespace {
 
+// Response bytes are zeros served from this buffer. msquic sends straight
+// from it (send buffering is off), which is fine since it never changes.
+uint8_t zeros[NQ_ZERO_CHUNK];
+
 // Per-stream state for the server: accumulates the 8-byte request and owns the
-// zero-filled response buffer until the send completes.
+// chunk list of the response until the send completes.
 struct StreamState {
     uint8_t request[8];
     size_t request_len = 0;
-    std::vector<uint8_t> response;
-    QUIC_BUFFER send_buffer;
+    std::vector<QUIC_BUFFER> response;
 };
 
 QUIC_STATUS QUIC_API stream_callback(HQUIC stream, void* context, QUIC_STREAM_EVENT* event) {
@@ -41,11 +45,15 @@ QUIC_STATUS QUIC_API stream_callback(HQUIC stream, void* context, QUIC_STREAM_EV
                 break;
             }
             const uint64_t size = request_from_bytes(state->request);
-            state->response.assign(static_cast<size_t>(size), 0);
-            state->send_buffer.Length = static_cast<uint32_t>(state->response.size());
-            state->send_buffer.Buffer = state->response.data();
-            QUIC_STATUS status = MsQuic->StreamSend(stream, &state->send_buffer, 1,
-                                                    QUIC_SEND_FLAG_FIN, nullptr);
+            state->response.assign(static_cast<size_t>(size / NQ_ZERO_CHUNK),
+                                   QUIC_BUFFER{NQ_ZERO_CHUNK, zeros});
+            if (size % NQ_ZERO_CHUNK != 0) {
+                state->response.push_back(
+                    QUIC_BUFFER{static_cast<uint32_t>(size % NQ_ZERO_CHUNK), zeros});
+            }
+            QUIC_STATUS status = MsQuic->StreamSend(
+                stream, state->response.data(), static_cast<uint32_t>(state->response.size()),
+                QUIC_SEND_FLAG_FIN, nullptr);
             if (QUIC_FAILED(status)) {
                 fprintf(stderr, "StreamSend (response) failed: 0x%x\n", status);
                 MsQuic->StreamShutdown(stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);

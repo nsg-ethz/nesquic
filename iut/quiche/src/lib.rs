@@ -1,14 +1,14 @@
-use anyhow::anyhow;
-use bytes::{Buf, Bytes};
-use std::{collections::HashMap, io::Cursor, time::Duration};
+use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 use tokio_quiche::{
     metrics::Metrics,
     quic::{HandshakeInfo, QuicheConnection},
+    quiche,
+    settings::QuicSettings,
     ApplicationOverQuic, QuicResult,
 };
 use tracing::{error, trace};
-use utils::perf::{Blob, Request};
+use utils::perf::{Blob, Request, CONNECTION_WINDOW, IDLE_TIMEOUT, STREAM_WINDOW, ZEROS};
 
 mod client;
 mod server;
@@ -16,24 +16,46 @@ mod server;
 pub use client::Client;
 pub use server::Server;
 
+/// A request for a stream and the channel reporting the received bytes.
+type PendingRequest = (u64, Request, oneshot::Sender<usize>);
+
+fn settings() -> QuicSettings {
+    let mut settings = QuicSettings::default();
+    settings.alpn = vec![b"perf".to_vec()];
+    settings.max_idle_timeout = Some(IDLE_TIMEOUT);
+    settings.initial_max_data = CONNECTION_WINDOW.into();
+    settings.max_connection_window = CONNECTION_WINDOW.into();
+    settings.initial_max_stream_data_bidi_local = STREAM_WINDOW.into();
+    settings.initial_max_stream_data_bidi_remote = STREAM_WINDOW.into();
+    settings.max_stream_window = STREAM_WINDOW.into();
+    // No stateless retry, like the other IUTs.
+    settings.disable_client_ip_validation = true;
+    settings
+}
+
 struct Benchmark {
+    /// Also the GSO send buffer: tokio-quiche batches at most this many bytes.
     buf: Vec<u8>,
-    reqs: mpsc::UnboundedReceiver<(u64, Request, oneshot::Sender<()>)>,
-    pending_req: HashMap<u64, oneshot::Sender<()>>,
-    pending_res: HashMap<u64, Cursor<Bytes>>,
+    reqs: mpsc::UnboundedReceiver<PendingRequest>,
+    next_req: Option<PendingRequest>,
+    /// Client: received bytes and the waiter per stream.
+    pending_req: HashMap<u64, (usize, oneshot::Sender<usize>)>,
+    /// Server: leading request bytes per stream.
+    requests: HashMap<u64, Vec<u8>>,
+    /// Server: response bytes left to send per stream.
+    pending_res: HashMap<u64, usize>,
 }
 
 impl Benchmark {
-    fn new() -> (
-        Self,
-        mpsc::UnboundedSender<(u64, Request, oneshot::Sender<()>)>,
-    ) {
+    fn new() -> (Self, mpsc::UnboundedSender<PendingRequest>) {
         let (req_tx, req_rx) = mpsc::unbounded_channel();
 
         let benchmark = Benchmark {
-            buf: vec![0u8; 32 * 1024],
+            buf: vec![0u8; u16::MAX as usize],
             reqs: req_rx,
+            next_req: None,
             pending_req: HashMap::new(),
+            requests: HashMap::new(),
             pending_res: HashMap::new(),
         };
 
@@ -60,27 +82,38 @@ impl ApplicationOverQuic for Benchmark {
     }
 
     async fn wait_for_data(&mut self, _: &mut QuicheConnection) -> QuicResult<()> {
-        trace!("wait for data");
-        tokio::time::sleep(Duration::MAX).await;
+        match self.reqs.recv().await {
+            Some(req) => self.next_req = Some(req),
+            // Servers have no request sender: only packets drive them.
+            None => std::future::pending().await,
+        }
         Ok(())
     }
 
     fn process_reads(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        let mut buf = vec![0u8; 32 * 1024];
         for stream in qconn.readable() {
-            trace!("stream_recv({})", stream);
-            while let Ok((_, done)) = qconn.stream_recv(stream, &mut buf) {
+            while let Ok((len, fin)) = qconn.stream_recv(stream, &mut self.buf) {
                 if qconn.is_server() {
-                    let blob = Blob::try_from(buf.as_ref())?;
-                    trace!("Received request for {}B", blob.size);
-                    self.pending_res
-                        .insert(stream, Cursor::new(Bytes::from_iter(blob)));
-                } else if done {
-                    let Some(tx) = self.pending_req.remove(&stream) else {
-                        error!("Got a result from an unknown stream");
-                        return QuicResult::Err(anyhow!("Unknown stream").into_boxed_dyn_error());
-                    };
-                    tx.send(()).unwrap();
+                    let req = self.requests.entry(stream).or_default();
+                    let significant = len.min(8 - req.len());
+                    req.extend_from_slice(&self.buf[..significant]);
+                    if fin {
+                        let blob = Blob::try_from(req.as_slice())?;
+                        trace!("Received request for {}B", blob.size);
+                        self.requests.remove(&stream);
+                        self.pending_res.insert(stream, blob.size);
+                    }
+                    continue;
+                }
+
+                let Some((received, _)) = self.pending_req.get_mut(&stream) else {
+                    error!("Got a result from an unknown stream");
+                    continue;
+                };
+                *received += len;
+                if fin {
+                    let (received, tx) = self.pending_req.remove(&stream).unwrap();
+                    let _ = tx.send(received);
                 }
             }
         }
@@ -89,28 +122,31 @@ impl ApplicationOverQuic for Benchmark {
     }
 
     fn process_writes(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        if let Ok((stream, req, res)) = self.reqs.try_recv() {
+        if let Some((stream, req, res)) = self.next_req.take() {
             trace!("Writing request");
-            self.pending_req.insert(stream, res);
             qconn.stream_send(stream, &req.to_bytes(), true)?;
+            self.pending_req.insert(stream, (0, res));
         }
 
-        let mut completed_responses = Vec::new();
-
-        for (stream, res) in self.pending_res.iter_mut() {
-            trace!("Writing response");
-
-            if let Ok(len) = qconn.stream_send(*stream, res.chunk(), true) {
-                res.advance(len);
-                if !res.has_remaining() {
-                    completed_responses.push(*stream);
+        self.pending_res.retain(|stream, remaining| loop {
+            let len = (*remaining).min(ZEROS.len());
+            match qconn.stream_send(*stream, &ZEROS[..len], *remaining == len) {
+                Ok(sent) => {
+                    *remaining -= sent;
+                    if *remaining == 0 {
+                        return false;
+                    }
+                    if sent < len {
+                        return true;
+                    }
+                }
+                Err(quiche::Error::Done) => return true,
+                Err(e) => {
+                    error!("failed to send response: {}", e);
+                    return false;
                 }
             }
-        }
-
-        for stream in completed_responses {
-            self.pending_res.remove(&stream);
-        }
+        });
 
         Ok(())
     }

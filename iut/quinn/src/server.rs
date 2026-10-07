@@ -8,7 +8,13 @@ use quinn::{
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 use std::sync::Arc;
 use tracing::{error, info, trace};
-use utils::{bin, bin::ServerArgs, perf::Blob};
+use utils::{
+    bin,
+    bin::ServerArgs,
+    perf::{Blob, ZEROS},
+};
+
+use crate::transport_config;
 
 const TARGET: &str = "quinn::server";
 
@@ -31,8 +37,9 @@ impl bin::Server for Server {
             .with_single_cert(certs, key)?;
         server_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-        let config =
+        let mut config =
             ServerConfig::with_crypto(Arc::new(QuicServerConfig::try_from(server_crypto)?));
+        config.transport_config(transport_config());
 
         Ok(Server { args, config })
     }
@@ -104,9 +111,14 @@ async fn handle_request((mut send, mut recv): (SendStream, RecvStream)) -> Resul
         Blob::try_from(req.as_slice()).map_err(|e| anyhow!("failed handling request: {}", e))?;
     trace!(target: TARGET, "serving {}", blob.size);
 
-    send.write_chunk(Bytes::from_iter(blob))
-        .await
-        .map_err(|e| anyhow!("failed to send response: {}", e))?;
+    let mut remaining = blob.size;
+    while remaining > 0 {
+        let len = remaining.min(ZEROS.len());
+        send.write_chunk(Bytes::from_static(&ZEROS[..len]))
+            .await
+            .map_err(|e| anyhow!("failed to send response: {}", e))?;
+        remaining -= len;
+    }
 
     send.finish()
         .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;

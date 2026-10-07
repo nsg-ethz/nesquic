@@ -37,6 +37,18 @@ interchangeable:
 | Default port        | `4433`                                                       |
 | Server listen addr  | `0.0.0.0:4433` by default                                   |
 | Client bind addr    | `[::]:0` (ephemeral, dual-stack)                            |
+| Idle timeout        | 10 s                                                         |
+| Stream receive window | 8 MiB (`initial_max_stream_data_bidi_*`)                  |
+| Connection receive window | 16 MiB (`initial_max_data`)                           |
+| Bidirectional streams | 100 (`initial_max_streams_bidi`)                          |
+| Congestion control  | Cubic                                                        |
+| UDP socket buffers  | `SO_RCVBUF` = `SO_SNDBUF` = 16 MiB requested; the kernel clamps both to `net.core.{r,w}mem_max` |
+| Response payload    | zeros, written in chunks of a static 64 KiB buffer, never materialised as a whole |
+| Datagram I/O        | libc syscalls only (see [Metrics](METRICS.md)), batched wherever the library supports it: `UDP_SEGMENT` (GSO), `UDP_GRO`, `sendmmsg`, `recvmmsg` |
+
+The values live in `utils::perf` (Rust IUTs) and `iut/c-common/nesquic.h`
+(C/C++ IUTs). What a library cannot be configured to do is listed in
+[Libraries](LIBRARIES.md).
 
 The ALPN string **must** be exactly `perf`; a mismatch fails the handshake.
 

@@ -185,7 +185,10 @@ int runClient(const nq_args& args) {
         transport->setHostname(host);
     }
     transport->addNewPeerAddress(folly::SocketAddress(host, port, true));
-    transport->setTransportSettings(transportSettings());
+    auto settings = transportSettings();
+    settings.connectUDP = true;
+    transport->setTransportSettings(settings);
+    transport->setSocketOptions(socketOptions());
     client.setTransport(transport);
 
     // SIGINT/SIGTERM cancel the job (docs/CLI.md). Without a handler they

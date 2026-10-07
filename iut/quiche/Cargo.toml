@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
-bytes = "1.12.1"
 tracing = "0.1.44"
 url = "2.5.8"
 utils = { path = "../../utils" }

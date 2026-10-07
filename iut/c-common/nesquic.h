@@ -8,7 +8,9 @@
 #define NESQUIC_H
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netdb.h>
+#include <netinet/udp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +29,15 @@ extern "C" {
 #define NQ_DEFAULT_URL "https://127.0.0.1:4433"
 #define NQ_DEFAULT_LISTEN "0.0.0.0:4433"
 #define NQ_REQUEST_LEN 8
+
+/* Transport settings every IUT applies (see docs/PROTOCOL.md). */
+#define NQ_STREAM_WINDOW (8 * 1024 * 1024)
+#define NQ_CONNECTION_WINDOW (16 * 1024 * 1024)
+#define NQ_MAX_STREAMS 100
+/* Requested SO_RCVBUF/SO_SNDBUF; the kernel clamps it to net.core.{r,w}mem_max. */
+#define NQ_SOCKET_BUFFER (16 * 1024 * 1024)
+/* The response is served in chunks of a zero buffer of this size. */
+#define NQ_ZERO_CHUNK (64 * 1024)
 
 enum nq_mode { NQ_CLIENT, NQ_SERVER };
 
@@ -263,6 +274,73 @@ static inline int nq_resolve(const char *host, uint16_t port, struct sockaddr_st
     *addrlen = (socklen_t)res->ai_addrlen;
     freeaddrinfo(res);
     return 0;
+}
+
+/* Applies the shared UDP socket setup: buffer sizes and UDP_GRO (best effort). */
+static inline void nq_socket_setup(int fd) {
+    int size = NQ_SOCKET_BUFFER, on = 1;
+    setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+    setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
+    setsockopt(fd, SOL_UDP, UDP_GRO, &on, sizeof(on));
+}
+
+typedef void (*nq_recv_cb)(void *ctx, uint8_t *data, size_t len, struct sockaddr *from,
+                           socklen_t fromlen);
+
+/*
+ * Drains the socket, calling `cb` for every datagram. A read may return
+ * several datagrams coalesced by UDP_GRO (see nq_socket_setup), which are
+ * split here. Returns 0 on success.
+ */
+static inline int nq_recv_packets(int fd, nq_recv_cb cb, void *ctx) {
+    static uint8_t buf[65536];
+
+    for (;;) {
+        struct sockaddr_storage from;
+        char control[CMSG_SPACE(sizeof(int))];
+        struct iovec iov;
+        struct msghdr msg;
+        struct cmsghdr *cmsg;
+        ssize_t n, off;
+        size_t segment;
+
+        iov.iov_base = buf;
+        iov.iov_len = sizeof(buf);
+        memset(&msg, 0, sizeof(msg));
+        msg.msg_name = &from;
+        msg.msg_namelen = sizeof(from);
+        msg.msg_iov = &iov;
+        msg.msg_iovlen = 1;
+        msg.msg_control = control;
+        msg.msg_controllen = sizeof(control);
+
+        n = recvmsg(fd, &msg, MSG_DONTWAIT);
+        if (n == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                return 0;
+            }
+            fprintf(stderr, "recvmsg: %s\n", strerror(errno));
+            return -1;
+        }
+        if (n == 0) {
+            continue;
+        }
+
+        segment = (size_t)n;
+        for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+            if (cmsg->cmsg_level == SOL_UDP && cmsg->cmsg_type == UDP_GRO) {
+                int gro_size;
+                memcpy(&gro_size, CMSG_DATA(cmsg), sizeof(gro_size));
+                if (gro_size > 0) {
+                    segment = (size_t)gro_size;
+                }
+            }
+        }
+        for (off = 0; off < n; off += (ssize_t)segment) {
+            size_t len = (size_t)(n - off) < segment ? (size_t)(n - off) : segment;
+            cb(ctx, buf + off, len, (struct sockaddr *)&from, msg.msg_namelen);
+        }
+    }
 }
 
 /* Whether `host` is an IPv4 or IPv6 literal (no SNI is sent for those). */

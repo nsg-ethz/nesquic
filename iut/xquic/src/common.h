@@ -43,6 +43,8 @@ void nq_set_event_timer(xqc_usec_t wake_after, void *engine_user_data);
 void nq_log_write(xqc_log_level_t lvl, const void *buf, size_t size, void *engine_user_data);
 ssize_t nq_write_socket(const unsigned char *buf, size_t size, const struct sockaddr *peer,
                         socklen_t peerlen, void *conn_user_data);
+ssize_t nq_write_mmsg(const struct iovec *msg_iov, unsigned int vlen,
+                      const struct sockaddr *peer, socklen_t peerlen, void *conn_user_data);
 
 /* Connection settings shared by client and server. */
 void nq_conn_settings(xqc_conn_settings_t *settings);

@@ -18,6 +18,7 @@ void nq_install_signal_handlers(void);
 /* The UDP socket shared by the engine callbacks and the event loop. */
 struct nq_socket {
     int fd;
+    lsquic_engine_t *engine;
     struct sockaddr_storage local_addr;
     socklen_t local_addrlen;
     int blocked; /* the last send hit EAGAIN; wait for POLLOUT */
@@ -26,8 +27,8 @@ struct nq_socket {
 /* lsquic ea_packets_out callback; ctx is a struct nq_socket. */
 int nq_packets_out(void *ctx, const struct lsquic_out_spec *specs, unsigned n_specs);
 
-/* Feeds all pending datagrams to the engine. Returns 0 on success. */
-int nq_read_packets(lsquic_engine_t *engine, struct nq_socket *sock);
+/* Settings shared by client and server (see docs/PROTOCOL.md). */
+void nq_engine_settings(struct lsquic_engine_settings *settings, unsigned flags);
 
 /*
  * Runs the engine until nq_stop is set or `done` (if non-NULL) becomes

@@ -187,9 +187,7 @@ int nq_run_client(const struct nq_args *args) {
     sock.local_addrlen = sizeof(sock.local_addr);
     getsockname(sock.fd, (struct sockaddr *)&sock.local_addr, &sock.local_addrlen);
 
-    lsquic_engine_init_settings(&settings, 0);
-    settings.es_versions = 1 << LSQVER_I001;
-    settings.es_idle_timeout = NQ_IDLE_TIMEOUT_S;
+    nq_engine_settings(&settings, 0);
     if (lsquic_engine_check_settings(&settings, 0, err, sizeof(err)) != 0) {
         fprintf(stderr, "invalid settings: %s\n", err);
         goto out;

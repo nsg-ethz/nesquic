@@ -10,7 +10,7 @@ use tokio::signal::unix::{signal, SignalKind};
 use tracing::{info, trace};
 use utils::{
     bin::{Client, ClientArgs, Server, ServerArgs},
-    perf::Request,
+    perf::{Request, SOCKET_BUFFER},
 };
 
 pub mod test;
@@ -156,6 +156,11 @@ pub fn bind_socket(addr: SocketAddr) -> Result<std::net::UdpSocket> {
     if addr.is_ipv6() {
         socket.set_only_v6(false).context("set_only_v6")?;
     }
+
+    // Best effort: the kernel clamps both to net.core.{r,w}mem_max.
+    let _ = socket.set_recv_buffer_size(SOCKET_BUFFER);
+    let _ = socket.set_send_buffer_size(SOCKET_BUFFER);
+    socket.set_nonblocking(true).context("set_nonblocking")?;
 
     socket
         .bind(&socket2::SockAddr::from(addr))

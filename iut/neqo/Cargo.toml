@@ -9,7 +9,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
-socket2 = "0.6"
 tracing = "0.1"
 quinn-udp = "0.6.1"
 tokio = { version = "1.53.1", features = ["macros", "full"] }

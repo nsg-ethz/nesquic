@@ -177,6 +177,7 @@ int nq_run_client(const struct nq_args *args) {
     };
     xqc_transport_callbacks_t transport_cbs = {
         .write_socket = nq_write_socket,
+        .write_mmsg = nq_write_mmsg,
         .save_token = save_token,
         .save_session_cb = save_data,
         .save_tp_cb = save_data,
@@ -223,6 +224,7 @@ int nq_run_client(const struct nq_args *args) {
         goto out;
     }
     config.cfg_log_level = XQC_LOG_ERROR;
+    config.sendmmsg_on = 1;
 
     memset(&engine_ssl, 0, sizeof(engine_ssl));
     engine_ssl.ciphers = XQC_TLS_CIPHERS;

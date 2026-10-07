@@ -1,5 +1,6 @@
-use crate::Benchmark;
+use crate::{settings, Benchmark, PendingRequest};
 use anyhow::{anyhow, bail, Result};
+use common::bind_socket;
 use std::net::ToSocketAddrs;
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 use tokio_quiche::{quic, socket::Socket as QuicSocket, ConnectionParams, QuicConnection};
@@ -14,7 +15,7 @@ const TARGET: &str = "quiche::client";
 pub struct Client {
     args: ClientArgs,
     conn: Option<QuicConnection>,
-    send: Option<UnboundedSender<(u64, Request, oneshot::Sender<()>)>>,
+    send: Option<UnboundedSender<PendingRequest>>,
 }
 
 impl bin::Client for Client {
@@ -35,7 +36,12 @@ impl bin::Client for Client {
             .next()
             .ok_or_else(|| anyhow!("couldn't resolve to an address"))?;
 
-        let socket = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+        let local = if remote.is_ipv4() {
+            "0.0.0.0:0"
+        } else {
+            "[::]:0"
+        };
+        let socket = tokio::net::UdpSocket::from_std(bind_socket(local.parse().unwrap())?)?;
         socket.connect(remote).await?;
 
         let socket = QuicSocket::try_from(socket)?;
@@ -49,7 +55,7 @@ impl bin::Client for Client {
 
         // TODO: here we have to set the CA's certificate
         let mut params = ConnectionParams::default();
-        params.settings.alpn = vec![b"perf".to_vec()];
+        params.settings = settings();
 
         let (benchmark, send) = Benchmark::new();
         let Ok(qconn) = quic::connect_with_config(socket, None, &params, benchmark).await else {
@@ -69,9 +75,18 @@ impl bin::Client for Client {
 
         let (tx, rx) = oneshot::channel();
         let request = Request::try_from(self.args.blob.clone())?;
-        send.send((0, request, tx))?;
+        let size = request.len();
+        send.send((0, request, tx))
+            .map_err(|_| anyhow!("connection closed"))?;
 
-        rx.await?;
+        let received = rx.await?;
+        if received != size {
+            bail!(
+                "received blob size ({}B) different from requested blob size ({}B)",
+                received,
+                size
+            )
+        }
 
         Ok(())
     }

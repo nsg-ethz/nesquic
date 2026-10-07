@@ -6,6 +6,8 @@ use std::{net::ToSocketAddrs, sync::Arc};
 use tracing::trace;
 use utils::{bin, bin::ClientArgs, perf::Request};
 
+use crate::transport_config;
+
 const TARGET: &str = "noq::client";
 
 pub struct Client {
@@ -25,7 +27,8 @@ impl bin::Client for Client {
 
         client_crypto.alpn_protocols = vec![b"perf".to_vec()];
 
-        let config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
+        let mut config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_crypto)?));
+        config.transport_config(transport_config());
 
         Ok(Client {
             args,
@@ -85,17 +88,21 @@ impl bin::Client for Client {
         send.finish()
             .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
 
-        let resp = recv
-            .read_to_end(usize::max_value())
+        let mut received = 0;
+        while let Some(chunk) = recv
+            .read_chunk(usize::MAX)
             .await
-            .map_err(|e| anyhow!("failed to read response: {}", e))?;
+            .map_err(|e| anyhow!("failed to read response: {}", e))?
+        {
+            received += chunk.len();
+        }
 
-        trace!(target: TARGET, "received response: {}B", resp.len());
+        trace!(target: TARGET, "received response: {}B", received);
 
-        if request.len() != resp.len() {
+        if request.len() != received {
             bail!(
                 "received blob size ({}B) different from requested blob size ({}B)",
-                resp.len(),
+                received,
                 request.len()
             )
         }

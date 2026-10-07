@@ -22,6 +22,20 @@ static void on_signal(int sig) {
     nq_stop = 1;
 }
 
+/* Settings shared by client and server (see docs/PROTOCOL.md). */
+static void configure(picoquic_quic_t *quic) {
+    picoquic_set_default_idle_timeout(quic, NQ_IDLE_TIMEOUT_MS);
+    /* picoquic defaults to NewReno. */
+    picoquic_register_all_congestion_control_algorithms();
+    picoquic_set_default_congestion_algorithm_by_name(quic, "cubic");
+    picoquic_set_default_tp_value(quic, picoquic_tp_initial_max_data, NQ_CONNECTION_WINDOW);
+    picoquic_set_default_tp_value(quic, picoquic_tp_initial_max_stream_data_bidi_local,
+                                  NQ_STREAM_WINDOW);
+    picoquic_set_default_tp_value(quic, picoquic_tp_initial_max_stream_data_bidi_remote,
+                                  NQ_STREAM_WINDOW);
+    picoquic_set_default_tp_value(quic, picoquic_tp_initial_max_streams_bidi, NQ_MAX_STREAMS);
+}
+
 /* ---- client ---- */
 
 struct client {
@@ -132,7 +146,7 @@ static int run_client(const struct nq_args *args) {
         fprintf(stderr, "cannot create QUIC context\n");
         return 1;
     }
-    picoquic_set_default_idle_timeout(quic, NQ_IDLE_TIMEOUT_MS);
+    configure(quic);
 
     cnx = picoquic_create_cnx(quic, picoquic_null_connection_id, picoquic_null_connection_id,
                               (struct sockaddr *)&server, now, 0, host, NQ_ALPN, 1);
@@ -152,7 +166,7 @@ static int run_client(const struct nq_args *args) {
         return 1;
     }
 
-    picoquic_packet_loop(quic, 0, server.ss_family, 0, 0, 0, client_loop_cb, &c);
+    picoquic_packet_loop(quic, 0, server.ss_family, 0, NQ_SOCKET_BUFFER, 0, client_loop_cb, &c);
     picoquic_free(quic);
     return c.ok && !nq_stop ? 0 : 1;
 }
@@ -282,14 +296,15 @@ static int run_server(const struct nq_args *args) {
         fprintf(stderr, "cannot create QUIC context (check certificate/key)\n");
         return 1;
     }
-    picoquic_set_default_idle_timeout(quic, NQ_IDLE_TIMEOUT_MS);
+    configure(quic);
 
     printf("Listening on %s\n", args->listen);
     fflush(stdout);
 
     /* picoquic's packet loop binds the port on every address of the listen
      * address's family. */
-    int ret = picoquic_packet_loop(quic, port, addr.ss_family, 0, 0, 0, server_loop_cb, NULL);
+    int ret = picoquic_packet_loop(quic, port, addr.ss_family, 0, NQ_SOCKET_BUFFER, 0, server_loop_cb,
+                                   NULL);
     picoquic_free(quic);
     /* A signal interrupting the loop's wait surfaces as an error: expected. */
     if (nq_stop || ret == 0 || ret == PICOQUIC_NO_ERROR_TERMINATE_PACKET_LOOP) {

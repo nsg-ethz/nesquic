@@ -26,42 +26,38 @@ impl TryFrom<String> for Request {
     }
 }
 
+/// Transport settings every IUT applies (see docs/PROTOCOL.md).
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+pub const STREAM_WINDOW: u32 = 8 * 1024 * 1024;
+pub const CONNECTION_WINDOW: u32 = 16 * 1024 * 1024;
+/// Requested SO_RCVBUF/SO_SNDBUF; the kernel clamps it to net.core.{r,w}mem_max.
+pub const SOCKET_BUFFER: usize = 16 * 1024 * 1024;
+
+/// The response payload is served in chunks of this zero buffer.
+pub static ZEROS: [u8; 64 * 1024] = [0; 64 * 1024];
+
 /// A blob represents the response payload
 pub struct Blob {
     /// The size in bytes
     pub size: usize,
-
-    /// The cursor indicating how much data has been
-    /// sent so far
-    pub cursor: usize,
 }
 
 impl From<[u8; 8]> for Blob {
     fn from(data: [u8; 8]) -> Self {
-        let size = usize::from_be_bytes(data);
-
-        Blob { size, cursor: 0 }
+        Blob {
+            size: usize::from_be_bytes(data),
+        }
     }
 }
 
 impl TryFrom<&[u8]> for Blob {
     type Error = anyhow::Error;
     fn try_from(value: &[u8]) -> Result<Blob> {
-        let value: [u8; 8] = value[0..8].try_into()?;
+        let Some(value) = value.get(..8) else {
+            bail!("request shorter than 8 bytes")
+        };
+        let value: [u8; 8] = value.try_into()?;
         Ok(Blob::from(value))
-    }
-}
-
-impl Iterator for Blob {
-    type Item = u8;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor < self.size {
-            self.cursor += 1;
-            Some(0)
-        } else {
-            None
-        }
     }
 }
 
@@ -185,5 +181,7 @@ mod tests {
         let req = Request::try_from(String::from("20Gbit")).expect("parse");
         let res = Blob::from(req.to_bytes());
         assert_eq!(req.len(), res.size);
+
+        assert!(Blob::try_from(&[0u8; 7][..]).is_err());
     }
 }

@@ -1,7 +1,6 @@
 #include "common.h"
 
 #include <errno.h>
-#include <poll.h>
 #include <unistd.h>
 
 #include <openssl/err.h>
@@ -24,6 +23,7 @@ struct client {
     uint64_t requested;             /* bytes expected in the response */
     uint64_t received;              /* bytes received so far */
     int done;                       /* response fully received */
+    int read_error;                 /* ngtcp2_conn_read_pkt failed */
     int ok;                         /* response had the requested length */
 };
 
@@ -110,8 +110,8 @@ static int client_quic_init(struct client *c) {
     settings.max_tx_udp_payload_size = NQ_MAX_UDP_PAYLOAD;
 
     ngtcp2_transport_params_default(&params);
-    params.initial_max_stream_data_bidi_local = 8 * 1024 * 1024;
-    params.initial_max_data = 16 * 1024 * 1024;
+    params.initial_max_stream_data_bidi_local = NQ_STREAM_WINDOW;
+    params.initial_max_data = NQ_CONNECTION_WINDOW;
     params.max_idle_timeout = NQ_IDLE_TIMEOUT;
 
     rv = ngtcp2_conn_client_new(&c->conn, &dcid, &scid, &path, NGTCP2_PROTO_VER_V1,
@@ -149,39 +149,33 @@ static int client_ssl_init(struct client *c, const char *ca_file, const char *ho
     return 0;
 }
 
-static int client_read(struct client *c) {
-    uint8_t buf[65536];
-    struct sockaddr_storage addr;
+static void client_recv(void *ctx, uint8_t *data, size_t len, struct sockaddr *from,
+                        socklen_t fromlen) {
+    struct client *c = ctx;
     ngtcp2_pkt_info pi = {0};
+    ngtcp2_path path = {
+        .local = {.addr = (struct sockaddr *)&c->local_addr, .addrlen = c->local_addrlen},
+        .remote = {.addr = from, .addrlen = fromlen},
+    };
 
-    for (;;) {
-        socklen_t addrlen = sizeof(addr);
-        ssize_t n = recvfrom(c->fd, buf, sizeof(buf), MSG_DONTWAIT, (struct sockaddr *)&addr,
-                             &addrlen);
-        if (n == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                return 0;
-            }
-            fprintf(stderr, "recvfrom: %s\n", strerror(errno));
-            return -1;
-        }
-
-        ngtcp2_path path = {
-            .local = {.addr = (struct sockaddr *)&c->local_addr, .addrlen = c->local_addrlen},
-            .remote = {.addr = (struct sockaddr *)&addr, .addrlen = addrlen},
-        };
-        int rv = ngtcp2_conn_read_pkt(c->conn, &path, &pi, buf, (size_t)n, nq_now_ns());
-        if (rv != 0) {
-            fprintf(stderr, "ngtcp2_conn_read_pkt: %s\n", ngtcp2_strerror(rv));
-            if (rv == NGTCP2_ERR_CRYPTO) {
-                ngtcp2_ccerr_set_tls_alert(&c->last_error, ngtcp2_conn_get_tls_alert2(c->conn),
-                                           NULL, 0);
-            } else {
-                ngtcp2_ccerr_set_liberr(&c->last_error, rv, NULL, 0);
-            }
-            return -1;
-        }
+    if (c->read_error) {
+        return;
     }
+    int rv = ngtcp2_conn_read_pkt(c->conn, &path, &pi, data, len, nq_now_ns());
+    if (rv != 0) {
+        fprintf(stderr, "ngtcp2_conn_read_pkt: %s\n", ngtcp2_strerror(rv));
+        if (rv == NGTCP2_ERR_CRYPTO) {
+            ngtcp2_ccerr_set_tls_alert(&c->last_error, ngtcp2_conn_get_tls_alert2(c->conn),
+                                       NULL, 0);
+        } else {
+            ngtcp2_ccerr_set_liberr(&c->last_error, rv, NULL, 0);
+        }
+        c->read_error = 1;
+    }
+}
+
+static int client_read(struct client *c) {
+    return nq_recv_packets(c->fd, client_recv, c) != 0 || c->read_error ? -1 : 0;
 }
 
 static int client_write(struct client *c) {
@@ -227,7 +221,7 @@ static int client_write(struct client *c) {
         if (n == 0) {
             break;
         }
-        if (nq_send_packet(c->fd, &ps.path, buf, (size_t)n) != 0) {
+        if (nq_send_packets(c->fd, &ps.path, buf, (size_t)n, (size_t)n) != 0) {
             return -1;
         }
         ++pkts;
@@ -251,7 +245,7 @@ static void client_close(struct client *c) {
                                                         sizeof(buf), &c->last_error,
                                                         nq_now_ns());
     if (n > 0) {
-        nq_send_packet(c->fd, &ps.path, buf, (size_t)n);
+        nq_send_packets(c->fd, &ps.path, buf, (size_t)n, (size_t)n);
     }
 }
 
@@ -268,6 +262,7 @@ static int client_connect_socket(struct client *c, const char *host, uint16_t po
         fprintf(stderr, "connect: %s\n", strerror(errno));
         return -1;
     }
+    nq_socket_setup(c->fd);
     c->local_addrlen = sizeof(c->local_addr);
     if (getsockname(c->fd, (struct sockaddr *)&c->local_addr, &c->local_addrlen) != 0) {
         fprintf(stderr, "getsockname: %s\n", strerror(errno));
@@ -310,9 +305,7 @@ int nq_run_client(const struct nq_args *args) {
             goto out;
         }
 
-        struct pollfd pfd = {.fd = c.fd, .events = POLLIN};
-        int timeout = nq_poll_timeout(ngtcp2_conn_get_expiry2(c.conn), nq_now_ns());
-        int n = poll(&pfd, 1, timeout);
+        int n = nq_poll(c.fd, ngtcp2_conn_get_expiry2(c.conn));
         if (nq_stop) {
             goto out;
         }

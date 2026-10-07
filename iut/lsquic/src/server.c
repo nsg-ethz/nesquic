@@ -191,9 +191,7 @@ int nq_run_server(const struct nq_args *args) {
         goto out;
     }
 
-    lsquic_engine_init_settings(&settings, LSENG_SERVER);
-    settings.es_versions = 1 << LSQVER_I001;
-    settings.es_idle_timeout = NQ_IDLE_TIMEOUT_S;
+    nq_engine_settings(&settings, LSENG_SERVER);
     if (lsquic_engine_check_settings(&settings, LSENG_SERVER, err, sizeof(err)) != 0) {
         fprintf(stderr, "invalid settings: %s\n", err);
         goto out;

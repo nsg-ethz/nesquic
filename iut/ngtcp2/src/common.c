@@ -1,7 +1,8 @@
+#define _GNU_SOURCE /* ppoll */
 #include "common.h"
 
 #include <errno.h>
-#include <limits.h>
+#include <poll.h>
 #include <signal.h>
 #include <sys/uio.h>
 
@@ -48,10 +49,11 @@ int nq_get_new_connection_id_cb(ngtcp2_conn *conn, ngtcp2_cid *cid,
     return 0;
 }
 
-int nq_send_packet(int fd, const ngtcp2_path *path, const uint8_t *data, size_t len) {
+int nq_send_packets(int fd, const ngtcp2_path *path, const uint8_t *data, size_t len,
+                    size_t gsolen) {
     struct iovec iov = {.iov_base = (void *)data, .iov_len = len};
+    char control[CMSG_SPACE(sizeof(uint16_t))];
     struct msghdr msg;
-    ssize_t n;
 
     memset(&msg, 0, sizeof(msg));
     msg.msg_name = path->remote.addr;
@@ -59,14 +61,29 @@ int nq_send_packet(int fd, const ngtcp2_path *path, const uint8_t *data, size_t 
     msg.msg_iov = &iov;
     msg.msg_iovlen = 1;
 
-    do {
-        n = sendmsg(fd, &msg, 0);
-    } while (n == -1 && errno == EINTR);
+    if (len > gsolen) {
+        uint16_t segment = (uint16_t)gsolen;
+        struct cmsghdr *cmsg;
 
-    if (n == -1) {
-        /* A full socket buffer is just a lost packet to QUIC. */
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return 0;
+        memset(control, 0, sizeof(control));
+        msg.msg_control = control;
+        msg.msg_controllen = sizeof(control);
+        cmsg = CMSG_FIRSTHDR(&msg);
+        cmsg->cmsg_level = SOL_UDP;
+        cmsg->cmsg_type = UDP_SEGMENT;
+        cmsg->cmsg_len = CMSG_LEN(sizeof(segment));
+        memcpy(CMSG_DATA(cmsg), &segment, sizeof(segment));
+    }
+
+    while (sendmsg(fd, &msg, 0) == -1) {
+        if (errno == EINTR && !nq_stop) {
+            continue;
+        }
+        /* Wait for the socket buffer to drain rather than dropping the batch. */
+        if ((errno == EAGAIN || errno == EWOULDBLOCK) && !nq_stop) {
+            struct pollfd pfd = {.fd = fd, .events = POLLOUT};
+            poll(&pfd, 1, -1);
+            continue;
         }
         fprintf(stderr, "sendmsg: %s\n", strerror(errno));
         return -1;
@@ -152,15 +169,13 @@ fail:
     return NULL;
 }
 
-int nq_poll_timeout(ngtcp2_tstamp expiry, ngtcp2_tstamp now) {
-    uint64_t ms;
-    if (expiry == UINT64_MAX) {
-        return -1;
-    }
-    if (expiry <= now) {
-        return 0;
-    }
-    /* Round up so we never wake before the timer is due. */
-    ms = (expiry - now + NGTCP2_MILLISECONDS - 1) / NGTCP2_MILLISECONDS;
-    return ms > INT_MAX ? INT_MAX : (int)ms;
+int nq_poll(int fd, ngtcp2_tstamp expiry) {
+    struct pollfd pfd = {.fd = fd, .events = POLLIN};
+    ngtcp2_tstamp now = nq_now_ns();
+    uint64_t ns = expiry <= now ? 0 : expiry - now;
+    /* Nanosecond resolution: pacing timers are far shorter than a millisecond. */
+    struct timespec ts = {.tv_sec = (time_t)(ns / NGTCP2_SECONDS),
+                          .tv_nsec = (long)(ns % NGTCP2_SECONDS)};
+
+    return ppoll(&pfd, 1, expiry == UINT64_MAX ? NULL : &ts, NULL);
 }
