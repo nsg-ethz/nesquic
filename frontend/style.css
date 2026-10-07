@@ -1,42 +1,43 @@
+/* Colors from uchū (vendor/uchu.css, https://uchu.style). */
 :root {
     color-scheme: light;
-    --page: #f4f4f2;
-    --surface-1: #fcfcfb;
-    --border: #e1e0dc;
-    --grid: #ecebe7;
-    --text-primary: #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted: #7a7974;
-    --series-1: #2a78d6;
-    --accent: #2a78d6;
+    --page: var(--uchu-gray-1);
+    --surface-1: var(--uchu-yang);
+    --border: var(--uchu-gray-3);
+    --grid: var(--uchu-gray-2);
+    --text-primary: var(--uchu-yin-9);
+    --text-secondary: var(--uchu-yin-7);
+    --text-muted: var(--uchu-yin-5);
+    --series-1: var(--uchu-blue-5);
+    --accent: var(--uchu-blue-5);
 }
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
         color-scheme: dark;
-        --page: #111110;
-        --surface-1: #1a1a19;
-        --border: #2e2e2c;
-        --grid: #262624;
-        --text-primary: #ffffff;
-        --text-secondary: #c3c2b7;
-        --text-muted: #8f8e86;
-        --series-1: #3987e5;
-        --accent: #3987e5;
+        --page: var(--uchu-yin);
+        --surface-1: var(--uchu-yin-9);
+        --border: var(--uchu-yin-7);
+        --grid: var(--uchu-yin-8);
+        --text-primary: var(--uchu-yang);
+        --text-secondary: var(--uchu-yin-2);
+        --text-muted: var(--uchu-yin-4);
+        --series-1: var(--uchu-blue-4);
+        --accent: var(--uchu-blue-3);
     }
 }
 
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --page: #111110;
-    --surface-1: #1a1a19;
-    --border: #2e2e2c;
-    --grid: #262624;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8f8e86;
-    --series-1: #3987e5;
-    --accent: #3987e5;
+    --page: var(--uchu-yin);
+    --surface-1: var(--uchu-yin-9);
+    --border: var(--uchu-yin-7);
+    --grid: var(--uchu-yin-8);
+    --text-primary: var(--uchu-yang);
+    --text-secondary: var(--uchu-yin-2);
+    --text-muted: var(--uchu-yin-4);
+    --series-1: var(--uchu-blue-4);
+    --accent: var(--uchu-blue-3);
 }
 
 * { box-sizing: border-box; }
@@ -144,7 +145,7 @@ section > p { margin: 4px 0 12px; color: var(--text-secondary); }
     margin-top: 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: #fff;
+    background: var(--uchu-yang);
 }
 
 .tooltip {
