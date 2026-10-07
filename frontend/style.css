@@ -1,4 +1,6 @@
-/* Colors from uchū (vendor/uchu.css, https://uchu.style). */
+@import "@inc/uchu/css";
+
+/* Colors from uchū (https://uchu.style). */
 :root {
     color-scheme: light;
     --page: var(--uchu-gray-1);

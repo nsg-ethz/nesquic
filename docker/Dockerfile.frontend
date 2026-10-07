@@ -9,13 +9,16 @@ ADD https://github.com/quiclog/qvis.git#${QVIS_COMMIT} /qvis
 WORKDIR /qvis/visualizations
 RUN npm ci && npm run build
 
-FROM nginx:alpine
+FROM oven/bun:1-alpine AS site
 
-ADD https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js /usr/share/nginx/html/vendor/d3.min.js
-ADD https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js /usr/share/nginx/html/vendor/js-yaml.min.js
-ADD https://cdn.jsdelivr.net/npm/@inc/uchu@3.0.0/dist/uchu.css /usr/share/nginx/html/vendor/uchu.css
-RUN chmod -R a+r /usr/share/nginx/html/vendor
+WORKDIR /frontend
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY frontend/ .
+RUN bun run build
+
+FROM nginx:alpine
 
 COPY --from=qvis /qvis/visualizations/dist /usr/share/nginx/html/qvis
 COPY docker/frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
-COPY frontend/ /usr/share/nginx/html/
+COPY --from=site /frontend/dist /usr/share/nginx/html

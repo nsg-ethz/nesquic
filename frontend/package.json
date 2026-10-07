@@ -1,0 +1,13 @@
+{
+  "name": "nesquic-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build ./index.html --outdir=dist --minify"
+  },
+  "dependencies": {
+    "@inc/uchu": "3.0.0",
+    "d3": "7.9.0",
+    "js-yaml": "4.1.0"
+  }
+}

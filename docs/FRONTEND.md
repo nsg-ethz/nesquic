@@ -22,6 +22,14 @@ Panels:
 nginx forwards `POST /api/query` to InfluxDB's `/api/v2/query` with the
 token from `INFLUX_TOKEN`; there is no authentication in front of it.
 
+Dependencies (D3, js-yaml, uchū) are managed with [bun](https://bun.sh)
+(`frontend/package.json`, `frontend/bun.lock`); the image bundles the page
+with `bun run build`. For local work:
+
+```sh
+cd frontend && bun install && bun run build   # writes frontend/dist
+```
+
 After changing the frontend, rebuild the image:
 
 ```sh

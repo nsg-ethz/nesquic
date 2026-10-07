@@ -1,7 +1,8 @@
 // Nesquic results: the panels of the former Grafana dashboard
 // (script/main.dashboard.py), drawn with D3 as mean ± standard deviation over
 // all matching measurements, plus a qvis view of each experiment's qlog.
-"use strict";
+import * as d3 from "d3";
+import yaml from "js-yaml";
 
 const BUCKET = "nesquic";
 const ALL = "__all__";
@@ -421,7 +422,7 @@ async function loadRuns() {
 async function init() {
     try {
         const res = await fetch("experiments.yaml", { cache: "no-store" });
-        experiments = jsyaml.load(await res.text()) || [];
+        experiments = yaml.load(await res.text()) || [];
 
         const wanted = readHash();
         fillSelect(els.library, await tagValues("library"), false);
