@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nesquic Results</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="vendor/d3.min.js"></script>
+    <script src="vendor/js-yaml.min.js"></script>
+</head>
+<body>
+    <header class="toolbar">
+        <h1>Nesquic</h1>
+        <label>Library <select id="library"></select></label>
+        <label>Run <select id="run"></select></label>
+        <label>Range
+            <select id="range">
+                <option value="all" selected>All time</option>
+                <option value="-30d">Last 30 days</option>
+                <option value="-7d">Last 7 days</option>
+                <option value="-24h">Last 24 hours</option>
+                <option value="-6h">Last 6 hours</option>
+                <option value="-1h">Last hour</option>
+            </select>
+        </label>
+        <button id="refresh" type="button">Refresh</button>
+        <span id="status" class="status" role="status"></span>
+    </header>
+
+    <main id="dashboard"></main>
+
+    <div id="tooltip" class="tooltip" hidden></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

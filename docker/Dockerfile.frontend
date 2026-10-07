@@ -1,0 +1,20 @@
+# Serves the results frontend (frontend/), a self-hosted qvis build under
+# /qvis/, and proxies Flux queries to InfluxDB (see docker/frontend/).
+FROM node:16-alpine AS qvis
+
+ARG QVIS_COMMIT=3db6acf239a1ab668afe67ea5cf84e6efbd35810
+
+ADD https://github.com/quiclog/qvis.git#${QVIS_COMMIT} /qvis
+
+WORKDIR /qvis/visualizations
+RUN npm ci && npm run build
+
+FROM nginx:alpine
+
+ADD https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js /usr/share/nginx/html/vendor/d3.min.js
+ADD https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js /usr/share/nginx/html/vendor/js-yaml.min.js
+RUN chmod -R a+r /usr/share/nginx/html/vendor
+
+COPY --from=qvis /qvis/visualizations/dist /usr/share/nginx/html/qvis
+COPY docker/frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY frontend/ /usr/share/nginx/html/

@@ -1,0 +1,35 @@
+# Rendered by the nginx image's envsubst step; only the INFLUX_* variables
+# are substituted.
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # Flux queries from the frontend. The token is added here so the page
+    # does not need to know it.
+    location = /api/query {
+        proxy_pass ${INFLUX_URL}/api/v2/query?org=${INFLUX_ORG};
+        proxy_set_header Authorization "Token ${INFLUX_TOKEN}";
+        proxy_set_header Content-Type "application/json";
+        proxy_set_header Accept "application/csv";
+    }
+
+    location = /experiments.yaml {
+        alias /srv/experiments.yaml;
+        default_type text/yaml;
+        add_header Cache-Control no-cache;
+    }
+
+    # res/qlog/<library>/<job>.qlog, listed as JSON for the frontend.
+    location /qlog/ {
+        alias /srv/qlog/;
+        autoindex on;
+        autoindex_format json;
+        default_type application/json;
+        add_header Cache-Control no-cache;
+        add_header Access-Control-Allow-Origin *;
+    }
+}

@@ -1,0 +1,162 @@
+:root {
+    color-scheme: light;
+    --page: #f4f4f2;
+    --surface-1: #fcfcfb;
+    --border: #e1e0dc;
+    --grid: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #7a7974;
+    --series-1: #2a78d6;
+    --accent: #2a78d6;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --page: #111110;
+        --surface-1: #1a1a19;
+        --border: #2e2e2c;
+        --grid: #262624;
+        --text-primary: #ffffff;
+        --text-secondary: #c3c2b7;
+        --text-muted: #8f8e86;
+        --series-1: #3987e5;
+        --accent: #3987e5;
+    }
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #111110;
+    --surface-1: #1a1a19;
+    --border: #2e2e2c;
+    --grid: #262624;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --series-1: #3987e5;
+    --accent: #3987e5;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 10px 16px;
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+}
+
+.toolbar h1 { margin: 0 8px 0 0; font-size: 18px; }
+.toolbar label { color: var(--text-secondary); }
+.toolbar select, .toolbar button, .qlog button {
+    margin-left: 4px;
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--page);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+}
+.toolbar button, .qlog button { cursor: pointer; }
+.status { color: var(--text-muted); }
+
+main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 16px 48px;
+}
+
+section > h2 {
+    margin: 32px 0 4px;
+    font-size: 17px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+}
+section > p { margin: 4px 0 12px; color: var(--text-secondary); }
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.panel.wide { grid-column: 1 / -1; }
+
+@media (max-width: 800px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.panel {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px 6px;
+    min-width: 0;
+}
+.panel h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.panel .chart { height: 260px; position: relative; }
+.panel .empty {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+}
+
+.chart svg { display: block; overflow: visible; }
+.chart .tick text { fill: var(--text-secondary); font-size: 11px; }
+.chart .domain { stroke: var(--border); }
+.chart .y-axis .tick line { stroke: var(--grid); }
+.chart .x-axis .tick line { display: none; }
+.chart .axis-label { fill: var(--text-secondary); font-size: 11px; }
+.chart .bar { fill: var(--series-1); }
+.chart .bar.hover { opacity: 0.8; }
+.chart .err { stroke: var(--text-primary); stroke-width: 1.5; fill: none; }
+
+.qlog {
+    margin-top: 12px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+.qlog .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.qlog h3 { margin: 0; font-size: 14px; }
+.qlog a { color: var(--accent); }
+.qlog .muted { color: var(--text-muted); }
+.qlog iframe {
+    display: block;
+    width: 100%;
+    height: 720px;
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+}
+
+.tooltip {
+    position: fixed;
+    z-index: 10;
+    pointer-events: none;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12px;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+}
+.tooltip .k { color: var(--text-secondary); }
