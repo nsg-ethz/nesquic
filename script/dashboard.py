@@ -1,5 +1,6 @@
 # pyright: reportCallIssue=none
 import argparse
+import functools
 import json
 import os
 import sys
@@ -8,7 +9,7 @@ import attr
 import yaml
 from grafanalib.core import (
     DEFAULT_TIME_PICKER,
-    BarChart,
+    BarChart as GrafanaBarChart,
     Dashboard,
     GridPos,
     RowPanel,
@@ -18,7 +19,7 @@ from grafanalib.core import (
 from grafanalib._gen import write_dashboard
 
 BUCKET = "nesquic"
-DATASOURCE = "influxdb"
+DATASOURCE = {"type": "influxdb", "uid": "influxdb"}
 PANEL_HEIGHT = 8
 DASHBOARD_WIDTH = 24
 DASHBOARD_MID = DASHBOARD_WIDTH / 2
@@ -32,6 +33,22 @@ COLOR_BY_MODE = {
     }],
     "extraJson": {"options": {"colorByField": "mode"}},
 }
+
+# Below schema 42, Grafana's migration also hides every field hidden from the
+# viz from the tooltip.
+SCHEMA_VERSION = 42
+
+# The stddev column is not drawn as a bar, only listed in the tooltip.
+BarChart = functools.partial(GrafanaBarChart, overrides=[{
+    "matcher": {"id": "byName", "options": "stddev"},
+    "properties": [{"id": "custom.hideFrom", "value": {"viz": True, "legend": True, "tooltip": False}}],
+}])
+
+STATS = """stats = (tables=<-, columns) => {
+  grouped = tables |> group(columns: columns)
+  return join(tables: {mean: grouped |> mean(), stddev: grouped |> stddev()}, on: columns)
+    |> rename(columns: {_value_mean: "_value", _value_stddev: "stddev"})
+}"""
 
 # Grafana template variable filter — kept as a plain string so that
 # the ${...} syntax is not interpreted by Python's f-string engine.
@@ -77,6 +94,7 @@ def latest_invocation(library):
         f'    schema.tagValues(bucket: "{BUCKET}", tag: "nesquic_invocation", start: 0,',
         f'      predicate: (r) => r.library == "{library}" and r.nesquic_run =~ /^${{nesquic_run:regex}}$/),',
         "  ]) |> sort() |> last() |> findRecord(fn: (key) => true, idx: 0))._value",
+        STATS,
     ])
 
 
@@ -84,11 +102,9 @@ INVOCATION_FILTER = '  |> filter(fn: (r) => (if exists r.nesquic_invocation then
 
 
 def mean_per(*columns):
-    # Averages the repetitions (NQ_REPETITIONS in script/run.sh) of the invocation.
-    return "\n".join([
-        f'  |> group(columns: {json.dumps(columns)})',
-        "  |> mean()",
-    ])
+    # Mean and standard deviation over the repetitions (NQ_REPETITIONS in
+    # script/run.sh) of the invocation.
+    return f"  |> stats(columns: {json.dumps(columns)})"
 
 
 def y_offset():
@@ -377,14 +393,14 @@ def flux_comparison_query(measurement, field, job):
         'import "dict"',
         'import "strings"',
         f"names = [{names}]",
+        STATS,
         f'from(bucket: "{BUCKET}")',
         "  |> range(start: 0)",
         f'  |> filter(fn: (r) => r._measurement == "{measurement}" and r._field == "{field}")',
         f'  |> filter(fn: (r) => r.job == "{job}")',
         RUN_FILTER,
         '  |> map(fn: (r) => ({r with nesquic_invocation: if exists r.nesquic_invocation then r.nesquic_invocation else ""}))',
-        '  |> group(columns: ["library", "nesquic_invocation"])',
-        "  |> mean()",
+        mean_per("library", "nesquic_invocation"),
         '  |> group(columns: ["library"])',
         '  |> sort(columns: ["nesquic_invocation"])',
         "  |> last()",
@@ -440,6 +456,7 @@ def iut_dashboard(library, exps):
     return Dashboard(
         title=display_name(library),
         tags="nesquic",
+        schemaVersion=SCHEMA_VERSION,
         timezone="browser",
         timePicker=attr.evolve(DEFAULT_TIME_PICKER, hidden=True),
         panels=[
@@ -454,6 +471,7 @@ def overview_dashboard(exps):
     return Dashboard(
         title="Overview",
         tags="nesquic",
+        schemaVersion=SCHEMA_VERSION,
         timezone="browser",
         timePicker=attr.evolve(DEFAULT_TIME_PICKER, hidden=True),
         panels=[p for e in exps for p in comparison_panels(e)],
