@@ -19,9 +19,9 @@ RES_DIR="${WORKSPACE}/res"
 NQ_RUN_LABEL="${NQ_RUN_LABEL:-default}"
 NQ_INVOCATION=$(date +%s)
 
-NQ_REPETITIONS="${NQ_REPETITIONS:-1}"
-if [[ ! ${NQ_REPETITIONS} =~ ^[1-9][0-9]*$ ]]; then
-    echo -e "${COLOR_RED}error: NQ_REPETITIONS must be a positive integer${COLOR_OFF}" >&2
+NQ_REPS="${NQ_REPS:-1}"
+if [[ ! ${NQ_REPS} =~ ^[1-9][0-9]*$ ]]; then
+    echo -e "${COLOR_RED}error: NQ_REPS must be a positive integer${COLOR_OFF}" >&2
     exit 1
 fi
 
@@ -157,7 +157,9 @@ function teardown {
 }
 
 function setup {
-    docker compose -f ${WORKSPACE}/docker/backend.yml up -d
+    # Created here so the frontend's bind mount is not owned by root.
+    mkdir -p ${RES_DIR}/qlog
+    docker compose -f ${WORKSPACE}/docker/service.yml up -d
 
     kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}
@@ -210,13 +212,30 @@ function config_exp_driving {
     EXP_BLOB="50Mbit"
 }
 
+# Deletes earlier results of this library, experiment and run label, so that
+# repeated runs are not merged.
+function clear_experiment {
+    local predicate="library=\\\"$1\\\" AND job=\\\"${EXP_NAME}\\\" AND nesquic_run=\\\"${NQ_RUN_LABEL}\\\""
+
+    curl -sS --fail-with-body --retry 5 --retry-connrefused -X POST \
+        "http://127.0.0.1:8086/api/v2/delete?org=${INFLUX_ORG:-nesquic}&bucket=${INFLUX_BUCKET:-nesquic}" \
+        -H "Authorization: Token ${INFLUX_TOKEN:-nesquic-token}" \
+        -H "Content-Type: application/json" \
+        -d "{\"start\":\"1970-01-01T00:00:00Z\",\"stop\":\"2100-01-01T00:00:00Z\",\"predicate\":\"${predicate}\"}" && return
+
+    echo -e "\n${COLOR_RED}Could not delete earlier results of ${EXP_NAME}${COLOR_OFF}"
+    teardown
+}
+
 function run_experiment {
+    clear_experiment $1
+
     # detached: without libnesquic.so; only the client's own report is printed.
     # attached: collects the metrics.
     # qlog: only writes qlog traces, which slows down the monitored library.
     for EXP_MODE in detached attached qlog; do
         # Every repetition overwrites the same qlog trace.
-        local reps=${NQ_REPETITIONS}
+        local reps=${NQ_REPS}
         if [[ ${EXP_MODE} == qlog ]]; then
             reps=1
         fi
@@ -268,4 +287,6 @@ fi
 for LIB in "${LIBS[@]}"; do
     ${WORKSPACE}/script/build.sh ${LIB}
     run_library_experiments ${LIB}
+    ${WORKSPACE}/script/qlog.sh ${LIB} > /dev/null \
+        || echo -e "${COLOR_RED}Could not render the qlog traces of ${LIB}${COLOR_OFF}"
 done

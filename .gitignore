@@ -5,5 +5,4 @@
 __pycache__
 res/qlog
 graft
-docker/grafana/dashboard/*.json
 .claude/worktrees

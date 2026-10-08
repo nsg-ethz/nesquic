@@ -34,7 +34,7 @@ library defaults to the binary name without its `nesquic-` prefix.
 3. `qlog`: `libnesquic.so` writes qlog traces (see [Debugging](#debugging))
    and no metrics are uploaded.
 
-`NQ_REPETITIONS` (default 1) repeats the `detached` and `attached` modes that
+`NQ_REPS` (default 1) repeats the `detached` and `attached` modes that
 many times; the dashboard shows the mean of the newest `script/run.sh`
 invocation's repetitions.
 

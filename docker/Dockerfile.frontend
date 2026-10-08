@@ -1,0 +1,18 @@
+# Serves the results frontend (frontend/) and proxies Flux queries to InfluxDB
+# (see docker/frontend/).
+FROM oven/bun:1-alpine AS site
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY frontend/ .
+RUN bun run build
+
+FROM nginx:alpine
+
+# The bind-mounted res/ files are unreadable to the nginx user when the host
+# umask denies "other" (e.g. 0007).
+RUN sed -i 's/^user .*/user root;/' /etc/nginx/nginx.conf
+
+COPY docker/frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=site /frontend/dist /usr/share/nginx/html

@@ -7,7 +7,6 @@ networks:
             com.docker.network.bridge.name: nesquic
 
 volumes:
-    grafana_data:
     influxdb_data:
 
 services:
@@ -29,27 +28,23 @@ services:
             - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUX_BUCKET:-nesquic}
             - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUX_TOKEN:-nesquic-token}
 
-    grafana:
-        image: grafana/grafana:latest
-        container_name: grafana
+    frontend:
+        build:
+            context: ..
+            dockerfile: docker/Dockerfile.frontend
+        image: nesquic/frontend
+        container_name: frontend
         networks:
             - nesquic
         restart: unless-stopped
         ports:
-            - "3000:3000"
+            - "3000:80"
         depends_on:
             - influxdb
-        user: root
         volumes:
-            - grafana_data:/var/lib/grafana
-            - ./grafana/datasource.yml:/etc/grafana/provisioning/datasources/nesquic.yml:ro
-            - ./grafana/dashboard.yml:/etc/grafana/provisioning/dashboards/nesquic.yml:ro
-            - ./grafana/dashboard:/var/lib/grafana/dashboards:ro
+            - ../res/experiments.yaml:/srv/experiments.yaml:ro
+            - ../res/qlog:/srv/qlog:ro
         environment:
-            - GF_SECURITY_ADMIN_USER=${GF_ADMIN_USER:-admin}
-            - GF_SECURITY_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD:-admin}
-            - GF_AUTH_ANONYMOUS_ENABLED=true
-            - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
-            - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-            - GF_AUTH_DISABLE_LOGIN_FORM=true
-            - GF_USERS_ALLOW_SIGN_UP=false
+            - INFLUX_URL=http://influxdb:8086
+            - INFLUX_ORG=${INFLUX_ORG:-nesquic}
+            - INFLUX_TOKEN=${INFLUX_TOKEN:-nesquic-token}
