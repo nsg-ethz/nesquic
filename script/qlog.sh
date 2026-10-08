@@ -18,4 +18,8 @@ fi
 
 for LIB in "${LIBS[@]}"; do
     uvx --from ${QVIS} qvis ${LIB}/*.qlog
+    # Plain scrolling over a plot should scroll the frontend: zoom only with
+    # Cmd/Ctrl held.
+    sed -i -e '/"wheel",/,/preventDefault/ s/if (_frozen) return;/if (_frozen || !(e.metaKey || e.ctrlKey)) return;/' \
+        -e 's/Scroll to zoom/${modKey}-scroll to zoom/' ${LIB}/*.html
 done
