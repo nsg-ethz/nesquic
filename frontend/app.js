@@ -422,6 +422,7 @@ async function loadRuns() {
 async function init() {
     try {
         const res = await fetch("experiments.yaml", { cache: "no-store" });
+        if (!res.ok) throw new Error(`experiments.yaml: HTTP ${res.status}`);
         experiments = yaml.load(await res.text()) || [];
 
         const wanted = readHash();

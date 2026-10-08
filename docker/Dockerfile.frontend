@@ -19,6 +19,10 @@ RUN bun run build
 
 FROM nginx:alpine
 
+# The bind-mounted res/ files are unreadable to the nginx user when the host
+# umask denies "other" (e.g. 0007).
+RUN sed -i 's/^user .*/user root;/' /etc/nginx/nginx.conf
+
 COPY --from=qvis /qvis/visualizations/dist /usr/share/nginx/html/qvis
 COPY docker/frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=site /frontend/dist /usr/share/nginx/html
