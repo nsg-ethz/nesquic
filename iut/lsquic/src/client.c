@@ -9,22 +9,31 @@
 struct client {
     const char *host;
     X509_STORE *trust;          /* holds only the --cert certificate */
-    uint8_t request[NQ_REQUEST_LEN];
-    size_t request_sent;
-    uint64_t request_ns;
-    uint64_t requested;
-    uint64_t received;
-    int fin;                    /* response fully received */
-    int ok;
+    struct nq_load *load;
     int closed;                 /* connection closed: leave the event loop */
 };
 
-static struct client g_client;
+/* The stream context. */
+struct request {
+    size_t sent;
+    uint64_t begin_ns;
+    uint64_t received;
+    int fin;                    /* response fully received */
+};
+
+/* Per thread: every connection has its own engine (see nq_run_connections). */
+static __thread struct client g_client;
+
+/* lsquic queues the streams until the handshake and the stream limit allow them. */
+static void make_streams(lsquic_conn_t *conn) {
+    for (; g_client.load->pending; --g_client.load->pending) {
+        lsquic_conn_make_stream(conn);
+    }
+}
 
 static lsquic_conn_ctx_t *on_new_conn(void *ctx, lsquic_conn_t *conn) {
     (void)ctx;
-    /* Queued until the handshake completes. */
-    lsquic_conn_make_stream(conn);
+    make_streams(conn);
     return NULL;
 }
 
@@ -41,27 +50,30 @@ static void on_conn_closed(lsquic_conn_t *conn) {
 }
 
 static lsquic_stream_ctx_t *on_new_stream(void *ctx, lsquic_stream_t *stream) {
+    struct request *r = stream ? calloc(1, sizeof(*r)) : NULL;
     (void)ctx;
-    if (stream) {
+    if (r) {
         lsquic_stream_wantwrite(stream, 1);
+    } else if (stream) {
+        lsquic_conn_abort(lsquic_stream_conn(stream));
     }
-    return NULL;
+    return (lsquic_stream_ctx_t *)r;
 }
 
 static void on_write(lsquic_stream_t *stream, lsquic_stream_ctx_t *h) {
     struct client *c = &g_client;
-    (void)h;
+    struct request *r = (struct request *)h;
 
-    ssize_t n = lsquic_stream_write(stream, c->request + c->request_sent,
-                                    NQ_REQUEST_LEN - c->request_sent);
+    ssize_t n = lsquic_stream_write(stream, c->load->request + r->sent,
+                                    NQ_REQUEST_LEN - r->sent);
     if (n < 0) {
         fprintf(stderr, "lsquic_stream_write: %s\n", strerror(errno));
         lsquic_conn_abort(lsquic_stream_conn(stream));
         return;
     }
-    c->request_sent += (size_t)n;
-    if (c->request_sent == NQ_REQUEST_LEN) {
-        c->request_ns = nq_now_ns();
+    r->sent += (size_t)n;
+    if (r->sent == NQ_REQUEST_LEN) {
+        r->begin_ns = nq_load_begin(c->load);
         /* Finish the send side (FIN) and wait for the blob. */
         lsquic_stream_shutdown(stream, 1);
         lsquic_stream_wantwrite(stream, 0);
@@ -70,41 +82,40 @@ static void on_write(lsquic_stream_t *stream, lsquic_stream_ctx_t *h) {
 }
 
 static size_t discard(void *ctx, const unsigned char *buf, size_t len, int fin) {
-    struct client *c = ctx;
+    struct request *r = ctx;
     (void)buf;
-    c->received += len;
+    r->received += len;
     if (fin) {
-        c->fin = 1;
+        r->fin = 1;
     }
     return len;
 }
 
 static void on_read(lsquic_stream_t *stream, lsquic_stream_ctx_t *h) {
     struct client *c = &g_client;
-    (void)h;
+    struct request *r = (struct request *)h;
+    lsquic_conn_t *conn = lsquic_stream_conn(stream);
 
-    ssize_t n = lsquic_stream_readf(stream, discard, c);
+    ssize_t n = lsquic_stream_readf(stream, discard, r);
     if (n < 0) {
         fprintf(stderr, "lsquic_stream_readf: %s\n", strerror(errno));
         lsquic_conn_abort(lsquic_stream_conn(stream));
         return;
     }
-    if (n == 0 || c->fin) {
-        nq_report(c->received, c->request_ns);
-        c->ok = c->received == c->requested;
-        if (!c->ok) {
-            fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",
-                    (unsigned long long)c->received, (unsigned long long)c->requested);
+    if (n == 0 || r->fin) {
+        nq_load_end(c->load, r->received, r->begin_ns);
+        lsquic_stream_close(stream);
+        make_streams(conn);
+        if (nq_load_done(c->load)) {
+            /* All exchanges done: close the connection (application close). */
+            lsquic_conn_close(conn);
         }
-        lsquic_stream_wantread(stream, 0);
-        /* Single exchange done: close the connection (application close). */
-        lsquic_conn_close(lsquic_stream_conn(stream));
     }
 }
 
 static void on_close(lsquic_stream_t *stream, lsquic_stream_ctx_t *h) {
     (void)stream;
-    (void)h;
+    free(h);
 }
 
 static const struct lsquic_stream_if stream_if = {
@@ -151,7 +162,7 @@ static X509_STORE *load_trust(const char *path) {
     return store;
 }
 
-int nq_run_client(const struct nq_args *args) {
+int nq_run_client(const struct nq_args *args, struct nq_load *load) {
     struct client *c = &g_client;
     struct nq_socket sock = {.fd = -1};
     struct sockaddr_storage peer;
@@ -163,12 +174,7 @@ int nq_run_client(const struct nq_args *args) {
     uint16_t port;
     int rc = 1;
 
-    if (nq_blob_bytes(args->blob, &c->requested) != 0) {
-        fprintf(stderr, "malformed blob size: %s\n", args->blob);
-        return 1;
-    }
-    nq_request_encode(c->requested, c->request);
-
+    c->load = load;
     if (nq_split_host_port(args->url, host, sizeof(host), &port) != 0) {
         fprintf(stderr, "malformed url: %s\n", args->url);
         return 1;
@@ -216,7 +222,7 @@ int nq_run_client(const struct nq_args *args) {
     }
 
     if (nq_event_loop(engine, &sock, &c->closed) == 0 && !nq_stop) {
-        rc = c->ok ? 0 : 1;
+        rc = nq_load_ok(load) ? 0 : 1;
     }
 
 out:

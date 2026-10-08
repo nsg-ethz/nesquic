@@ -46,6 +46,9 @@ static INIT: extern "C" fn() = init;
 #[cfg_attr(test, allow(dead_code))]
 extern "C" fn init() {
     if context::enabled() {
+        if context::Context::current().mode.as_deref() == Some("client") {
+            metrics::METRICS.track_requests();
+        }
         ENABLED.store(true, Ordering::Relaxed);
         // SAFETY: `report` is a plain `extern "C" fn()` that lives as long as
         // the process (the preloaded library is never unloaded).

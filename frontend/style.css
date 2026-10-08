@@ -11,6 +11,8 @@
     --text-secondary: var(--uchu-yin-7);
     --text-muted: var(--uchu-yin-5);
     --series-1: var(--uchu-blue-5);
+    --series-2: var(--uchu-orange-5);
+    --series-3: var(--uchu-purple-5);
     --accent: var(--uchu-blue-5);
 }
 
@@ -25,6 +27,8 @@
         --text-secondary: var(--uchu-yin-2);
         --text-muted: var(--uchu-yin-4);
         --series-1: var(--uchu-blue-4);
+    --series-2: var(--uchu-orange-7);
+    --series-3: var(--uchu-purple-4);
         --accent: var(--uchu-blue-3);
     }
 }
@@ -39,6 +43,8 @@
     --text-secondary: var(--uchu-yin-2);
     --text-muted: var(--uchu-yin-4);
     --series-1: var(--uchu-blue-4);
+    --series-2: var(--uchu-orange-7);
+    --series-3: var(--uchu-purple-4);
     --accent: var(--uchu-blue-3);
 }
 
@@ -112,6 +118,17 @@ section > p { margin: 4px 0 12px; color: var(--text-secondary); }
 }
 .panel h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
 .panel .chart { height: 260px; position: relative; }
+.legend { display: flex; gap: 12px; font-size: 11px; color: var(--text-secondary); }
+.legend i {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 4px;
+    border-radius: 2px;
+    background: var(--series-1);
+}
+.legend i.part-1 { background: var(--series-2); }
+.legend i.part-2 { background: var(--series-3); }
 .panel .empty {
     height: 100%;
     display: grid;
@@ -126,6 +143,8 @@ section > p { margin: 4px 0 12px; color: var(--text-secondary); }
 .chart .x-axis .tick line { display: none; }
 .chart .axis-label { fill: var(--text-secondary); font-size: 11px; }
 .chart .bar { fill: var(--series-1); }
+.chart .bar.part-1 { fill: var(--series-2); }
+.chart .bar.part-2 { fill: var(--series-3); }
 .chart .bar.hover { opacity: 0.8; }
 .chart .err { stroke: var(--text-primary); stroke-width: 1.5; fill: none; }
 

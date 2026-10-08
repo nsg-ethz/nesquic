@@ -13,7 +13,7 @@
 //! so the associated data and plaintext are collected per context and the
 //! packet is observed once `Final` succeeds. Contexts that never pass
 //! associated data (header protection, session ticket encryption) are
-//! ignored.
+//! ignored, also for the crypto duration.
 //!
 //! OpenSSL implements `EVP_CipherUpdate`/`EVP_CipherFinal_ex` and the
 //! non-`_ex` finals by calling these functions through the PLT, so they are
@@ -26,6 +26,8 @@ use std::collections::HashMap;
 use libc::{c_int, c_uchar, c_void};
 
 use super::observe;
+use super::METRICS;
+use crate::preload::metrics::now_ns;
 
 /// Associated data beyond this is not a QUIC header (a long header with two
 /// 20-byte CIDs and a large token is still well below).
@@ -64,8 +66,9 @@ fn reset(ctx: *mut c_void) {
 
 /// Handles an `Update` call on `ctx` with input `data`: associated data if
 /// `out` is null, payload otherwise. Payload bytes are only collected for
-/// operations that started with associated data.
-fn update(ctx: *mut c_void, out: *mut c_uchar, data: &[u8]) {
+/// operations that started with associated data. Returns whether the call
+/// belongs to such an operation.
+fn update(ctx: *mut c_void, out: *mut c_uchar, data: &[u8]) -> bool {
     with_ops(|ops| {
         let key = ctx as usize;
         if out.is_null() {
@@ -77,20 +80,27 @@ fn update(ctx: *mut c_void, out: *mut c_uchar, data: &[u8]) {
             if !op.oversized {
                 op.ad.extend_from_slice(data);
             }
+            true
         } else if let Some(op) = ops.get_mut(&key) {
             op.in_payload = true;
             op.oversized |= op.payload.len() + data.len() > MAX_PAYLOAD;
             if !op.oversized {
                 op.payload.extend_from_slice(data);
             }
+            true
+        } else {
+            false
         }
-    });
+    })
+    .unwrap_or(false)
 }
 
 /// Handles the end of the operation on `ctx`, observing the packet if
-/// `ok` (encrypted, or decrypted and authenticated).
-fn finish(ctx: *mut c_void, ok: bool, sent: bool) {
+/// `ok` (encrypted, or decrypted and authenticated). `start` is when the
+/// `Final` call began.
+fn finish(ctx: *mut c_void, ok: bool, sent: bool, start: u64) {
     if let Some(Some(op)) = with_ops(|ops| ops.remove(&(ctx as usize))) {
+        METRICS.add_crypto(now_ns() - start);
         if ok && !op.oversized {
             observe(&op.ad, &op.payload, sent);
         }
@@ -140,10 +150,10 @@ redhook::hook! {
         inp: *const c_uchar, in_len: c_int
     ) -> c_int => hook_encrypt_update {
         // Encryption may happen in place: collect the plaintext first.
-        if super::super::enabled() {
-            update(ctx, out, slice(inp, in_len));
+        if !super::super::enabled() || !update(ctx, out, slice(inp, in_len)) {
+            return redhook::real!(EVP_EncryptUpdate)(ctx, out, out_len, inp, in_len);
         }
-        redhook::real!(EVP_EncryptUpdate)(ctx, out, out_len, inp, in_len)
+        METRICS.time_crypto(|| redhook::real!(EVP_EncryptUpdate)(ctx, out, out_len, inp, in_len))
     }
 }
 
@@ -155,14 +165,17 @@ redhook::hook! {
         if !super::super::enabled() {
             return redhook::real!(EVP_DecryptUpdate)(ctx, out, out_len, inp, in_len);
         }
-        if out.is_null() {
-            update(ctx, out, slice(inp, in_len));
-        }
+        let mut tracked = out.is_null() && update(ctx, out, slice(inp, in_len));
+        let start = now_ns();
         let ret = redhook::real!(EVP_DecryptUpdate)(ctx, out, out_len, inp, in_len);
+        let end = now_ns();
         // The plaintext is only there after decryption; it is authenticated
         // by `Final`.
         if ret == 1 && !out.is_null() && !out_len.is_null() {
-            update(ctx, out, slice(out, *out_len));
+            tracked = update(ctx, out, slice(out, *out_len));
+        }
+        if tracked {
+            METRICS.add_crypto(end - start);
         }
         ret
     }
@@ -172,9 +185,10 @@ redhook::hook! {
     unsafe fn EVP_EncryptFinal_ex(
         ctx: *mut c_void, out: *mut c_uchar, out_len: *mut c_int
     ) -> c_int => hook_encrypt_final_ex {
+        let start = now_ns();
         let ret = redhook::real!(EVP_EncryptFinal_ex)(ctx, out, out_len);
         if super::super::enabled() {
-            finish(ctx, ret == 1, true);
+            finish(ctx, ret == 1, true, start);
         }
         ret
     }
@@ -184,9 +198,10 @@ redhook::hook! {
     unsafe fn EVP_DecryptFinal_ex(
         ctx: *mut c_void, out: *mut c_uchar, out_len: *mut c_int
     ) -> c_int => hook_decrypt_final_ex {
+        let start = now_ns();
         let ret = redhook::real!(EVP_DecryptFinal_ex)(ctx, out, out_len);
         if super::super::enabled() {
-            finish(ctx, ret == 1, false);
+            finish(ctx, ret == 1, false, start);
         }
         ret
     }

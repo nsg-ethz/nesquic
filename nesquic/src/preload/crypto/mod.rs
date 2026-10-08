@@ -32,6 +32,18 @@ fn is_quic_header(ad: &[u8]) -> bool {
     }
 }
 
+/// The destination connection ID of the short header `ad`: what is left
+/// between the flags and the packet number.
+fn short_dcid(ad: &[u8]) -> Option<&[u8]> {
+    let first = *ad.first()?;
+    if first & 0x80 != 0 {
+        return None;
+    }
+    let pn_len = (first & 0x03) as usize + 1;
+    ad.get(1..ad.len().checked_sub(pn_len)?)
+        .filter(|dcid| dcid.len() <= super::MAX_CID_LEN)
+}
+
 /// Records a packet with header `ad` and plaintext `payload`, `sent` by the
 /// monitored process or received by it.
 fn observe(ad: &[u8], payload: &[u8], sent: bool) {
@@ -39,7 +51,13 @@ fn observe(ad: &[u8], payload: &[u8], sent: bool) {
         return;
     }
 
-    METRICS.record_packet(sent, &frame::summarize(payload));
+    let summary = frame::summarize(payload, |frame| {
+        // Only 1-RTT packets carry the requests and responses.
+        if let Some(dcid) = short_dcid(ad) {
+            METRICS.record_stream(sent, dcid, &frame);
+        }
+    });
+    METRICS.record_packet(sent, &summary);
 
     if qlog::enabled() {
         if let Some(header) = parse_quic_header(ad) {
@@ -71,5 +89,13 @@ mod tests {
         assert!(is_quic_header(&[0x40, 0xaa, 0xbb, 0x01]));
         assert!(!is_quic_header(&[0x40; 26]));
         assert!(!is_quic_header(&[]));
+    }
+
+    #[test]
+    fn finds_short_header_dcid() {
+        assert_eq!(short_dcid(&[0x41, 0xaa, 0xbb, 0x01, 0x02]), Some(&[0xaa, 0xbb][..]));
+        assert_eq!(short_dcid(&[0x40, 0x01]), Some(&[][..]));
+        assert_eq!(short_dcid(&[0xc0, 0, 0, 0, 1, 0, 0]), None);
+        assert_eq!(short_dcid(&[0x43, 0x01]), None);
     }
 }

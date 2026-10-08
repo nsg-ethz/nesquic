@@ -1,7 +1,7 @@
 use crate::{settings, Benchmark, PendingRequest};
 use anyhow::{anyhow, bail, Result};
-use common::bind_socket;
-use std::net::ToSocketAddrs;
+use common::{bind_socket, load};
+use std::{net::ToSocketAddrs, time::Duration};
 use tokio::sync::{mpsc::UnboundedSender, oneshot};
 use tokio_quiche::{quic, socket::Socket as QuicSocket, ConnectionParams, QuicConnection};
 use tracing::trace;
@@ -68,26 +68,30 @@ impl bin::Client for Client {
         Ok(())
     }
 
-    async fn run(&mut self) -> Result<()> {
-        let Some(send) = self.send.as_mut() else {
+    async fn run(&mut self) -> Result<Vec<Duration>> {
+        let Some(send) = self.send.as_ref() else {
             bail!("not connected");
         };
+        let blob = &self.args.blob;
 
-        let (tx, rx) = oneshot::channel();
-        let request = Request::try_from(self.args.blob.clone())?;
-        let size = request.len();
-        send.send((0, request, tx))
-            .map_err(|_| anyhow!("connection closed"))?;
+        load(&self.args, || async move {
+            let (tx, rx) = oneshot::channel();
+            let request = Request::try_from(blob.clone())?;
+            let size = request.len();
+            send.send((request, tx))
+                .map_err(|_| anyhow!("connection closed"))?;
 
-        let received = rx.await?;
-        if received != size {
-            bail!(
-                "received blob size ({}B) different from requested blob size ({}B)",
-                received,
-                size
-            )
-        }
+            let received = rx.await?;
+            if received != size {
+                bail!(
+                    "received blob size ({}B) different from requested blob size ({}B)",
+                    received,
+                    size
+                )
+            }
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 }

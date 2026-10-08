@@ -1,6 +1,8 @@
 #include <csignal>
 #include <cstdio>
 #include <memory>
+#include <unordered_map>
+#include <vector>
 #include <unistd.h>
 
 #include <fizz/backend/openssl/certificate/OpenSSLCertificateVerifier.h>
@@ -23,34 +25,23 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
                public quic::QuicSocket::ConnectionCallback,
                public quic::QuicSocket::ReadCallback {
   public:
-    Client(folly::EventBase* evb, uint64_t requested) : evb_(evb), requested_(requested) {}
+    // `running` counts the connections sharing `evb`; the last to finish stops it.
+    Client(folly::EventBase* evb, size_t* running) : evb_(evb), running_(running) {}
 
     void setTransport(std::shared_ptr<quic::QuicClientTransport> transport) {
         transport_ = std::move(transport);
     }
 
-    bool ok() const { return ok_; }
+    nq_load* load() { return &load_; }
     bool ready() const { return ready_; }
 
     void onTransportReady() noexcept override {
         ready_ = true;
-        auto stream = transport_->createBidirectionalStream();
-        if (stream.hasError()) {
-            fail("createBidirectionalStream failed");
-            return;
-        }
-        transport_->setReadCallback(*stream, this);
-
-        uint8_t request[NQ_REQUEST_LEN];
-        nq_request_encode(requested_, request);
-        requestNs_ = nq_now_ns();
-        // Write the request and finish the send side (FIN).
-        auto res = transport_->writeChain(*stream, folly::IOBuf::copyBuffer(request, sizeof(request)),
-                                          true);
-        if (res.hasError()) {
-            fail("writeChain failed");
-        }
+        openStreams();
     }
+
+    // The server raised the stream limit.
+    void onBidirectionalStreamsAvailable(uint64_t) noexcept override { openStreams(); }
 
     void readAvailable(quic::StreamId id) noexcept override {
         auto res = transport_->read(id, 0);
@@ -58,23 +49,22 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
             fail("read failed");
             return;
         }
+        auto& request = requests_[id];
         if (res->first) {
-            received_ += res->first->computeChainDataLength();
+            request.received += res->first->computeChainDataLength();
         }
         if (res->second) {
-            nq_report(received_, requestNs_);
-            ok_ = received_ == requested_;
-            if (!ok_) {
-                fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",
-                        static_cast<unsigned long long>(received_),
-                        static_cast<unsigned long long>(requested_));
-            }
+            nq_load_end(&load_, request.received, request.beginNs);
+            requests_.erase(id);
             transport_->setReadCallback(id, nullptr);
-            // Single exchange done: close the connection (application close).
-            // mvfst drops the connection callbacks on a local close, so
-            // onConnectionEnd never fires; leave the loop here instead.
-            transport_->close(std::nullopt);
-            evb_->terminateLoopSoon();
+            openStreams();
+            if (nq_load_done(&load_)) {
+                // All exchanges done: close the connection (application close).
+                // mvfst drops the connection callbacks on a local close, so
+                // onConnectionEnd never fires; leave the loop here instead.
+                transport_->close(std::nullopt);
+                finish();
+            }
         }
     }
 
@@ -91,28 +81,62 @@ class Client : public quic::QuicSocket::ConnectionSetupCallback,
     }
 
     void onConnectionError(quic::QuicError error) noexcept override {
-        if (!ok_) {
+        if (!nq_load_ok(&load_)) {
             fprintf(stderr, "connection error: %s\n", quic::toString(error).c_str());
         }
-        evb_->terminateLoopSoon();
+        finish();
     }
 
-    void onConnectionEnd() noexcept override { evb_->terminateLoopSoon(); }
+    void onConnectionEnd() noexcept override { finish(); }
 
   private:
+    struct Request {
+        uint64_t beginNs{0};
+        uint64_t received{0};
+    };
+
+    // Starts the pending requests as far as the server's stream limit allows.
+    void openStreams() {
+        while (load_.pending && transport_->getNumOpenableBidirectionalStreams() > 0) {
+            auto stream = transport_->createBidirectionalStream();
+            if (stream.hasError()) {
+                fail("createBidirectionalStream failed");
+                return;
+            }
+            --load_.pending;
+            transport_->setReadCallback(*stream, this);
+            requests_[*stream].beginNs = nq_load_begin(&load_);
+            // Write the request and finish the send side (FIN).
+            auto res = transport_->writeChain(
+                *stream, folly::IOBuf::copyBuffer(load_.request, sizeof(load_.request)), true);
+            if (res.hasError()) {
+                fail("writeChain failed");
+                return;
+            }
+        }
+    }
+
     void fail(const std::string& why) {
         fprintf(stderr, "%s\n", why.c_str());
+        load_.failed = 1;
         transport_->closeNow(std::nullopt);
-        evb_->terminateLoopSoon();
+        finish();
+    }
+
+    void finish() {
+        if (!finished_ && --*running_ == 0) {
+            evb_->terminateLoopSoon();
+        }
+        finished_ = true;
     }
 
     folly::EventBase* evb_;
+    size_t* running_;
     std::shared_ptr<quic::QuicClientTransport> transport_;
-    uint64_t requested_;
-    uint64_t received_{0};
-    uint64_t requestNs_{0};
-    bool ok_{false};
+    nq_load load_{};
+    std::unordered_map<quic::StreamId, Request> requests_;
     bool ready_{false};
+    bool finished_{false};
 };
 
 // mvfst's idle timeout does not cover the handshake, so an unreachable server
@@ -151,11 +175,6 @@ std::shared_ptr<const fizz::CertificateVerifier> makeVerifier(const char* caFile
 }  // namespace
 
 int runClient(const nq_args& args) {
-    uint64_t requested;
-    if (nq_blob_bytes(args.blob, &requested) != 0) {
-        fprintf(stderr, "malformed blob size: %s\n", args.blob);
-        return 1;
-    }
     char host[256];
     uint16_t port;
     if (nq_split_host_port(args.url, host, sizeof(host), &port) != 0) {
@@ -170,26 +189,9 @@ int runClient(const nq_args& args) {
 
     folly::EventBase evb;
     auto qEvb = std::make_shared<quic::FollyQuicEventBase>(&evb);
-    Client client(&evb, requested);
-
-    auto fizzCtx = std::make_shared<fizz::client::FizzClientContext>();
-    fizzCtx->setSupportedAlpns({NQ_ALPN});
-    auto handshakeCtx = quic::FizzClientQuicHandshakeContext::Builder()
-                            .setFizzClientContext(std::move(fizzCtx))
-                            .setCertificateVerifier(std::move(verifier))
-                            .build();
-
-    auto transport = std::make_shared<quic::QuicClientTransport>(
-        qEvb, std::make_unique<quic::FollyQuicAsyncUDPSocket>(qEvb), std::move(handshakeCtx));
-    if (!nq_is_ip_literal(host)) {
-        transport->setHostname(host);
-    }
-    transport->addNewPeerAddress(folly::SocketAddress(host, port, true));
-    auto settings = transportSettings();
-    settings.connectUDP = true;
-    transport->setTransportSettings(settings);
-    transport->setSocketOptions(socketOptions());
-    client.setTransport(transport);
+    size_t running = args.connections;
+    std::vector<std::unique_ptr<Client>> clients;
+    std::vector<std::shared_ptr<quic::QuicClientTransport>> transports;
 
     // SIGINT/SIGTERM cancel the job (docs/CLI.md). Without a handler they
     // would be ignored when the client runs as PID 1 in its container.
@@ -197,20 +199,56 @@ int runClient(const nq_args& args) {
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    transport->start(&client, &client);
+    for (unsigned i = 0; i < args.connections; ++i) {
+        auto& client = clients.emplace_back(std::make_unique<Client>(&evb, &running));
+        if (nq_load_init(client->load(), args.blob, args.streams, args.duration) != 0) {
+            return 1;
+        }
+
+        auto fizzCtx = std::make_shared<fizz::client::FizzClientContext>();
+        fizzCtx->setSupportedAlpns({NQ_ALPN});
+        auto handshakeCtx = quic::FizzClientQuicHandshakeContext::Builder()
+                                .setFizzClientContext(std::move(fizzCtx))
+                                .setCertificateVerifier(verifier)
+                                .build();
+
+        auto& transport = transports.emplace_back(std::make_shared<quic::QuicClientTransport>(
+            qEvb, std::make_unique<quic::FollyQuicAsyncUDPSocket>(qEvb), std::move(handshakeCtx)));
+        if (!nq_is_ip_literal(host)) {
+            transport->setHostname(host);
+        }
+        transport->addNewPeerAddress(folly::SocketAddress(host, port, true));
+        auto settings = transportSettings();
+        settings.connectUDP = true;
+        transport->setTransportSettings(settings);
+        transport->setSocketOptions(socketOptions());
+        client->setTransport(transport);
+        transport->start(client.get(), client.get());
+    }
+
     evb.runAfterDelay(
         [&] {
-            if (!client.ready()) {
-                fprintf(stderr, "handshake timed out\n");
-                evb.terminateLoopSoon();
+            for (auto& client : clients) {
+                if (!client->ready()) {
+                    fprintf(stderr, "handshake timed out\n");
+                    evb.terminateLoopSoon();
+                    return;
+                }
             }
         },
         kHandshakeTimeoutMs);
     evb.loopForever();
 
-    // Detach from the transport before the event base goes away.
-    transport->closeNow(std::nullopt);
-    return client.ok() ? 0 : 1;
+    nq_load total = {};
+    bool ok = true;
+    for (size_t i = 0; i < clients.size(); ++i) {
+        // Detach from the transport before the event base goes away.
+        transports[i]->closeNow(std::nullopt);
+        ok = ok && nq_load_ok(clients[i]->load());
+        nq_load_merge(&total, clients[i]->load());
+    }
+    nq_load_report(&total);
+    return ok ? 0 : 1;
 }
 
 }  // namespace nesquic

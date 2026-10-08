@@ -25,6 +25,22 @@ if [[ ! ${NQ_REPS} =~ ^[1-9][0-9]*$ ]]; then
     exit 1
 fi
 
+# One line of shell assignments (EXP_*) per experiment.
+mapfile -t EXPERIMENTS < <(yq -r '.[] | [
+        "EXP_NAME=\(.job | @sh)",
+        "EXP_BLOB=\(.blob | @sh)",
+        "EXP_CONNECTIONS=\(.connections // 1 | @sh)",
+        "EXP_STREAMS=\(.streams // 1 | @sh)",
+        "EXP_DURATION=\(.duration // "" | @sh)",
+        "EXP_DELAY=\(.delay // "" | @sh)",
+        "EXP_LOSS=\(.loss // "" | @sh)",
+        "EXP_LINK=\(.link // "" | @sh)"
+    ] | join(" ")' "${RES_DIR}/experiments.yaml")
+if [[ ${#EXPERIMENTS[@]} -eq 0 ]]; then
+    echo -e "${COLOR_RED}error: could not read experiments from ${RES_DIR}/experiments.yaml (needs yq)${COLOR_OFF}" >&2
+    exit 1
+fi
+
 # Names of containers currently running (set by run_server / run_client)
 SERVER_CONTAINER=""
 CLIENT_CONTAINER=""
@@ -85,8 +101,11 @@ function run_client {
 
     # Without InfluxDB, libnesquic.so prints its metrics instead.
     local out=/dev/stdout
+    # The qlog trace covers a single round of requests, to keep it small.
+    local duration=${EXP_DURATION:+-d ${EXP_DURATION}}
     if [[ ${EXP_MODE} == qlog ]]; then
         out=/dev/null
+        duration=
     fi
 
     docker run --rm --network=host \
@@ -101,6 +120,7 @@ function run_client {
         $(mode_args $1 client ${LOCALHOST_IP}) \
         nesquic/$1 \
         client -j ${EXP_NAME} --cert /workspace/res/pem/cert.pem --blob ${EXP_BLOB} \
+        -c ${EXP_CONNECTIONS} -s ${EXP_STREAMS} ${duration} \
         https://${LOCALHOST_IP}:4433 -L nesquic_run:${NQ_RUN_LABEL} -L nesquic_invocation:${NQ_INVOCATION} > ${out}
 }
 
@@ -176,42 +196,6 @@ function setup {
     sudo systemctl set-property --runtime init.scope AllowedCPUs=${CPU_SYSTEM}
 }
 
-function reset_exp {
-    EXP_NAME=
-    EXP_DELAY=
-    EXP_LOSS=
-    EXP_LINK=
-    EXP_BLOB=
-}
-
-function config_exp_unbounded {
-    reset_exp
-    EXP_NAME="unbounded"
-    EXP_BLOB="50Mbit"
-}
-
-function config_exp_short_delay {
-    reset_exp
-    EXP_NAME="delay5"
-    EXP_DELAY=5
-    EXP_BLOB="50Mbit"
-}
-
-function config_exp_long_delay {
-    reset_exp
-    EXP_NAME="delay20"
-    EXP_DELAY=20
-    EXP_BLOB="50Mbit"
-}
-
-function config_exp_driving {
-    reset_exp
-    EXP_NAME="driving"
-    EXP_DELAY=50
-    EXP_LINK="TMobile-LTE-driving"
-    EXP_BLOB="50Mbit"
-}
-
 # Deletes earlier results of this library, experiment and run label, so that
 # repeated runs are not merged.
 function clear_experiment {
@@ -259,17 +243,11 @@ function run_experiment {
 function run_library_experiments {
     echo -e "${COLOR_YELLOW}Benchmarking $1${COLOR_OFF}"
 
-    config_exp_unbounded
-    run_experiment $1
-
-    config_exp_short_delay
-    run_experiment $1
-
-    config_exp_long_delay
-    run_experiment $1
-
-    config_exp_driving
-    run_experiment $1
+    local config
+    for config in "${EXPERIMENTS[@]}"; do
+        eval "${config}"
+        run_experiment $1
+    done
 
     echo -e "${COLOR_GREEN}Done${COLOR_OFF}"
 }

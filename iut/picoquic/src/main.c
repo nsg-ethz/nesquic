@@ -39,44 +39,60 @@ static void configure(picoquic_quic_t *quic) {
 /* ---- client ---- */
 
 struct client {
-    uint8_t request[NQ_REQUEST_LEN];
-    uint64_t request_ns;
-    uint64_t requested;
-    uint64_t received;
-    int ok;
+    struct nq_load *load;
     int disconnected;
 };
+
+/* The stream context. */
+struct request {
+    uint64_t begin_ns;
+    uint64_t received;
+};
+
+/* picoquic holds streams beyond the server's stream limit back until it is raised. */
+static void open_streams(picoquic_cnx_t *cnx, struct client *c) {
+    for (; c->load->pending; --c->load->pending) {
+        struct request *r = calloc(1, sizeof(*r));
+        if (!r || picoquic_add_to_stream_with_ctx(cnx, picoquic_get_next_local_stream_id(cnx, 0),
+                                                  c->load->request, NQ_REQUEST_LEN, 1, r) != 0) {
+            fprintf(stderr, "cannot open stream\n");
+            free(r);
+            c->load->failed = 1;
+            picoquic_close(cnx, 0);
+            return;
+        }
+        r->begin_ns = nq_load_begin(c->load);
+    }
+}
 
 static int client_callback(picoquic_cnx_t *cnx, uint64_t stream_id, uint8_t *bytes,
                            size_t length, picoquic_call_back_event_t event, void *ctx,
                            void *stream_ctx) {
     struct client *c = ctx;
-    (void)stream_id;
+    struct request *r = stream_ctx;
     (void)bytes;
-    (void)stream_ctx;
 
     switch (event) {
-        /* The request is queued before the handshake and leaves once the
-         * 1-RTT keys are available. */
+        /* The requests leave once the 1-RTT keys are available. */
         case picoquic_callback_almost_ready:
         case picoquic_callback_ready:
-            if (!c->request_ns) {
-                c->request_ns = nq_now_ns();
-            }
+            open_streams(cnx, c);
             break;
         case picoquic_callback_stream_data:
         case picoquic_callback_stream_fin:
-            c->received += length;
+            if (!r) {
+                break;
+            }
+            r->received += length;
             if (event == picoquic_callback_stream_fin) {
-                nq_report(c->received, c->request_ns);
-                c->ok = c->received == c->requested;
-                if (!c->ok) {
-                    fprintf(stderr,
-                            "received blob size (%lluB) different from requested (%lluB)\n",
-                            (unsigned long long)c->received, (unsigned long long)c->requested);
+                nq_load_end(c->load, r->received, r->begin_ns);
+                picoquic_unlink_app_stream_ctx(cnx, stream_id);
+                free(r);
+                open_streams(cnx, c);
+                if (nq_load_done(c->load)) {
+                    /* All exchanges done: close the connection (application close). */
+                    picoquic_close(cnx, 0);
                 }
-                /* Single exchange done: close the connection (application close). */
-                picoquic_close(cnx, 0);
             }
             break;
         case picoquic_callback_stream_reset:
@@ -86,7 +102,7 @@ static int client_callback(picoquic_cnx_t *cnx, uint64_t stream_id, uint8_t *byt
         case picoquic_callback_stateless_reset:
         case picoquic_callback_close:
         case picoquic_callback_application_close:
-            if (!c->ok) {
+            if (!nq_load_ok(c->load)) {
                 fprintf(stderr, "connection closed (local error 0x%llx, remote error 0x%llx)\n",
                         (unsigned long long)picoquic_get_local_error(cnx),
                         (unsigned long long)picoquic_get_remote_error(cnx));
@@ -114,7 +130,11 @@ static int client_loop_cb(picoquic_quic_t *quic, picoquic_packet_loop_cb_enum mo
     return 0;
 }
 
-static int run_client(const struct nq_args *args) {
+/* picoquic_create() and configure() set up process-wide tables. */
+static pthread_mutex_t create_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Runs one connection (see nq_run_connections). */
+static int run_client(const struct nq_args *args, struct nq_load *load) {
     struct client c;
     struct sockaddr_storage server;
     socklen_t serverlen;
@@ -125,11 +145,7 @@ static int run_client(const struct nq_args *args) {
     uint64_t now = picoquic_current_time();
 
     memset(&c, 0, sizeof(c));
-    if (nq_blob_bytes(args->blob, &c.requested) != 0) {
-        fprintf(stderr, "malformed blob size: %s\n", args->blob);
-        return 1;
-    }
-    nq_request_encode(c.requested, c.request);
+    c.load = load;
     if (nq_split_host_port(args->url, host, sizeof(host), &port) != 0) {
         fprintf(stderr, "malformed url: %s\n", args->url);
         return 1;
@@ -140,13 +156,17 @@ static int run_client(const struct nq_args *args) {
 
     /* Trust only the supplied certificate (see docs/PROTOCOL.md). picotls
      * checks it against the SNI, which may be an IP literal. */
+    pthread_mutex_lock(&create_lock);
     quic = picoquic_create(1, NULL, NULL, args->cert, NQ_ALPN, NULL, NULL, NULL, NULL, NULL, now,
                            NULL, NULL, NULL, 0);
+    if (quic) {
+        configure(quic);
+    }
+    pthread_mutex_unlock(&create_lock);
     if (!quic) {
         fprintf(stderr, "cannot create QUIC context\n");
         return 1;
     }
-    configure(quic);
 
     cnx = picoquic_create_cnx(quic, picoquic_null_connection_id, picoquic_null_connection_id,
                               (struct sockaddr *)&server, now, 0, host, NQ_ALPN, 1);
@@ -157,10 +177,7 @@ static int run_client(const struct nq_args *args) {
     }
     picoquic_set_callback(cnx, client_callback, &c);
 
-    /* Queue the request on the first client bidirectional stream, with FIN;
-     * it is sent once the handshake allows. */
-    if (picoquic_add_to_stream(cnx, 0, c.request, sizeof(c.request), 1) != 0 ||
-        picoquic_start_client_cnx(cnx) != 0) {
+    if (picoquic_start_client_cnx(cnx) != 0) {
         fprintf(stderr, "cannot start connection\n");
         picoquic_free(quic);
         return 1;
@@ -168,7 +185,7 @@ static int run_client(const struct nq_args *args) {
 
     picoquic_packet_loop(quic, 0, server.ss_family, 0, NQ_SOCKET_BUFFER, 0, client_loop_cb, &c);
     picoquic_free(quic);
-    return c.ok && !nq_stop ? 0 : 1;
+    return nq_load_ok(load) && !nq_stop ? 0 : 1;
 }
 
 /* ---- server ---- */
@@ -327,5 +344,5 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 
-    return args.mode == NQ_CLIENT ? run_client(&args) : run_server(&args);
+    return args.mode == NQ_CLIENT ? nq_run_connections(&args, run_client) : run_server(&args);
 }

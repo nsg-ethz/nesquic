@@ -1,13 +1,16 @@
 //! In-memory aggregation of everything the hooks observe.
 //!
-//! The hooks sit on the packet hot path of the benchmarked library, so all
-//! state is lock-free atomics; the totals are only read once, at exit.
+//! The hooks sit on the packet hot path of the benchmarked library, so the
+//! state is lock-free atomics, except for the client's request streams
+//! ([`Requests`]); the totals are only read once, at exit.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fmt::Write;
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+use std::sync::Mutex;
 
-use super::frame::Summary;
+use super::frame::{StreamFrame, Summary};
+use super::MAX_CID_LEN;
 
 /// The I/O calls hooked in [`super::io`], in reporting order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,17 +117,93 @@ fn elapsed_ns(start: u64, end: u64) -> Option<u64> {
     (start != 0 && end >= start).then(|| end - start)
 }
 
+/// A stream of the connection that a packet's destination connection ID
+/// stands for. Sent and received packets carry different IDs.
+#[derive(PartialEq, Eq, Hash)]
+struct StreamKey {
+    cid: [u8; MAX_CID_LEN],
+    cid_len: usize,
+    stream: u64,
+}
+
+impl StreamKey {
+    fn new(dcid: &[u8], stream: u64) -> Option<Self> {
+        let mut cid = [0; MAX_CID_LEN];
+        cid.get_mut(..dcid.len())?.copy_from_slice(dcid);
+        Some(StreamKey {
+            cid,
+            cid_len: dcid.len(),
+            stream,
+        })
+    }
+}
+
+/// The request streams of a client: every stream is one request, from the
+/// first packet with its data to the last packet of its response.
+///
+/// A response cannot be tied to its request's connection, as the two
+/// directions use different connection IDs, so responses on a stream ID
+/// are paired with its requests in order. That keeps the mean exact.
+///
+/// ponytail: an entry of about 100 bytes per request is kept for the whole
+/// run, i.e. 100 MB per 10^6 requests, and a client without a connection ID
+/// of its own only counts each stream ID once across its connections.
+/// Upgrade path: learn both connection IDs from the handshake packets and
+/// key a single map by connection.
+#[derive(Default)]
+struct Requests {
+    /// Streams whose request was seen, to ignore its retransmissions.
+    started: HashSet<StreamKey>,
+    /// Start of the unanswered requests, per stream ID.
+    pending: HashMap<u64, VecDeque<u64>>,
+    /// Start and end of the answered requests.
+    finished: HashMap<StreamKey, (u64, u64)>,
+}
+
+impl Requests {
+    fn record(&mut self, sent: bool, key: StreamKey, frame: &StreamFrame, now: u64) {
+        if sent {
+            if frame.offset == 0 && self.started.insert(key) {
+                self.pending.entry(frame.id).or_default().push_back(now);
+            }
+            return;
+        }
+
+        // Data that was lost or reordered arrives after the FIN.
+        if let Some((_, end)) = self.finished.get_mut(&key) {
+            *end = now;
+            return;
+        }
+        if !frame.fin {
+            return;
+        }
+        let Some(starts) = self.pending.get_mut(&frame.id) else {
+            return;
+        };
+        let Some(start) = starts.pop_front() else {
+            return;
+        };
+        if starts.is_empty() {
+            self.pending.remove(&frame.id);
+        }
+        self.finished.insert(key, (start, now));
+    }
+}
+
 pub(crate) struct Metrics {
     io: [IoCounter; Syscall::ALL.len()],
     rx_bytes: AtomicU64,
     rx_window: Window,
     /// First UDP datagram sent: the start of the connection.
     tx_first: AtomicU64,
-    /// First sealed packet carrying stream data: the request.
-    request_sent: AtomicU64,
-    /// Opened packets carrying stream data: the response, from its first
-    /// to its last byte.
-    response: Window,
+    /// First opened packet carrying stream data: the first response byte.
+    response_first: AtomicU64,
+    /// `None` unless [`Metrics::track_requests`] was called.
+    requests: Mutex<Option<Requests>>,
+    /// Nanoseconds spent in the hooked I/O calls on UDP sockets.
+    io_ns: AtomicU64,
+    /// Nanoseconds spent in the AEAD calls that protect packets.
+    crypto_ns: AtomicU64,
     pub packets_sent: AtomicU64,
     pub packets_received: AtomicU64,
     pub acks_sent: AtomicU64,
@@ -133,7 +212,18 @@ pub(crate) struct Metrics {
 
 pub(crate) static METRICS: Metrics = Metrics::new();
 
-fn now_ns() -> u64 {
+/// Runs `f`, adding the nanoseconds it takes to `total`, if any.
+fn time<R>(total: Option<&AtomicU64>, f: impl FnOnce() -> R) -> R {
+    let Some(total) = total else {
+        return f();
+    };
+    let start = now_ns();
+    let ret = f();
+    total.fetch_add(now_ns() - start, Relaxed);
+    ret
+}
+
+pub(crate) fn now_ns() -> u64 {
     let mut ts = libc::timespec {
         tv_sec: 0,
         tv_nsec: 0,
@@ -156,13 +246,33 @@ impl Metrics {
             rx_bytes: AtomicU64::new(0),
             rx_window: Window::new(),
             tx_first: AtomicU64::new(0),
-            request_sent: AtomicU64::new(0),
-            response: Window::new(),
+            response_first: AtomicU64::new(0),
+            requests: Mutex::new(None),
+            io_ns: AtomicU64::new(0),
+            crypto_ns: AtomicU64::new(0),
             packets_sent: AtomicU64::new(0),
             packets_received: AtomicU64::new(0),
             acks_sent: AtomicU64::new(0),
             acks_received: AtomicU64::new(0),
         }
+    }
+
+    /// Runs the I/O call `f` and, if it is one on a UDP socket (`udp`),
+    /// adds the time it takes to the I/O duration.
+    pub fn time_io<R>(&self, udp: bool, f: impl FnOnce() -> R) -> R {
+        time(udp.then_some(&self.io_ns), f)
+    }
+
+    /// Runs the AEAD call `f` and adds the time it takes to the crypto
+    /// duration.
+    pub fn time_crypto<R>(&self, f: impl FnOnce() -> R) -> R {
+        time(super::enabled().then_some(&self.crypto_ns), f)
+    }
+
+    /// Adds `ns` to the crypto duration; for calls that turn out to be part
+    /// of a packet's AEAD operation only once they are done.
+    pub fn add_crypto(&self, ns: u64) {
+        self.crypto_ns.fetch_add(ns, Relaxed);
     }
 
     /// Records one call of `syscall` on a UDP socket that moved `bytes`
@@ -195,13 +305,31 @@ impl Metrics {
             acks.fetch_add(frames.acks, Relaxed);
         }
 
-        if frames.stream_bytes > 0 || frames.stream_fin {
-            if sent {
-                set_once(&self.request_sent, now_ns());
-            } else {
-                self.response.record(now_ns());
-            }
+        if !sent && (frames.stream_bytes > 0 || frames.stream_fin) {
+            set_once(&self.response_first, now_ns());
         }
+    }
+
+    /// Starts measuring the latency of every request; for clients.
+    pub fn track_requests(&self) {
+        if let Ok(mut requests) = self.requests.lock() {
+            *requests = Some(Requests::default());
+        }
+    }
+
+    /// Records a STREAM frame of a 1-RTT packet with destination connection
+    /// ID `dcid`, `sent` or received.
+    pub fn record_stream(&self, sent: bool, dcid: &[u8], frame: &StreamFrame) {
+        let Ok(mut requests) = self.requests.lock() else {
+            return;
+        };
+        let Some(requests) = requests.as_mut() else {
+            return;
+        };
+        let Some(key) = StreamKey::new(dcid, frame.id) else {
+            return;
+        };
+        requests.record(sent, key, frame, now_ns());
     }
 
     /// Time to first byte (ms): from the first datagram the client sent,
@@ -209,19 +337,32 @@ impl Metrics {
     fn ttfb_ms(&self) -> Option<f64> {
         let ns = elapsed_ns(
             self.tx_first.load(Relaxed),
-            self.response.first.load(Relaxed),
+            self.response_first.load(Relaxed),
         )?;
         Some(ns as f64 / 1e6)
     }
 
-    /// Request latency (ms): from the first packet with request data to the
-    /// last packet with response data (normally the one with the FIN).
-    fn request_latency_ms(&self) -> Option<f64> {
-        let ns = elapsed_ns(
-            self.request_sent.load(Relaxed),
-            self.response.last.load(Relaxed),
-        )?;
-        Some(ns as f64 / 1e6)
+    /// The number of answered requests, their mean latency (ms): from the
+    /// first packet with a request's data to the last packet with data of
+    /// its response (normally the one with the FIN), and the time (ms) from
+    /// the first request to the last response.
+    fn request_latency_ms(&self) -> Option<(usize, f64, f64)> {
+        let requests = self.requests.lock().ok()?;
+        let finished = &requests.as_ref()?.finished;
+        if finished.is_empty() {
+            return None;
+        }
+        let (mut ns, mut first, mut last) = (0, u64::MAX, 0);
+        for (start, end) in finished.values() {
+            ns += end - start;
+            first = first.min(*start);
+            last = last.max(*end);
+        }
+        Some((
+            finished.len(),
+            ns as f64 / 1e6 / finished.len() as f64,
+            (last - first) as f64 / 1e6,
+        ))
     }
 
     /// Receive throughput in the unit the IUTs historically reported
@@ -235,8 +376,11 @@ impl Metrics {
     /// Renders all metrics as InfluxDB line protocol.
     ///
     /// - `nesquic`: `throughput`, for clients only (the receiving side)
-    /// - `nesquic_latency`: `ttfb_ms` and `request_latency_ms`, for clients
-    ///   whose library's crypto was hooked (see [`super::crypto`])
+    /// - `nesquic_latency`: `ttfb_ms`, the mean `request_latency_ms` and the
+    ///   `requests` it is the mean of, for clients whose library's crypto
+    ///   was hooked (see [`super::crypto`]), the `request_window_ms` from
+    ///   the first request to the last response, and the total
+    ///   `crypto_duration_ms` and `io_duration_ms` of the process
     /// - `nesquic_io`: per-syscall `count` and `volume_kb_sum`
     /// - `nesquic_quic`: packets and ACK frames sent and received, if the
     ///   library's crypto was hooked (see [`super::crypto`])
@@ -252,13 +396,24 @@ impl Metrics {
                 );
             }
 
-            let latency: Vec<String> = [
-                ("ttfb_ms", self.ttfb_ms()),
-                ("request_latency_ms", self.request_latency_ms()),
-            ]
-            .into_iter()
-            .filter_map(|(name, value)| Some(format!("{name}={}", value?)))
-            .collect();
+            let mut latency = Vec::new();
+            if let Some(ttfb) = self.ttfb_ms() {
+                latency.push(format!("ttfb_ms={ttfb}"));
+            }
+            if let Some((requests, mean, window)) = self.request_latency_ms() {
+                latency.push(format!("request_latency_ms={mean}"));
+                latency.push(format!("requests={requests}i"));
+                latency.push(format!("request_window_ms={window}"));
+            }
+            for (name, ns) in [
+                ("crypto_duration_ms", &self.crypto_ns),
+                ("io_duration_ms", &self.io_ns),
+            ] {
+                let ns = ns.load(Relaxed);
+                if ns > 0 {
+                    latency.push(format!("{name}={}", ns as f64 / 1e6));
+                }
+            }
             if !latency.is_empty() {
                 let _ = writeln!(
                     lines,
@@ -391,42 +546,103 @@ mod tests {
         assert_eq!(m.packets_sent.load(Relaxed), 1);
         assert_eq!(m.acks_sent.load(Relaxed), 2);
         assert_eq!(m.packets_received.load(Relaxed), 1);
-        // Handshake and ACK-only packets say nothing about the request.
-        assert_eq!(m.request_sent.load(Relaxed), 0);
-        assert_eq!(m.response.first.load(Relaxed), 0);
+        // Handshake and ACK-only packets say nothing about the response.
+        assert_eq!(m.response_first.load(Relaxed), 0);
     }
 
     #[test]
-    fn latency_timestamps() {
+    fn ttfb_timestamps() {
         let m = Metrics::new();
         m.record_io(Syscall::Sendmsg, 1200);
         m.record_packet(true, &stream(8, true));
+        assert_eq!(m.response_first.load(Relaxed), 0);
         m.record_packet(false, &stream(1000, false));
-        m.record_packet(false, &stream(0, true));
 
-        let (tx, req) = (m.tx_first.load(Relaxed), m.request_sent.load(Relaxed));
-        let (first, last) = (
-            m.response.first.load(Relaxed),
-            m.response.last.load(Relaxed),
-        );
-        assert!(tx != 0 && tx <= req && req <= first && first <= last);
-        // Only the first request packet counts.
-        m.record_packet(true, &stream(8, false));
-        assert_eq!(m.request_sent.load(Relaxed), req);
+        let (tx, first) = (m.tx_first.load(Relaxed), m.response_first.load(Relaxed));
+        assert!(tx != 0 && tx <= first);
+        // Only the first response packet counts.
+        m.record_packet(false, &stream(0, true));
+        assert_eq!(m.response_first.load(Relaxed), first);
+    }
+
+    fn frame(id: u64, offset: u64, fin: bool) -> StreamFrame {
+        StreamFrame {
+            id,
+            offset,
+            len: 8,
+            fin,
+        }
+    }
+
+    fn key(dcid: &[u8], stream: u64) -> StreamKey {
+        StreamKey::new(dcid, stream).unwrap()
+    }
+
+    #[test]
+    fn measures_every_request() {
+        let (server, client) = (&[1, 2][..], &[3][..]);
+        let mut r = Requests::default();
+
+        r.record(true, key(server, 0), &frame(0, 0, true), 100);
+        r.record(true, key(server, 4), &frame(4, 0, true), 200);
+        // A retransmitted request does not restart its clock.
+        r.record(true, key(server, 0), &frame(0, 0, true), 250);
+        r.record(false, key(client, 4), &frame(4, 0, false), 300);
+        assert!(r.finished.is_empty());
+        r.record(false, key(client, 4), &frame(4, 8, true), 500);
+        r.record(false, key(client, 0), &frame(0, 0, true), 600);
+        // Data that arrives after the FIN still belongs to the response.
+        r.record(false, key(client, 0), &frame(0, 0, false), 700);
+        // A response without a request is ignored.
+        r.record(false, key(client, 8), &frame(8, 0, true), 800);
+
+        assert_eq!(r.finished.get(&key(client, 4)), Some(&(200, 500)));
+        assert_eq!(r.finished.get(&key(client, 0)), Some(&(100, 700)));
+        assert_eq!(r.finished.len(), 2);
+        assert!(r.pending.is_empty());
+    }
+
+    #[test]
+    fn pairs_requests_of_several_connections() {
+        let mut r = Requests::default();
+        r.record(true, key(&[1], 0), &frame(0, 0, true), 100);
+        r.record(true, key(&[2], 0), &frame(0, 0, true), 200);
+        r.record(false, key(&[4], 0), &frame(0, 0, true), 400);
+        r.record(false, key(&[3], 0), &frame(0, 0, true), 700);
+
+        let total: u64 = r.finished.values().map(|(start, end)| end - start).sum();
+        assert_eq!((r.finished.len(), total), (2, 800));
     }
 
     #[test]
     fn renders_latency_for_clients_only() {
         let m = Metrics::new();
         m.tx_first.store(1_000_001, Relaxed);
-        m.request_sent.store(3_000_001, Relaxed);
-        m.response.first.store(4_000_001, Relaxed);
-        m.response.last.store(10_000_001, Relaxed);
+        m.response_first.store(4_000_001, Relaxed);
         assert_eq!(m.ttfb_ms(), Some(3.0));
-        assert_eq!(m.request_latency_ms(), Some(7.0));
+        // Servers do not track requests.
+        m.record_stream(true, &[1], &frame(0, 0, true));
+        assert_eq!(m.request_latency_ms(), None);
+
+        m.track_requests();
+        if let Some(requests) = m.requests.lock().unwrap().as_mut() {
+            requests.finished.insert(key(&[1], 0), (1_000_000, 6_000_000));
+            requests.finished.insert(key(&[1], 4), (1_000_000, 10_000_000));
+        }
+        assert_eq!(m.request_latency_ms(), Some((2, 7.0, 9.0)));
+
+        m.add_crypto(2_500_000);
+        m.time_io(true, || m.io_ns.fetch_add(500_000, Relaxed));
+        let io = m.io_ns.load(Relaxed) as f64 / 1e6;
+        assert!((0.5..0.6).contains(&io));
+        m.time_io(false, || ());
+        assert_eq!(m.io_ns.load(Relaxed) as f64 / 1e6, io);
 
         let client = m.line_protocol(&tags(&[("mode", "client")]), 1);
-        assert!(client.contains("nesquic_latency,mode=client ttfb_ms=3,request_latency_ms=7 1\n"));
+        assert!(client.contains(&format!(
+            "nesquic_latency,mode=client ttfb_ms=3,request_latency_ms=7,requests=2i,request_window_ms=9,\
+             crypto_duration_ms=2.5,io_duration_ms={io} 1\n"
+        )));
         let server = m.line_protocol(&tags(&[("mode", "server")]), 1);
         assert!(!server.contains("nesquic_latency"));
     }
@@ -434,6 +650,7 @@ mod tests {
     #[test]
     fn no_latency_without_crypto_hooks() {
         let m = Metrics::new();
+        m.track_requests();
         m.record_io(Syscall::Sendmsg, 1200);
         m.record_io(Syscall::Recvmsg, 1200);
         assert_eq!(m.ttfb_ms(), None);

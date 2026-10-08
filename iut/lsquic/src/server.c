@@ -66,7 +66,7 @@ static void on_read(lsquic_stream_t *stream, lsquic_stream_ctx_t *st) {
     }
     st->remaining = nq_request_decode(st->request);
     if (st->remaining == 0) {
-        lsquic_stream_shutdown(stream, 1);
+        lsquic_stream_close(stream);
     } else {
         lsquic_stream_wantwrite(stream, 1);
     }
@@ -96,8 +96,9 @@ static void on_write(lsquic_stream_t *stream, lsquic_stream_ctx_t *st) {
         return;
     }
     if (st->remaining == 0) {
-        lsquic_stream_wantwrite(stream, 0);
-        lsquic_stream_shutdown(stream, 1);
+        /* Close, not only shut down the write side: lsquic raises the client's
+         * stream limit only for closed streams. Buffered data is still sent. */
+        lsquic_stream_close(stream);
     }
 }
 

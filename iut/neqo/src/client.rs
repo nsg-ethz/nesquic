@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     num::NonZeroUsize,
     rc::Rc,
@@ -10,7 +11,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use neqo_common::event::Provider as _;
 use neqo_transport::{
     Connection, ConnectionEvent, ConnectionIdGenerator, OutputBatch, RandomConnectionIdGenerator,
-    State, StreamType,
+    State, StreamId, StreamType,
 };
 use neqo_udp::RecvBuf;
 use nss::AuthenticationStatus;
@@ -113,7 +114,7 @@ impl bin::Client for Client {
         Ok(())
     }
 
-    async fn run(&mut self) -> Result<()> {
+    async fn run(&mut self) -> Result<Vec<Duration>> {
         let conn = self.conn.as_mut().ok_or_else(|| anyhow!("not connected"))?;
         let socket = self
             .socket
@@ -124,44 +125,43 @@ impl bin::Client for Client {
         let request = Request::try_from(self.args.blob.clone())?;
         trace!(target: TARGET, "requesting {}B", request.len());
 
-        let stream_id = conn
-            .stream_create(StreamType::BiDi)
-            .context("create bidirectional stream")?;
-
-        // Send the 8-byte request header.
-        let req_bytes = request.to_bytes();
-        let sent = conn
-            .stream_send(stream_id, &req_bytes)
-            .context("send request")?;
-        if sent != 8 {
-            bail!("only sent {sent} of 8 request bytes");
-        }
-        conn.stream_close_send(stream_id)
-            .context("close send side")?;
-
-        trace!(target: TARGET, "request sent on stream {:?}", stream_id);
-
-        let request_size = request.len();
-        let mut received: usize = 0;
-        let mut response_done = false;
+        let deadline = Instant::now() + Duration::from_secs(self.args.duration.unwrap_or(0));
+        let mut pending = self.args.streams;
+        let mut requests: HashMap<StreamId, (Instant, usize)> = HashMap::new();
+        let mut latencies = Vec::new();
         let mut read_buf = vec![0u8; 32 * 1024];
 
         drive_until(conn, socket, local_addr, |conn| {
             while let Some(event) = conn.next_event() {
                 match event {
-                    ConnectionEvent::RecvStreamReadable { stream_id: sid } if sid == stream_id => {
+                    ConnectionEvent::RecvStreamReadable { stream_id } => {
+                        let Some((start, received)) = requests.get_mut(&stream_id) else {
+                            continue;
+                        };
                         loop {
                             let (n, fin) = conn
-                                .stream_recv(sid, &mut read_buf)
+                                .stream_recv(stream_id, &mut read_buf)
                                 .context("stream_recv")?;
-                            received += n;
-                            if fin {
-                                response_done = true;
+                            *received += n;
+                            if !fin && n == 0 {
                                 break;
                             }
-                            if n == 0 {
-                                break;
+                            if !fin {
+                                continue;
                             }
+
+                            if *received != request.len() {
+                                bail!(
+                                    "received blob size ({received}B) different from requested blob size ({}B)",
+                                    request.len()
+                                );
+                            }
+                            latencies.push(start.elapsed());
+                            requests.remove(&stream_id);
+                            if Instant::now() < deadline {
+                                pending += 1;
+                            }
+                            break;
                         }
                     }
                     ConnectionEvent::StateChange(State::Closed(ref reason))
@@ -172,22 +172,34 @@ impl bin::Client for Client {
                     _ => {}
                 }
             }
-            Ok(response_done)
+
+            while pending > 0 {
+                // At the stream limit: retried after the next packet.
+                let Ok(stream_id) = conn.stream_create(StreamType::BiDi) else {
+                    break;
+                };
+                let sent = conn
+                    .stream_send(stream_id, &request.to_bytes())
+                    .context("send request")?;
+                if sent != 8 {
+                    bail!("only sent {sent} of 8 request bytes");
+                }
+                conn.stream_close_send(stream_id)
+                    .context("close send side")?;
+                requests.insert(stream_id, (Instant::now(), 0));
+                pending -= 1;
+            }
+
+            Ok(pending == 0 && requests.is_empty())
         })
         .await?;
 
-        trace!(target: TARGET, "received {received}B");
-
-        if received != request_size {
-            bail!(
-                "received blob size ({received}B) different from requested blob size ({request_size}B)"
-            );
-        }
+        trace!(target: TARGET, "received {} responses", latencies.len());
 
         // No closing connection manually - the quinn-UDP-Socket will be close
         // when the client is dropped (thus saving us an RTT for measuring).
 
-        Ok(())
+        Ok(latencies)
     }
 }
 

@@ -11,15 +11,59 @@ struct client {
     xqc_cid_t cid;
     const char *host;
     X509_STORE *trust;          /* holds only the --cert certificate */
-    uint8_t request[NQ_REQUEST_LEN];
-    uint64_t request_ns;
-    uint64_t requested;
-    uint64_t received;
-    int ok;
+    struct nq_load *load;
+    int connected;              /* handshake finished: streams may be opened */
+    int opening;                /* inside xqc_stream_create(): see log_write */
     int closed;                 /* connection closed: leave the event loop */
 };
 
-static struct client g_client;
+/* The stream's user data. */
+struct request {
+    uint64_t begin_ns;
+    uint64_t received;
+};
+
+/* Per thread: every connection has its own engine (see nq_run_connections). */
+static __thread struct client g_client;
+
+/*
+ * xquic logs an error for every stream it refuses at the server's stream
+ * limit, which open_streams() runs into by design.
+ */
+static void log_write(xqc_log_level_t lvl, const void *buf, size_t size, void *user_data) {
+    if (!g_client.opening) {
+        nq_log_write(lvl, buf, size, user_data);
+    }
+}
+
+/*
+ * Opens the pending request streams as far as the server allows. xquic does
+ * not report a raised stream limit, so this is retried after every read.
+ */
+static void open_streams(struct client *c) {
+    xqc_stream_settings_t stream_settings = {.recv_rate_bytes_per_sec = 1};
+
+    while (c->connected && !c->closed && c->load->pending) {
+        struct request *r = calloc(1, sizeof(*r));
+        xqc_stream_t *stream;
+
+        c->opening = 1;
+        stream = r ? xqc_stream_create(c->engine, &c->cid, &stream_settings, r) : NULL;
+        c->opening = 0;
+        if (!stream) {
+            free(r);
+            return;
+        }
+        --c->load->pending;
+        r->begin_ns = nq_load_begin(c->load);
+        /* The 8-byte request always fits the initial flow control window. */
+        if (xqc_stream_send(stream, c->load->request, NQ_REQUEST_LEN, 1) != NQ_REQUEST_LEN) {
+            fprintf(stderr, "xqc_stream_send failed\n");
+            xqc_conn_close(c->engine, &c->cid);
+            return;
+        }
+    }
+}
 
 /* Validates the server chain against --cert and the URL host. */
 static int verify_peer(struct client *c, SSL *ssl) {
@@ -57,17 +101,10 @@ static void handshake_finished(xqc_connection_t *conn, void *user_data, void *pr
         return;
     }
 
-    xqc_stream_settings_t stream_settings = {.recv_rate_bytes_per_sec = 1};
-    xqc_stream_t *stream = xqc_stream_create(c->engine, &c->cid, &stream_settings, c);
-    if (!stream) {
+    c->connected = 1;
+    open_streams(c);
+    if (c->load->pending == c->load->slots) {
         fprintf(stderr, "xqc_stream_create failed\n");
-        xqc_conn_close(c->engine, &c->cid);
-        return;
-    }
-    c->request_ns = nq_now_ns();
-    /* The 8-byte request always fits the initial flow control window. */
-    if (xqc_stream_send(stream, c->request, NQ_REQUEST_LEN, 1) != NQ_REQUEST_LEN) {
-        fprintf(stderr, "xqc_stream_send failed\n");
         xqc_conn_close(c->engine, &c->cid);
     }
 }
@@ -87,7 +124,7 @@ static int conn_close_notify(xqc_connection_t *conn, const xqc_cid_t *cid, void 
     (void)cid;
     (void)proto_data;
     int err = xqc_conn_get_errno(conn);
-    if (err != 0 && !c->ok) {
+    if (err != 0 && !nq_load_ok(c->load)) {
         fprintf(stderr, "connection closed with error %d\n", err);
     }
     c->closed = 1;
@@ -95,7 +132,8 @@ static int conn_close_notify(xqc_connection_t *conn, const xqc_cid_t *cid, void 
 }
 
 static int stream_read_notify(xqc_stream_t *stream, void *user_data) {
-    struct client *c = user_data;
+    struct client *c = &g_client;
+    struct request *r = user_data;
     unsigned char buf[65536];
     uint8_t fin = 0;
     ssize_t n;
@@ -110,19 +148,23 @@ static int stream_read_notify(xqc_stream_t *stream, void *user_data) {
             xqc_conn_close(c->engine, &c->cid);
             return 0;
         }
-        c->received += (uint64_t)n;
+        r->received += (uint64_t)n;
     } while (n > 0 && !fin);
 
     if (fin) {
-        nq_report(c->received, c->request_ns);
-        c->ok = c->received == c->requested;
-        if (!c->ok) {
-            fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",
-                    (unsigned long long)c->received, (unsigned long long)c->requested);
+        nq_load_end(c->load, r->received, r->begin_ns);
+        open_streams(c);
+        if (nq_load_done(c->load)) {
+            /* All exchanges done: close the connection (application close). */
+            xqc_conn_close(c->engine, &c->cid);
         }
-        /* Single exchange done: close the connection (application close). */
-        xqc_conn_close(c->engine, &c->cid);
     }
+    return 0;
+}
+
+static int stream_close_notify(xqc_stream_t *stream, void *user_data) {
+    (void)stream;
+    free(user_data);
     return 0;
 }
 
@@ -149,6 +191,11 @@ static void on_writable(xqc_engine_t *engine) {
     xqc_conn_continue_send(engine, &g_client.cid);
 }
 
+static void on_read(xqc_engine_t *engine) {
+    (void)engine;
+    open_streams(&g_client);
+}
+
 static X509_STORE *load_trust(const char *path) {
     X509_STORE *store = X509_STORE_new();
     if (!store || X509_STORE_load_locations(store, path, NULL) != 1) {
@@ -159,7 +206,7 @@ static X509_STORE *load_trust(const char *path) {
     return store;
 }
 
-int nq_run_client(const struct nq_args *args) {
+int nq_run_client(const struct nq_args *args, struct nq_load *load) {
     struct client *c = &g_client;
     struct sockaddr_storage peer;
     socklen_t peerlen;
@@ -173,7 +220,7 @@ int nq_run_client(const struct nq_args *args) {
 
     xqc_engine_callback_t engine_cbs = {
         .set_event_timer = nq_set_event_timer,
-        .log_callbacks = {.xqc_log_write_err = nq_log_write},
+        .log_callbacks = {.xqc_log_write_err = log_write},
     };
     xqc_transport_callbacks_t transport_cbs = {
         .write_socket = nq_write_socket,
@@ -192,16 +239,11 @@ int nq_run_client(const struct nq_args *args) {
             .stream_read_notify = stream_read_notify,
             .stream_write_notify = stream_noop_notify,
             .stream_create_notify = stream_noop_notify,
-            .stream_close_notify = stream_noop_notify,
+            .stream_close_notify = stream_close_notify,
         },
     };
 
-    if (nq_blob_bytes(args->blob, &c->requested) != 0) {
-        fprintf(stderr, "malformed blob size: %s\n", args->blob);
-        return 1;
-    }
-    nq_request_encode(c->requested, c->request);
-
+    c->load = load;
     if (nq_split_host_port(args->url, host, sizeof(host), &port) != 0) {
         fprintf(stderr, "malformed url: %s\n", args->url);
         return 1;
@@ -253,8 +295,8 @@ int nq_run_client(const struct nq_args *args) {
     }
     memcpy(&c->cid, cid, sizeof(c->cid));
 
-    if (nq_event_loop(c->engine, &c->closed, on_writable) == 0 && !nq_stop) {
-        rc = c->ok ? 0 : 1;
+    if (nq_event_loop(c->engine, &c->closed, on_writable, on_read) == 0 && !nq_stop) {
+        rc = nq_load_ok(load) ? 0 : 1;
     }
 
 out:

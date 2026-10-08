@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "common.h"
+#include "nesquic.h"
 
 namespace {
 
@@ -14,7 +15,8 @@ using nesquic::Args;
 void usage(const char* prog) {
     fprintf(stderr,
             "usage:\n"
-            "  %s client [--lib msquic] [-j JOB] [-L LABEL] --cert PEM --blob SIZE [URL]\n"
+            "  %s client [--lib msquic] [-j JOB] [-L LABEL] --cert PEM --blob SIZE\n"
+            "      [-c CONNECTIONS] [-s STREAMS] [-d SECONDS] [URL]\n"
             "  %s server [--lib msquic] [-j JOB] [-L LABEL] --cert PEM --key PEM [LISTEN]\n",
             prog, prog);
 }
@@ -46,7 +48,9 @@ int main(int argc, char** argv) {
 
     for (int i = 2; i < argc; ++i) {
         const std::string arg = argv[i];
-        if (arg == "-c" || arg == "--cert") {
+        unsigned* count = nullptr;
+        // -c is the certificate for servers and the connections for clients.
+        if ((arg == "-c" && mode == "server") || arg == "--cert") {
             const char* v = value(argc, argv, i);
             if (!v) { usage(argv[0]); return 2; }
             args.cert = v;
@@ -63,8 +67,12 @@ int main(int argc, char** argv) {
             // Accepted for CLI compatibility with the nesquic harness; ignored
             // here since this build covers only the protocol (see docs/CLI.md).
             value(argc, argv, i);
-        } else if (arg == "--unencrypted") {
-            // Accepted but ignored, matching the other IUTs.
+        } else if (arg == "-c" || arg == "--connections") {
+            count = &args.connections;
+        } else if (arg == "-s" || arg == "--streams") {
+            count = &args.streams;
+        } else if (arg == "-d" || arg == "--duration") {
+            count = &args.duration;
         } else if (!arg.empty() && arg[0] == '-') {
             fprintf(stderr, "unknown option: %s\n", arg.c_str());
             usage(argv[0]);
@@ -72,11 +80,22 @@ int main(int argc, char** argv) {
         } else {
             positionals.push_back(arg);
         }
+        if (count) {
+            const char* v = value(argc, argv, i);
+            if (!v || nq_parse_count(v, count) != 0) {
+                fprintf(stderr, "%s requires a positive number\n", arg.c_str());
+                return 2;
+            }
+        }
     }
 
     if (mode == "client") {
         if (args.cert.empty() || args.blob.empty()) {
             fprintf(stderr, "client requires --cert and --blob\n");
+            return 2;
+        }
+        if (args.streams > NQ_MAX_STREAMS) {
+            fprintf(stderr, "--streams is at most %d\n", NQ_MAX_STREAMS);
             return 2;
         }
         args.url = positionals.empty() ? "https://127.0.0.1:4433" : positionals.front();

@@ -103,6 +103,8 @@ function summarize(rows, key, order) {
                 mean: d3.mean(values),
                 std: values.length > 1 ? d3.deviation(values) : 0,
                 n: values.length,
+                // Only the rows of latencyParts() are split into parts.
+                parts: v[0].parts && v[0].parts.map((_, i) => d3.mean(v, (r) => r.parts[i])),
             };
         },
         key,
@@ -113,6 +115,37 @@ function summarize(rows, key, order) {
             (rank.get(a.category) ?? Infinity) - (rank.get(b.category) ?? Infinity) ||
             d3.ascending(a.category, b.category),
     );
+}
+
+/** What a request spends its latency on; the segments of a stacked bar. */
+const LATENCY_PARTS = ["Crypto", "I/O", "Other"];
+
+/**
+ * One row per client process with its mean request latency as `_value`, split
+ * into `parts` (see LATENCY_PARTS): the time the process spends in crypto and
+ * in I/O while a request is outstanding, and the rest of the latency.
+ *
+ * That is the process' duration per request, times the number of requests
+ * outstanding at once: they overlap, so the same crypto or I/O time is part
+ * of the latency of each of them.
+ */
+function latencyParts(rows) {
+    // A process reports all its fields in one point.
+    const processes = d3.group(rows, (r) => [r.library, r.job, r.nesquic_run, r._time].join("\0"));
+    const out = [];
+    for (const fields of processes.values()) {
+        const f = Object.fromEntries(fields.map((r) => [r._field, r._value]));
+        if (!(f.requests > 0) || f.request_latency_ms === undefined) continue;
+        const latency = f.request_latency_ms;
+        // Mean number of outstanding requests; 1 for a single request.
+        const concurrent = f.request_window_ms > 0 ? f.requests * latency / f.request_window_ms : 1;
+        const perRequest = (duration) => (duration || 0) / f.requests * concurrent;
+        // Durations of several threads, or with the handshake, may exceed the latency.
+        const crypto = Math.min(latency, perRequest(f.crypto_duration_ms));
+        const io = Math.min(latency - crypto, perRequest(f.io_duration_ms));
+        out.push({ ...fields[0], _value: latency, parts: [crypto, io, latency - crypto - io] });
+    }
+    return out;
 }
 
 // --- Bar chart --------------------------------------------------------------
@@ -127,6 +160,7 @@ function showTooltip(event, d, unit) {
     t.append(title);
     for (const [k, v] of [
         [unit, fmt(d.mean)],
+        ...(d.parts || []).map((value, i) => [LATENCY_PARTS[i], fmt(value)]),
         ["std. dev.", fmt(d.std)],
         ["samples", d.n],
     ]) {
@@ -202,21 +236,29 @@ function drawBarChart(container, data, yLabel) {
         .attr("text-anchor", "middle")
         .text(yLabel);
 
-    // Bars: 4px rounded top, square at the baseline.
+    // Bars: 4px rounded top, square at the baseline. A stacked bar is one
+    // segment per part, separated by a 2px gap; only the topmost is rounded.
     const r = Math.min(4, x.bandwidth() / 2);
-    const barPath = (d) => {
+    const segments = (d) => {
+        let lo = 0;
+        const parts = (d.parts || [d.mean]).map((value, part) => ({ d, part, lo, hi: (lo += value) }));
+        return parts.filter((s) => s.hi > s.lo).map((s, i, all) => ({ ...s, top: i === all.length - 1 }));
+    };
+    const barPath = ({ d, lo, hi, top }) => {
         const x0 = x(d.category);
         const x1 = x0 + x.bandwidth();
-        const y0 = y(0);
-        const y1 = y(d.mean);
-        const rr = Math.min(r, y0 - y1);
+        const y0 = y(lo);
+        const y1 = Math.min(y0, y(hi) + (top ? 0 : 2));
+        const rr = top ? Math.min(r, y0 - y1) : 0;
         return `M${x0},${y0}V${y1 + rr}Q${x0},${y1} ${x0 + rr},${y1}` +
             `H${x1 - rr}Q${x1},${y1} ${x1},${y1 + rr}V${y0}Z`;
     };
 
     const bar = g.append("g").selectAll("g").data(data).join("g");
 
-    bar.append("path").attr("class", "bar").attr("d", barPath);
+    bar.selectAll("path").data(segments).join("path")
+        .attr("class", (s) => `bar part-${s.part}`)
+        .attr("d", barPath);
 
     // Error bars: mean ± one standard deviation, clipped at zero.
     const cap = Math.min(10, x.bandwidth() / 3);
@@ -239,11 +281,11 @@ function drawBarChart(container, data, yLabel) {
         .attr("height", innerH)
         .attr("fill", "transparent")
         .on("pointerenter pointermove", function (event, d) {
-            d3.select(this.parentNode).select(".bar").classed("hover", true);
+            d3.select(this.parentNode).selectAll(".bar").classed("hover", true);
             showTooltip(event, d, yLabel);
         })
         .on("pointerleave", function () {
-            d3.select(this.parentNode).select(".bar").classed("hover", false);
+            d3.select(this.parentNode).selectAll(".bar").classed("hover", false);
             hideTooltip();
         });
 }
@@ -258,8 +300,12 @@ function element(tag, props = {}, ...children) {
 
 function panel(parent, title, yLabel, data, wide = false) {
     const chart = element("div", { className: "chart" });
+    // Stacked bars need a legend for their parts.
+    const legend = element("div", { className: "legend" },
+        ...(data.some((d) => d.parts) ? LATENCY_PARTS : []).map((name, i) =>
+            element("span", {}, element("i", { className: `part-${i}` }), name)));
     parent.append(element("div", { className: wide ? "panel wide" : "panel" },
-        element("h3", { textContent: title }), chart));
+        element("h3", { textContent: title }), legend, chart));
     charts.push({ chart, data, yLabel });
 }
 
@@ -307,9 +353,12 @@ async function qlogFiles(library) {
     }
 }
 
-/** Per experiment, throughput of every library. */
+/** Per experiment, throughput and request latency of every library. */
 async function renderOverview(selection) {
-    const nesquic = await points("nesquic", selection);
+    const [nesquic, latency] = await Promise.all([
+        points("nesquic", selection),
+        points("nesquic_latency", selection).then(latencyParts),
+    ]);
 
     charts.length = 0;
     els.dashboard.textContent = "";
@@ -323,14 +372,17 @@ async function renderOverview(selection) {
         section.append(grid);
         panel(grid, "Throughput", "Throughput [Mbps]",
             summarize(rows.filter((r) => r._field === "throughput"), (r) => r.library), true);
+        panel(grid, "Request Latency", "Mean latency [ms]",
+            summarize(latency.filter((r) => r.job === exp.job), (r) => r.library), true);
         els.dashboard.append(section);
     }
 }
 
 async function renderLibrary(selection) {
     const { library } = selection;
-    const [nesquic, io, quic, qlogs] = await Promise.all([
+    const [nesquic, latency, io, quic, qlogs] = await Promise.all([
         points("nesquic", selection),
+        points("nesquic_latency", selection).then(latencyParts),
         points("nesquic_io", selection),
         points("nesquic_quic", selection),
         qlogFiles(library),
@@ -346,6 +398,8 @@ async function renderLibrary(selection) {
     overview.append(ovGrid);
     panel(ovGrid, "Throughput With Varying Connection Delay", "Throughput [Mbps]",
         summarize(nesquic.filter((r) => r._field === "throughput"), (r) => r.job, jobs), true);
+    panel(ovGrid, "Request Latency", "Mean latency [ms]",
+        summarize(latency, (r) => r.job, jobs), true);
     els.dashboard.append(overview);
 
     for (const exp of experiments) {

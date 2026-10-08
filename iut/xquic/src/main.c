@@ -12,5 +12,5 @@ int main(int argc, char **argv) {
     }
 
     nq_install_signal_handlers();
-    return args.mode == NQ_CLIENT ? nq_run_client(&args) : nq_run_server(&args);
+    return args.mode == NQ_CLIENT ? nq_run_connections(&args, nq_run_client) : nq_run_server(&args);
 }

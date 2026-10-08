@@ -14,4 +14,6 @@
 | [mvfst](https://github.com/facebook/mvfst)        | ✅    | C++, fizz/OpenSSL. Flow control windows raised from mvfst's 65 KiB default |
 
 The C IUTs (ngtcp2, LSQUIC, XQUIC, picoquic) share the protocol and CLI helpers in
-`iut/c-common/nesquic.h`.
+`iut/c-common/nesquic.h`. Their clients run every connection (`--connections`)
+on its own thread, because their event loops drive a single socket; the other
+clients multiplex all connections on the library's own runtime.

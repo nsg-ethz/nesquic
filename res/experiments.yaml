@@ -1,12 +1,82 @@
+# The experiments of script/run.sh, shown by the frontend in this order.
+#   job, title, description: InfluxDB tag and qlog file name; what the frontend shows
+#   blob: response size (see docs/CLI.md)
+#   connections, streams: QUIC connections and concurrent requests on each (default 1)
+#   duration: seconds of back-to-back requests (default: a single round)
+#   delay: one-way delay in ms; loss: uplink loss rate; link: trace in res/traces
 - job: unbounded
-  title: Unbounded
-  description: "This experiment runs the client and server in a separate network namespace, but does alter their traffic in any way."
+  title: 10MB download (1 stream, no delay)
+  description: "The client downloads 10MB in a single request. All traffic is left unaltered."
+  blob: 80Mbit
 - job: delay5
-  title: 5ms Delay
-  description: "This experiment delays all traffic by 5ms."
+  title: 10MB download (1 stream, 5ms delay)
+  description: "The client downloads 10MB in a single request. All traffic is delayed by 5ms."
+  blob: 80Mbit
+  delay: 5
 - job: delay20
-  title: 20ms Delay
-  description: "This experiment delays all traffic by 20ms."
+  title: 10MB download (1 stream, 20ms delay)
+  description: "The client downloads 10MB in a single request. All traffic is delayed by 20ms."
+  blob: 80Mbit
+  delay: 20
 - job: driving
-  title: Driving
-  description: "This experiment simulates a cell phone that is connected to an LTE network while driving. 50ms delay are applied to the traffic."
+  title: 10MB download (1 stream, driving)
+  description: "The client downloads 10MB in a single request. The link is that of a cell phone connected to an LTE network while driving, and all traffic is delayed by 50ms."
+  blob: 80Mbit
+  delay: 50
+  link: TMobile-LTE-driving
+- job: 1kb-s50-nodelay
+  title: 1KB download (50 streams, no delay)
+  description: "The client keeps 50 concurrent requests of 1KB each open on one connection for 10s. All traffic is left unaltered."
+  blob: 8Kbit
+  streams: 50
+  duration: 10
+- job: 1kb-s50-delay5
+  title: 1KB download (50 streams, 5ms delay)
+  description: "The client keeps 50 concurrent requests of 1KB each open on one connection for 10s. All traffic is delayed by 5ms."
+  blob: 8Kbit
+  streams: 50
+  duration: 10
+  delay: 5
+- job: 1kb-s50-delay20
+  title: 1KB download (50 streams, 20ms delay)
+  description: "The client keeps 50 concurrent requests of 1KB each open on one connection for 10s. All traffic is delayed by 20ms."
+  blob: 8Kbit
+  streams: 50
+  duration: 10
+  delay: 20
+- job: 1kb-s50-driving
+  title: 1KB download (50 streams, driving)
+  description: "The client keeps 50 concurrent requests of 1KB each open on one connection for 10s. The link is that of a cell phone connected to an LTE network while driving, and all traffic is delayed by 50ms."
+  blob: 8Kbit
+  streams: 50
+  duration: 10
+  delay: 50
+  link: TMobile-LTE-driving
+- job: 1kb-s100-nodelay
+  title: 1KB download (100 streams, no delay)
+  description: "The client keeps 100 concurrent requests of 1KB each open on one connection for 10s. All traffic is left unaltered."
+  blob: 8Kbit
+  streams: 100
+  duration: 10
+- job: 1kb-s100-delay5
+  title: 1KB download (100 streams, 5ms delay)
+  description: "The client keeps 100 concurrent requests of 1KB each open on one connection for 10s. All traffic is delayed by 5ms."
+  blob: 8Kbit
+  streams: 100
+  duration: 10
+  delay: 5
+- job: 1kb-s100-delay20
+  title: 1KB download (100 streams, 20ms delay)
+  description: "The client keeps 100 concurrent requests of 1KB each open on one connection for 10s. All traffic is delayed by 20ms."
+  blob: 8Kbit
+  streams: 100
+  duration: 10
+  delay: 20
+- job: 1kb-s100-driving
+  title: 1KB download (100 streams, driving)
+  description: "The client keeps 100 concurrent requests of 1KB each open on one connection for 10s. The link is that of a cell phone connected to an LTE network while driving, and all traffic is delayed by 50ms."
+  blob: 8Kbit
+  streams: 100
+  duration: 10
+  delay: 50
+  link: TMobile-LTE-driving

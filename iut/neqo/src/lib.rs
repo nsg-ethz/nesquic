@@ -13,7 +13,7 @@ use neqo_transport::{ConnectionParameters, StreamType};
 use neqo_udp::{DatagramIter, RecvBuf};
 use quinn_udp::UdpSocketState;
 use tracing::debug;
-use utils::perf::{CONNECTION_WINDOW, IDLE_TIMEOUT, STREAM_WINDOW};
+use utils::perf::{CONNECTION_WINDOW, IDLE_TIMEOUT, MAX_STREAMS, STREAM_WINDOW};
 
 /// Connection parameters shared by client and server (see docs/PROTOCOL.md).
 pub(crate) fn connection_parameters() -> ConnectionParameters {
@@ -22,6 +22,7 @@ pub(crate) fn connection_parameters() -> ConnectionParameters {
         .max_data(CONNECTION_WINDOW.into())
         .max_stream_data(StreamType::BiDi, false, STREAM_WINDOW.into())
         .max_stream_data(StreamType::BiDi, true, STREAM_WINDOW.into())
+        .max_streams(StreamType::BiDi, MAX_STREAMS)
 }
 
 /// A UDP socket with GSO/GRO support via quinn-udp.

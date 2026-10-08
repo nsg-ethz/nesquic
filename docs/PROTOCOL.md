@@ -9,8 +9,8 @@ are wire-compatible with the description below.
 
 ## Roles
 
-The benchmark is a single request/response exchange over one QUIC bidirectional
-stream:
+The benchmark consists of request/response exchanges, each over its own QUIC
+bidirectional stream:
 
 - The **client** connects, opens a bidirectional stream, sends a fixed 8-byte
   **request** stating how large a payload it wants, then reads the response
@@ -19,8 +19,10 @@ stream:
   request, and writes back exactly that many bytes (a **blob**) before
   finishing the stream.
 
-The transferred payload is the unit of throughput measurement. There is exactly
-**one** request/response per measured run (see §6).
+The transferred payload is the unit of throughput measurement. By default
+there is exactly **one** request/response per measured run; the client's
+`--connections`, `--streams` and `--duration` (see [CLI](CLI.md)) run several
+concurrently and back to back.
 
 ## Transport configuration
 
@@ -40,7 +42,7 @@ interchangeable:
 | Idle timeout        | 10 s                                                         |
 | Stream receive window | 8 MiB (`initial_max_stream_data_bidi_*`)                  |
 | Connection receive window | 16 MiB (`initial_max_data`)                           |
-| Bidirectional streams | 100 (`initial_max_streams_bidi`)                          |
+| Bidirectional streams | 100 (`initial_max_streams_bidi`), the most `--streams` a client accepts; it must wait when the limit is reached |
 | Congestion control  | Cubic                                                        |
 | UDP socket buffers  | `SO_RCVBUF` = `SO_SNDBUF` = 16 MiB requested; the kernel clamps both to `net.core.{r,w}mem_max` |
 | Response payload    | zeros, written in chunks of a static 64 KiB buffer, never materialised as a whole |
@@ -81,7 +83,7 @@ but only the leading 8 bytes are significant.
 2. **connect**: resolve `url` host + port (default 4433), create an endpoint
    bound to `[::]:0`, and establish the QUIC connection using the URL host as
    the server name for certificate validation. Store the connection.
-3. **run** (this is the measured section):
+3. **run** (this is the measured section), for every request:
    1. Open a **bidirectional** stream.
    2. Write the 8-byte request, then **finish** the send side
       (signals end of request).
@@ -91,7 +93,7 @@ but only the leading 8 bytes are significant.
 
 After `run` returns, the client connection is dropped, which closes the QUIC
 connection (application close). A new IUT should likewise tear the connection
-down after the single exchange so the server's accept loop unblocks (see
+down after its last exchange so the server's accept loop unblocks (see
 below).
 
 ### Server

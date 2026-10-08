@@ -18,7 +18,7 @@ int main(int argc, char **argv) {
     }
 
     nq_install_signal_handlers();
-    rc = args.mode == NQ_CLIENT ? nq_run_client(&args) : nq_run_server(&args);
+    rc = args.mode == NQ_CLIENT ? nq_run_connections(&args, nq_run_client) : nq_run_server(&args);
 
     lsquic_global_cleanup();
     return rc;

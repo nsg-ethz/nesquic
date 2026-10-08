@@ -14,6 +14,7 @@
 //! BoringSSL names (see docker/Dockerfile.quinn).
 
 use super::observe_raw;
+use super::METRICS;
 use libc::{c_int, c_void};
 
 redhook::hook! {
@@ -27,10 +28,10 @@ redhook::hook! {
         // place), so observe it first.
         observe_raw(ad, ad_len, inp, in_len, true);
 
-        redhook::real!(EVP_AEAD_CTX_seal_scatter)(
+        METRICS.time_crypto(|| redhook::real!(EVP_AEAD_CTX_seal_scatter)(
             ctx, out, out_tag, out_tag_len, max_out_tag_len, nonce, nonce_len,
             inp, in_len, extra_in, extra_in_len, ad, ad_len
-        )
+        ))
     }
 }
 
@@ -42,9 +43,9 @@ redhook::hook! {
     ) -> c_int => hook_seal {
         observe_raw(ad, ad_len, inp, in_len, true);
 
-        redhook::real!(EVP_AEAD_CTX_seal)(
+        METRICS.time_crypto(|| redhook::real!(EVP_AEAD_CTX_seal)(
             ctx, out, out_len, max_out_len, nonce, nonce_len, inp, in_len, ad, ad_len
-        )
+        ))
     }
 }
 
@@ -54,9 +55,9 @@ redhook::hook! {
         nonce: *const u8, nonce_len: usize, inp: *const u8, in_len: usize,
         ad: *const u8, ad_len: usize
     ) -> c_int => hook_open {
-        let ret = redhook::real!(EVP_AEAD_CTX_open)(
+        let ret = METRICS.time_crypto(|| redhook::real!(EVP_AEAD_CTX_open)(
             ctx, out, out_len, max_out_len, nonce, nonce_len, inp, in_len, ad, ad_len
-        );
+        ));
 
         // The plaintext exists only once the packet was opened successfully.
         if ret == 1 && !out_len.is_null() {

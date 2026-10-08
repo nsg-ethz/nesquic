@@ -31,7 +31,8 @@ struct nq_loop {
     int blocked;             /* the last send hit EAGAIN; wait for POLLOUT */
 };
 
-extern struct nq_loop nq_loop;
+/* Per thread: every client connection runs its own loop (nq_run_connections). */
+extern __thread struct nq_loop nq_loop;
 
 void nq_install_signal_handlers(void);
 
@@ -51,12 +52,15 @@ void nq_conn_settings(xqc_conn_settings_t *settings);
 
 /*
  * Runs the engine until nq_stop is set or `done` (if non-NULL) becomes
- * non-zero. `on_writable` is called when the socket drains after EAGAIN.
+ * non-zero. `on_writable` is called when the socket drains after EAGAIN,
+ * `on_read` (if non-NULL) after the received packets are processed.
  */
 int nq_event_loop(xqc_engine_t *engine, const int *done,
-                  void (*on_writable)(xqc_engine_t *engine));
+                  void (*on_writable)(xqc_engine_t *engine),
+                  void (*on_read)(xqc_engine_t *engine));
 
-int nq_run_client(const struct nq_args *args);
+/* Runs one connection (see nq_run_connections). */
+int nq_run_client(const struct nq_args *args, struct nq_load *load);
 int nq_run_server(const struct nq_args *args);
 
 #endif

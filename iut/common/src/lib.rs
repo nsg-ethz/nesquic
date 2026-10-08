@@ -1,10 +1,10 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use core_affinity::{self, CoreId};
-use futures::future::Either::*;
+use futures::future::{try_join_all, Either::*};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{env, future::Future};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{info, trace};
@@ -69,18 +69,52 @@ pub struct ServerLibArgs {
     pub server: ServerArgs,
 }
 
+/// Runs `--streams` concurrent requests, each followed by another until
+/// `--duration` has passed, and returns their latencies.
+pub async fn load<F>(args: &ClientArgs, request: impl Fn() -> F) -> Result<Vec<Duration>>
+where
+    F: Future<Output = Result<()>>,
+{
+    let deadline = Instant::now() + Duration::from_secs(args.duration.unwrap_or(0));
+    let request = &request;
+    let slot = move || async move {
+        let mut latencies = Vec::new();
+        loop {
+            let start = Instant::now();
+            request().await?;
+            latencies.push(start.elapsed());
+            if Instant::now() >= deadline {
+                return anyhow::Ok(latencies);
+            }
+        }
+    };
+
+    Ok(try_join_all((0..args.streams).map(|_| slot()))
+        .await?
+        .concat())
+}
+
 async fn run_client<C: Client>(args: ClientArgs) -> Result<()> {
     let bytes = Request::try_from(args.blob.clone())?.len();
-    let mut client = C::new(args)?;
-    client.connect().await?;
+    let mut clients = Vec::new();
+    for _ in 0..args.connections {
+        let mut client = C::new(args.clone())?;
+        client.connect().await?;
+        clients.push(client);
+    }
 
     let start = Instant::now();
-    client.run().await?;
+    let latencies = try_join_all(clients.iter_mut().map(|client| client.run()))
+        .await?
+        .concat();
     let secs = start.elapsed().as_secs_f64();
+    let requests = latencies.len();
+    let latency: Duration = latencies.iter().sum();
     println!(
-        "nesquic_app throughput={},request_latency_ms={}",
-        bytes as f64 / 1e6 / secs,
-        secs * 1e3
+        "nesquic_app throughput={},request_latency_ms={},requests={}",
+        (bytes * requests) as f64 / 1e6 / secs,
+        latency.as_secs_f64() * 1e3 / requests as f64,
+        requests
     );
 
     Ok(())

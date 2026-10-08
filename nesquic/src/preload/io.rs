@@ -86,7 +86,7 @@ unsafe fn record_mmsg(syscall: Syscall, msgvec: *const mmsghdr, ret: c_int) {
 redhook::hook! {
     unsafe fn write(fd: c_int, buf: *const c_void, count: size_t) -> ssize_t => hook_write {
         let udp = is_udp(fd);
-        let ret = redhook::real!(write)(fd, buf, count);
+        let ret = METRICS.time_io(udp, || redhook::real!(write)(fd, buf, count));
         if udp { record(Syscall::Write, ret) }
         ret
     }
@@ -95,7 +95,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t => hook_writev {
         let udp = is_udp(fd);
-        let ret = redhook::real!(writev)(fd, iov, iovcnt);
+        let ret = METRICS.time_io(udp, || redhook::real!(writev)(fd, iov, iovcnt));
         if udp { record(Syscall::Writev, ret) }
         ret
     }
@@ -104,7 +104,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn send(fd: c_int, buf: *const c_void, len: size_t, flags: c_int) -> ssize_t => hook_send {
         let udp = is_udp(fd);
-        let ret = redhook::real!(send)(fd, buf, len, flags);
+        let ret = METRICS.time_io(udp, || redhook::real!(send)(fd, buf, len, flags));
         if udp { record(Syscall::Send, ret) }
         ret
     }
@@ -116,7 +116,7 @@ redhook::hook! {
         addr: *const sockaddr, addrlen: socklen_t
     ) -> ssize_t => hook_sendto {
         let udp = is_udp(fd);
-        let ret = redhook::real!(sendto)(fd, buf, len, flags, addr, addrlen);
+        let ret = METRICS.time_io(udp, || redhook::real!(sendto)(fd, buf, len, flags, addr, addrlen));
         if udp { record(Syscall::Sendto, ret) }
         ret
     }
@@ -125,7 +125,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn sendmsg(fd: c_int, msg: *const msghdr, flags: c_int) -> ssize_t => hook_sendmsg {
         let udp = is_udp(fd);
-        let ret = redhook::real!(sendmsg)(fd, msg, flags);
+        let ret = METRICS.time_io(udp, || redhook::real!(sendmsg)(fd, msg, flags));
         if udp { record(Syscall::Sendmsg, ret) }
         ret
     }
@@ -134,7 +134,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn sendmmsg(fd: c_int, msgvec: *mut mmsghdr, vlen: c_uint, flags: c_int) -> c_int => hook_sendmmsg {
         let udp = is_udp(fd);
-        let ret = redhook::real!(sendmmsg)(fd, msgvec, vlen, flags);
+        let ret = METRICS.time_io(udp, || redhook::real!(sendmmsg)(fd, msgvec, vlen, flags));
         if udp { record_mmsg(Syscall::Sendmmsg, msgvec, ret) }
         ret
     }
@@ -143,7 +143,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn read(fd: c_int, buf: *mut c_void, count: size_t) -> ssize_t => hook_read {
         let udp = is_udp(fd);
-        let ret = redhook::real!(read)(fd, buf, count);
+        let ret = METRICS.time_io(udp, || redhook::real!(read)(fd, buf, count));
         if udp { record(Syscall::Read, ret) }
         ret
     }
@@ -152,7 +152,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn readv(fd: c_int, iov: *const iovec, iovcnt: c_int) -> ssize_t => hook_readv {
         let udp = is_udp(fd);
-        let ret = redhook::real!(readv)(fd, iov, iovcnt);
+        let ret = METRICS.time_io(udp, || redhook::real!(readv)(fd, iov, iovcnt));
         if udp { record(Syscall::Readv, ret) }
         ret
     }
@@ -161,7 +161,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn recv(fd: c_int, buf: *mut c_void, len: size_t, flags: c_int) -> ssize_t => hook_recv {
         let udp = is_udp(fd);
-        let ret = redhook::real!(recv)(fd, buf, len, flags);
+        let ret = METRICS.time_io(udp, || redhook::real!(recv)(fd, buf, len, flags));
         if udp { record(Syscall::Recv, ret) }
         ret
     }
@@ -173,7 +173,7 @@ redhook::hook! {
         addr: *mut sockaddr, addrlen: *mut socklen_t
     ) -> ssize_t => hook_recvfrom {
         let udp = is_udp(fd);
-        let ret = redhook::real!(recvfrom)(fd, buf, len, flags, addr, addrlen);
+        let ret = METRICS.time_io(udp, || redhook::real!(recvfrom)(fd, buf, len, flags, addr, addrlen));
         if udp { record(Syscall::Recvfrom, ret) }
         ret
     }
@@ -182,7 +182,7 @@ redhook::hook! {
 redhook::hook! {
     unsafe fn recvmsg(fd: c_int, msg: *mut msghdr, flags: c_int) -> ssize_t => hook_recvmsg {
         let udp = is_udp(fd);
-        let ret = redhook::real!(recvmsg)(fd, msg, flags);
+        let ret = METRICS.time_io(udp, || redhook::real!(recvmsg)(fd, msg, flags));
         if udp { record(Syscall::Recvmsg, ret) }
         ret
     }
@@ -194,7 +194,7 @@ redhook::hook! {
         timeout: *mut libc::timespec
     ) -> c_int => hook_recvmmsg {
         let udp = is_udp(fd);
-        let ret = redhook::real!(recvmmsg)(fd, msgvec, vlen, flags, timeout);
+        let ret = METRICS.time_io(udp, || redhook::real!(recvmmsg)(fd, msgvec, vlen, flags, timeout));
         if udp { record_mmsg(Syscall::Recvmmsg, msgvec, ret) }
         ret
     }

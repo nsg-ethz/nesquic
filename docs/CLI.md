@@ -27,11 +27,14 @@ Common options above, plus (`ClientArgs`):
 | Arg | Value | Required | Default | Description |
 |-----|-------|----------|---------|-------------|
 | `<url>` (positional) | URL | no | `https://127.0.0.1:4433` | Server URL. Host is used for cert validation and resolution; port defaults to `4433` if absent. |
-| `-c`, `--cert` | path | yes | — | PEM certificate to trust (the server's cert / CA). |
+| `--cert` | path | yes | — | PEM certificate to trust (the server's cert / CA). There is no short form: `-c` is the connection count. |
 | `-b`, `--blob` | string | yes | — | Requested payload size, e.g. `50Mbit`. Format: `<number>[G|M|K]bit` (see `docs/PROTOCOL.md` §3). |
-| `--unencrypted` | flag | no | `false` | Leaves traffic unencrypted if set. |
+| `-c`, `--connections` | integer ≥ 1 | no | `1` | QUIC connections, each on its own UDP socket. |
+| `-s`, `--streams` | integer 1–100 | no | `1` | Concurrent requests per connection, each on its own stream. |
+| `-d`, `--duration` | seconds ≥ 1 | no | — | For this long after its first request, a connection follows every finished request by another one. Without it, every connection sends `--streams` requests once. |
 
-The client connects, performs one request/response exchange, records the measurement, and exits.
+The client opens the connections, runs the request/response exchanges, prints
+its measurement (see [Metrics](METRICS.md)), closes the connections and exits.
 
 ### Deriving the size from the CLI blob string
 
@@ -62,7 +65,6 @@ Common options above, plus (`ServerArgs`):
 | `<listen>` (positional) | `addr:port` | no | `0.0.0.0:4433` | Address/port to listen on. |
 | `-c`, `--cert` | path | yes | — | PEM certificate chain. Requires `--key`. |
 | `-k`, `--key` | path | yes | — | PEM private key. Requires `--cert`. |
-| `--unencrypted` | flag | no | `false` | Leaves traffic unencrypted if set. |
 
 The server runs indefinitely, serving connections until it receives `SIGINT` or `SIGTERM` (see below).
 

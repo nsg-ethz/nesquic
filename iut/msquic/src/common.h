@@ -22,6 +22,9 @@ struct Args {
     std::string cert;    // --cert: PEM certificate path
     std::string key;     // --key: PEM private key path (server only)
     std::string blob;    // --blob: requested size, e.g. "50Mbit" (client only)
+    unsigned connections = 1;  // --connections (client only)
+    unsigned streams = 1;      // --streams: concurrent requests per connection (client only)
+    unsigned duration = 0;     // --duration: seconds of requests, 0 for one round (client only)
     std::string url;     // client positional: server URL
     std::string listen;  // server positional: listen address:port
 };

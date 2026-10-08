@@ -1,8 +1,8 @@
 use anyhow::{anyhow, bail, Result};
-use common::bind_socket;
+use common::{bind_socket, load};
 use noq::{crypto::rustls::QuicClientConfig, ClientConfig, Connection, Endpoint, TokioRuntime};
 use rustls::pki_types::{pem::PemObject, CertificateDer};
-use std::{net::ToSocketAddrs, sync::Arc};
+use std::{net::ToSocketAddrs, sync::Arc, time::Duration};
 use tracing::trace;
 use utils::{bin, bin::ClientArgs, perf::Request};
 
@@ -69,44 +69,49 @@ impl bin::Client for Client {
         Ok(())
     }
 
-    async fn run(&mut self) -> Result<()> {
-        let Some(conn) = self.conn.as_mut() else {
+    async fn run(&mut self) -> Result<Vec<Duration>> {
+        let Some(conn) = self.conn.as_ref() else {
             bail!("not connected");
         };
-
-        let (mut send, mut recv) = conn
-            .open_bi()
-            .await
-            .map_err(|e| anyhow!("failed to open stream: {}", e))?;
-
-        trace!(target: TARGET, "sending request");
-
         let request = Request::try_from(self.args.blob.clone())?;
-        send.write_all(&request.to_bytes())
-            .await
-            .map_err(|e| anyhow!("failed to send request: {}", e))?;
-        send.finish()
-            .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
+        let request = &request;
 
-        let mut received = 0;
-        while let Some(chunk) = recv
-            .read_chunk(usize::MAX)
-            .await
-            .map_err(|e| anyhow!("failed to read response: {}", e))?
-        {
-            received += chunk.len();
-        }
-
-        trace!(target: TARGET, "received response: {}B", received);
-
-        if request.len() != received {
-            bail!(
-                "received blob size ({}B) different from requested blob size ({}B)",
-                received,
-                request.len()
-            )
-        }
-
-        Ok(())
+        load(&self.args, || download(conn, request)).await
     }
+}
+
+async fn download(conn: &Connection, request: &Request) -> Result<()> {
+    let (mut send, mut recv) = conn
+        .open_bi()
+        .await
+        .map_err(|e| anyhow!("failed to open stream: {}", e))?;
+
+    trace!(target: TARGET, "sending request");
+
+    send.write_all(&request.to_bytes())
+        .await
+        .map_err(|e| anyhow!("failed to send request: {}", e))?;
+    send.finish()
+        .map_err(|e| anyhow!("failed to shutdown stream: {}", e))?;
+
+    let mut received = 0;
+    while let Some(chunk) = recv
+        .read_chunk(usize::MAX)
+        .await
+        .map_err(|e| anyhow!("failed to read response: {}", e))?
+    {
+        received += chunk.len();
+    }
+
+    trace!(target: TARGET, "received response: {}B", received);
+
+    if request.len() != received {
+        bail!(
+            "received blob size ({}B) different from requested blob size ({}B)",
+            received,
+            request.len()
+        )
+    }
+
+    Ok(())
 }

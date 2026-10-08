@@ -7,7 +7,7 @@
 #include <sys/time.h>
 
 volatile int nq_stop = 0;
-struct nq_loop nq_loop = {.fd = -1};
+__thread struct nq_loop nq_loop = {.fd = -1};
 
 static void on_signal(int sig) {
     (void)sig;
@@ -142,7 +142,8 @@ static void read_packets(xqc_engine_t *engine) {
 }
 
 int nq_event_loop(xqc_engine_t *engine, const int *done,
-                  void (*on_writable)(xqc_engine_t *engine)) {
+                  void (*on_writable)(xqc_engine_t *engine),
+                  void (*on_read)(xqc_engine_t *engine)) {
     nq_socket_setup(nq_loop.fd);
 
     while (!nq_stop && !(done && *done)) {
@@ -180,6 +181,9 @@ int nq_event_loop(xqc_engine_t *engine, const int *done,
         }
         if (n > 0 && (pfd.revents & POLLIN)) {
             read_packets(engine);
+            if (on_read) {
+                on_read(engine);
+            }
         }
         if (nq_loop.timer_deadline && nq_loop.timer_deadline <= nq_now_us()) {
             nq_loop.timer_deadline = 0;

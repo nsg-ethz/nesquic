@@ -48,7 +48,8 @@ SSL_CTX *nq_server_ssl_ctx(const char *cert_file, const char *key_file);
 /* Waits until `fd` is readable or `expiry` passes. Returns like poll(). */
 int nq_poll(int fd, ngtcp2_tstamp expiry);
 
-int nq_run_client(const struct nq_args *args);
+/* Runs one connection (see nq_run_connections). */
+int nq_run_client(const struct nq_args *args, struct nq_load *load);
 int nq_run_server(const struct nq_args *args);
 
 #endif

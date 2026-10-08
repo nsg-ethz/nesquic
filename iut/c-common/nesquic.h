@@ -10,7 +10,9 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
+#include <limits.h>
 #include <netinet/udp.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,6 +49,9 @@ struct nq_args {
     const char *cert;   /* --cert: PEM certificate path */
     const char *key;    /* --key: PEM private key path (server only) */
     const char *blob;   /* --blob: requested size, e.g. "50Mbit" (client only) */
+    unsigned connections; /* --connections: QUIC connections (client only) */
+    unsigned streams;     /* --streams: concurrent requests per connection (client only) */
+    unsigned duration;    /* --duration: seconds of requests, 0 for one round (client only) */
     const char *url;    /* client positional: server URL */
     const char *listen; /* server positional: listen address:port */
 };
@@ -114,9 +119,24 @@ static inline uint64_t nq_request_decode(const uint8_t in[NQ_REQUEST_LEN]) {
 static inline void nq_usage(const char *prog) {
     fprintf(stderr,
             "usage:\n"
-            "  %s client [-j JOB] [-L LABEL] --cert PEM --blob SIZE [URL]\n"
+            "  %s client [-j JOB] [-L LABEL] --cert PEM --blob SIZE [-c CONNECTIONS]\n"
+            "      [-s STREAMS] [-d SECONDS] [URL]\n"
             "  %s server [-j JOB] [-L LABEL] --cert PEM --key PEM [LISTEN]\n",
             prog, prog);
+}
+
+/* Parses a positive count. Returns 0 on success. */
+static inline int nq_parse_count(const char *value, unsigned *out) {
+    char *end;
+    unsigned long n;
+
+    errno = 0;
+    n = strtoul(value, &end, 10);
+    if (value[0] < '0' || value[0] > '9' || *end || errno || n == 0 || n > UINT_MAX) {
+        return -1;
+    }
+    *out = (unsigned)n;
+    return 0;
 }
 
 /*
@@ -129,6 +149,7 @@ static inline int nq_parse_args(int argc, char **argv, struct nq_args *args) {
     int i;
 
     memset(args, 0, sizeof(*args));
+    args->connections = args->streams = 1;
     if (argc < 2) {
         nq_usage(argv[0]);
         return 2;
@@ -145,9 +166,17 @@ static inline int nq_parse_args(int argc, char **argv, struct nq_args *args) {
     for (i = 2; i < argc; ++i) {
         const char *arg = argv[i];
         const char **target = NULL;
+        unsigned *count = NULL;
 
-        if (!strcmp(arg, "-c") || !strcmp(arg, "--cert")) {
+        /* -c is the certificate for servers and the connections for clients. */
+        if ((!strcmp(arg, "-c") && args->mode == NQ_SERVER) || !strcmp(arg, "--cert")) {
             target = &args->cert;
+        } else if (!strcmp(arg, "-c") || !strcmp(arg, "--connections")) {
+            count = &args->connections;
+        } else if (!strcmp(arg, "-s") || !strcmp(arg, "--streams")) {
+            count = &args->streams;
+        } else if (!strcmp(arg, "-d") || !strcmp(arg, "--duration")) {
+            count = &args->duration;
         } else if (!strcmp(arg, "-k") || !strcmp(arg, "--key")) {
             target = &args->key;
         } else if (!strcmp(arg, "-b") || !strcmp(arg, "--blob")) {
@@ -159,9 +188,6 @@ static inline int nq_parse_args(int argc, char **argv, struct nq_args *args) {
                 nq_usage(argv[0]);
                 return 2;
             }
-            continue;
-        } else if (!strcmp(arg, "--unencrypted")) {
-            /* Accepted but ignored, matching the other IUTs. */
             continue;
         } else if (!strncmp(arg, "-j", 2) || !strncmp(arg, "-L", 2) ||
                    !strncmp(arg, "--job=", 6) || !strncmp(arg, "--labels=", 9)) {
@@ -179,12 +205,21 @@ static inline int nq_parse_args(int argc, char **argv, struct nq_args *args) {
             nq_usage(argv[0]);
             return 2;
         }
-        *target = argv[i];
+        if (!count) {
+            *target = argv[i];
+        } else if (nq_parse_count(argv[i], count) != 0) {
+            fprintf(stderr, "%s requires a positive number\n", arg);
+            return 2;
+        }
     }
 
     if (args->mode == NQ_CLIENT) {
         if (!args->cert || !args->blob) {
             fprintf(stderr, "client requires --cert and --blob\n");
+            return 2;
+        }
+        if (args->streams > NQ_MAX_STREAMS) {
+            fprintf(stderr, "--streams is at most %d\n", NQ_MAX_STREAMS);
             return 2;
         }
         args->url = positional ? positional : NQ_DEFAULT_URL;
@@ -293,7 +328,8 @@ typedef void (*nq_recv_cb)(void *ctx, uint8_t *data, size_t len, struct sockaddr
  * split here. Returns 0 on success.
  */
 static inline int nq_recv_packets(int fd, nq_recv_cb cb, void *ctx) {
-    static uint8_t buf[65536];
+    /* Per thread: every client connection reads on its own (nq_run_connections). */
+    static __thread uint8_t buf[65536];
 
     for (;;) {
         struct sockaddr_storage from;
@@ -356,10 +392,158 @@ static inline uint64_t nq_now_ns(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-static inline void nq_report(uint64_t bytes, uint64_t request_ns) {
-    double secs = (double)(nq_now_ns() - request_ns) / 1e9;
-    printf("nesquic_app throughput=%f,request_latency_ms=%f\n", (double)bytes / 1e6 / secs,
-           secs * 1e3);
+/*
+ * The requests of one client connection (see docs/CLI.md): `streams` run
+ * concurrently and, with --duration, each is followed by another until the
+ * deadline. Used from the connection's thread only.
+ */
+struct nq_load {
+    uint8_t request[NQ_REQUEST_LEN];
+    uint64_t requested;   /* bytes expected in every response */
+    uint64_t duration_ns;
+    unsigned pending;     /* requests the client has yet to start */
+    unsigned slots;       /* concurrent requests that have not finished */
+    int failed;
+    uint64_t first_ns, last_ns, deadline_ns;
+    uint64_t requests, bytes, latency_ns;
+};
+
+/* Returns 0 on success. */
+static inline int nq_load_init(struct nq_load *l, const char *blob, unsigned streams,
+                               unsigned duration) {
+    memset(l, 0, sizeof(*l));
+    if (nq_blob_bytes(blob, &l->requested) != 0) {
+        fprintf(stderr, "malformed blob size: %s\n", blob);
+        return -1;
+    }
+    nq_request_encode(l->requested, l->request);
+    l->pending = l->slots = streams;
+    l->duration_ns = (uint64_t)duration * 1000000000ULL;
+    return 0;
+}
+
+/* Call when a request is written. Returns its start time for nq_load_end. */
+static inline uint64_t nq_load_begin(struct nq_load *l) {
+    uint64_t now = nq_now_ns();
+    if (!l->first_ns) {
+        l->first_ns = now;
+        l->deadline_ns = now + l->duration_ns;
+    }
+    return now;
+}
+
+/*
+ * Call at the end of a response. Raises `pending` if another request follows;
+ * otherwise the request's slot is finished.
+ */
+static inline void nq_load_end(struct nq_load *l, uint64_t received, uint64_t begin_ns) {
+    uint64_t now = nq_now_ns();
+
+    ++l->requests;
+    l->bytes += received;
+    l->latency_ns += now - begin_ns;
+    l->last_ns = now;
+    if (received != l->requested) {
+        fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",
+                (unsigned long long)received, (unsigned long long)l->requested);
+        l->failed = 1;
+    }
+    if (!l->failed && now < l->deadline_ns) {
+        ++l->pending;
+    } else {
+        --l->slots;
+    }
+}
+
+/* Whether the connection has nothing left to do and should be closed. */
+static inline int nq_load_done(const struct nq_load *l) {
+    return l->failed || !l->slots;
+}
+
+static inline int nq_load_ok(const struct nq_load *l) {
+    return !l->failed && !l->slots;
+}
+
+static inline void nq_load_merge(struct nq_load *total, const struct nq_load *l) {
+    if (!l->requests) {
+        return;
+    }
+    if (!total->requests || l->first_ns < total->first_ns) {
+        total->first_ns = l->first_ns;
+    }
+    if (l->last_ns > total->last_ns) {
+        total->last_ns = l->last_ns;
+    }
+    total->requests += l->requests;
+    total->bytes += l->bytes;
+    total->latency_ns += l->latency_ns;
+}
+
+/* Prints the client's own measurement of all its requests (docs/METRICS.md). */
+static inline void nq_load_report(const struct nq_load *l) {
+    double secs = (double)(l->last_ns - l->first_ns) / 1e9;
+    if (!l->requests) {
+        return;
+    }
+    printf("nesquic_app throughput=%f,request_latency_ms=%f,requests=%llu\n",
+           (double)l->bytes / 1e6 / secs, (double)l->latency_ns / 1e6 / (double)l->requests,
+           (unsigned long long)l->requests);
+}
+
+/* Runs one connection's requests. Returns the exit code. */
+typedef int (*nq_connection_fn)(const struct nq_args *args, struct nq_load *load);
+
+struct nq_connection {
+    pthread_t thread;
+    int started;
+    const struct nq_args *args;
+    nq_connection_fn run;
+    struct nq_load load;
+    int rc;
+};
+
+static inline void *nq_connection_main(void *arg) {
+    struct nq_connection *c = (struct nq_connection *)arg;
+    c->rc = c->run(c->args, &c->load);
+    return NULL;
+}
+
+/*
+ * Runs `run` once per --connections, each on its own thread and so with its
+ * own socket and event loop, then reports their requests. For libraries whose
+ * event loop drives a single socket. Returns the exit code.
+ */
+static inline int nq_run_connections(const struct nq_args *args, nq_connection_fn run) {
+    struct nq_connection *conns =
+        (struct nq_connection *)calloc(args->connections, sizeof(*conns));
+    struct nq_load total;
+    unsigned i;
+    int rc = 0;
+
+    memset(&total, 0, sizeof(total));
+    if (!conns) {
+        return 1;
+    }
+    for (i = 0; i < args->connections; ++i) {
+        struct nq_connection *c = &conns[i];
+        c->args = args;
+        c->run = run;
+        c->rc = 1;
+        if (nq_load_init(&c->load, args->blob, args->streams, args->duration) != 0) {
+            break;
+        }
+        c->started = pthread_create(&c->thread, NULL, nq_connection_main, c) == 0;
+    }
+    for (i = 0; i < args->connections; ++i) {
+        if (conns[i].started) {
+            pthread_join(conns[i].thread, NULL);
+        }
+        rc |= conns[i].rc;
+        nq_load_merge(&total, &conns[i].load);
+    }
+    nq_load_report(&total);
+    free(conns);
+    return rc ? 1 : 0;
 }
 
 #ifdef __cplusplus

@@ -6,6 +6,15 @@
 #include <openssl/err.h>
 #include <openssl/x509.h>
 
+/* A request stream; linked into `client.unsent` until its request is written. */
+struct request {
+    int64_t stream_id;
+    size_t sent;                    /* request bytes accepted by ngtcp2 */
+    uint64_t begin_ns;
+    uint64_t received;
+    struct request *next;
+};
+
 struct client {
     ngtcp2_crypto_conn_ref conn_ref;
     int fd;
@@ -16,58 +25,61 @@ struct client {
     ngtcp2_conn *conn;
     ngtcp2_ccerr last_error;
 
-    int64_t stream_id;              /* -1 until the request stream is open */
-    uint8_t request[NQ_REQUEST_LEN];
-    size_t request_sent;            /* request bytes accepted by ngtcp2 */
-    uint64_t request_ns;
-    uint64_t requested;             /* bytes expected in the response */
-    uint64_t received;              /* bytes received so far */
-    int done;                       /* response fully received */
+    struct nq_load *load;
+    struct request *unsent;
     int read_error;                 /* ngtcp2_conn_read_pkt failed */
-    int ok;                         /* response had the requested length */
 };
 
 static ngtcp2_conn *get_conn(ngtcp2_crypto_conn_ref *ref) {
     return ((struct client *)ref->user_data)->conn;
 }
 
-static int extend_max_local_streams_bidi(ngtcp2_conn *conn, uint64_t max_streams,
-                                         void *user_data) {
-    struct client *c = user_data;
-    (void)max_streams;
+/*
+ * Opens the pending request streams as far as the server allows; called after
+ * every read, which is where the server raises the stream limit.
+ */
+static void client_open_streams(struct client *c) {
+    while (c->load->pending) {
+        struct request *r = calloc(1, sizeof(*r));
+        if (!r || ngtcp2_conn_open_bidi_stream(c->conn, &r->stream_id, r) != 0) {
+            free(r);
+            return;
+        }
+        --c->load->pending;
+        r->begin_ns = nq_load_begin(c->load);
+        r->next = c->unsent;
+        c->unsent = r;
+    }
+}
 
-    if (c->stream_id != -1) {
-        return 0;
+static void request_written(struct client *c, ngtcp2_ssize len) {
+    struct request *r = c->unsent;
+    if (!r || len <= 0) {
+        return;
     }
-    /* Open the request stream as soon as the server allows it. */
-    if (ngtcp2_conn_open_bidi_stream(conn, &c->stream_id, NULL) != 0) {
-        c->stream_id = -1;
+    r->sent += (size_t)len;
+    if (r->sent == NQ_REQUEST_LEN) {
+        c->unsent = r->next;
     }
-    c->request_ns = nq_now_ns();
-    return 0;
 }
 
 static int recv_stream_data(ngtcp2_conn *conn, uint32_t flags, int64_t stream_id,
                             uint64_t offset, const uint8_t *data, size_t datalen,
                             void *user_data, void *stream_user_data) {
     struct client *c = user_data;
+    struct request *r = stream_user_data;
     (void)offset;
     (void)data;
-    (void)stream_user_data;
 
-    c->received += datalen;
+    r->received += datalen;
     /* The data is consumed immediately, so hand the credit straight back. */
     ngtcp2_conn_extend_max_stream_offset(conn, stream_id, datalen);
     ngtcp2_conn_extend_max_offset(conn, datalen);
 
-    if (flags & NGTCP2_STREAM_DATA_FLAG_FIN) {
-        c->done = 1;
-        nq_report(c->received, c->request_ns);
-        c->ok = c->received == c->requested;
-        if (!c->ok) {
-            fprintf(stderr, "received blob size (%lluB) different from requested (%lluB)\n",
-                    (unsigned long long)c->received, (unsigned long long)c->requested);
-        }
+    /* The server answers only once the request is written, so `r` is unlinked. */
+    if ((flags & NGTCP2_STREAM_DATA_FLAG_FIN) && r->sent == NQ_REQUEST_LEN) {
+        nq_load_end(c->load, r->received, r->begin_ns);
+        free(r);
     }
     return 0;
 }
@@ -85,7 +97,6 @@ static int client_quic_init(struct client *c) {
         .hp_mask = ngtcp2_crypto_hp_mask_cb,
         .recv_retry = ngtcp2_crypto_recv_retry_cb,
         .recv_stream_data = recv_stream_data,
-        .extend_max_local_streams_bidi = extend_max_local_streams_bidi,
         .rand = nq_rand_cb,
         .update_key = ngtcp2_crypto_update_key_cb,
         .delete_crypto_aead_ctx = ngtcp2_crypto_delete_crypto_aead_ctx_cb,
@@ -195,10 +206,10 @@ static int client_write(struct client *c) {
         uint32_t flags = NGTCP2_WRITE_STREAM_FLAG_MORE;
         ngtcp2_ssize wdatalen = -1;
 
-        if (c->stream_id != -1 && c->request_sent < NQ_REQUEST_LEN) {
-            stream_id = c->stream_id;
-            vec.base = c->request + c->request_sent;
-            vec.len = NQ_REQUEST_LEN - c->request_sent;
+        if (c->unsent) {
+            stream_id = c->unsent->stream_id;
+            vec.base = c->load->request + c->unsent->sent;
+            vec.len = NQ_REQUEST_LEN - c->unsent->sent;
             veccnt = 1;
             flags |= NGTCP2_WRITE_STREAM_FLAG_FIN;
         }
@@ -208,16 +219,14 @@ static int client_write(struct client *c) {
                                                    ts);
         if (n < 0) {
             if (n == NGTCP2_ERR_WRITE_MORE) {
-                c->request_sent += (size_t)wdatalen;
+                request_written(c, wdatalen);
                 continue;
             }
             fprintf(stderr, "ngtcp2_conn_writev_stream: %s\n", ngtcp2_strerror((int)n));
             ngtcp2_ccerr_set_liberr(&c->last_error, (int)n, NULL, 0);
             return -1;
         }
-        if (wdatalen > 0) {
-            c->request_sent += (size_t)wdatalen;
-        }
+        request_written(c, wdatalen);
         if (n == 0) {
             break;
         }
@@ -271,7 +280,7 @@ static int client_connect_socket(struct client *c, const char *host, uint16_t po
     return 0;
 }
 
-int nq_run_client(const struct nq_args *args) {
+int nq_run_client(const struct nq_args *args, struct nq_load *load) {
     struct client c;
     char host[256];
     uint16_t port;
@@ -279,16 +288,10 @@ int nq_run_client(const struct nq_args *args) {
 
     memset(&c, 0, sizeof(c));
     c.fd = -1;
-    c.stream_id = -1;
+    c.load = load;
     c.conn_ref.get_conn = get_conn;
     c.conn_ref.user_data = &c;
     ngtcp2_ccerr_default(&c.last_error);
-
-    if (nq_blob_bytes(args->blob, &c.requested) != 0) {
-        fprintf(stderr, "malformed blob size: %s\n", args->blob);
-        return 1;
-    }
-    nq_request_encode(c.requested, c.request);
 
     if (nq_split_host_port(args->url, host, sizeof(host), &port) != 0) {
         fprintf(stderr, "malformed url: %s\n", args->url);
@@ -318,13 +321,14 @@ int nq_run_client(const struct nq_args *args) {
             client_close(&c);
             goto out;
         }
-        if (c.done) {
-            /* Single exchange done: close the connection (application close). */
+        if (nq_load_done(load)) {
+            /* All exchanges done: close the connection (application close). */
             ngtcp2_ccerr_set_application_error(&c.last_error, 0, NULL, 0);
             client_close(&c);
-            rc = c.ok ? 0 : 1;
+            rc = nq_load_ok(load) ? 0 : 1;
             goto out;
         }
+        client_open_streams(&c);
 
         int rv = ngtcp2_conn_handle_expiry(c.conn, nq_now_ns());
         if (rv != 0) {

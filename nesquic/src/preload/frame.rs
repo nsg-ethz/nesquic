@@ -44,24 +44,35 @@ pub(crate) struct Summary {
     pub stream_fin: bool,
 }
 
+/// A STREAM frame, without its data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StreamFrame {
+    pub id: u64,
+    pub offset: u64,
+    pub len: u64,
+    pub fin: bool,
+}
+
 enum Frame {
     Ack,
-    Stream { len: u64, fin: bool },
+    Stream(StreamFrame),
     Other,
 }
 
-/// Summarizes the frames in a decrypted packet `payload`.
+/// Summarizes the frames in a decrypted packet `payload`, calling
+/// `on_stream` for every STREAM frame.
 ///
 /// Frames are walked in order; parsing stops at the first unknown or
 /// malformed frame, in which case only the frames before it are counted.
-pub(crate) fn summarize(mut payload: &[u8]) -> Summary {
+pub(crate) fn summarize(mut payload: &[u8], mut on_stream: impl FnMut(StreamFrame)) -> Summary {
     let mut summary = Summary::default();
     while !payload.is_empty() {
         match next_frame(&mut payload) {
             Some(Frame::Ack) => summary.acks += 1,
-            Some(Frame::Stream { len, fin }) => {
-                summary.stream_bytes += len;
-                summary.stream_fin |= fin;
+            Some(Frame::Stream(frame)) => {
+                summary.stream_bytes += frame.len;
+                summary.stream_fin |= frame.fin;
+                on_stream(frame);
             }
             Some(Frame::Other) => {}
             None => break,
@@ -103,10 +114,8 @@ fn next_frame(buf: &mut &[u8]) -> Option<Frame> {
         0x07 => skip_prefixed(buf)?,
         // STREAM
         0x08..=0x0f => {
-            varint(buf)?; // stream id
-            if ty & 0x04 != 0 {
-                varint(buf)?; // offset
-            }
+            let id = varint(buf)?;
+            let offset = if ty & 0x04 != 0 { varint(buf)? } else { 0 };
             let len = if ty & 0x02 != 0 {
                 let len = varint(buf)?;
                 skip(buf, len)?;
@@ -117,10 +126,12 @@ fn next_frame(buf: &mut &[u8]) -> Option<Frame> {
                 *buf = &[];
                 len
             };
-            return Some(Frame::Stream {
+            return Some(Frame::Stream(StreamFrame {
+                id,
+                offset,
                 len,
                 fin: ty & 0x01 != 0,
-            });
+            }));
         }
         // MAX_DATA, MAX_STREAMS, DATA_BLOCKED, STREAMS_BLOCKED,
         // RETIRE_CONNECTION_ID
@@ -153,6 +164,27 @@ fn next_frame(buf: &mut &[u8]) -> Option<Frame> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn summarize(payload: &[u8]) -> Summary {
+        super::summarize(payload, |_| {})
+    }
+
+    #[test]
+    fn reports_stream_frames() {
+        let payload = [
+            0x0e, 0x04, 0x09, 0x03, 0xaa, 0xbb, 0xcc, // STREAM 4, OFF 9, LEN 3
+            0x0b, 0x08, 0x02, 0xdd, 0xee, // STREAM 8, LEN 2, FIN
+        ];
+        let mut frames = Vec::new();
+        super::summarize(&payload, |frame| frames.push(frame));
+        assert_eq!(
+            frames,
+            [
+                StreamFrame { id: 4, offset: 9, len: 3, fin: false },
+                StreamFrame { id: 8, offset: 0, len: 2, fin: true },
+            ]
+        );
+    }
 
     #[test]
     fn reads_varints() {

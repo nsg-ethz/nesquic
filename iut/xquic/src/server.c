@@ -255,7 +255,7 @@ int nq_run_server(const struct nq_args *args) {
     printf("Listening on %s\n", args->listen);
     fflush(stdout);
 
-    rc = nq_event_loop(engine, NULL, on_writable) == 0 ? 0 : 1;
+    rc = nq_event_loop(engine, NULL, on_writable, NULL) == 0 ? 0 : 1;
 
 out:
     if (engine) {

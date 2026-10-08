@@ -36,7 +36,8 @@ void nq_engine_settings(struct lsquic_engine_settings *settings, unsigned flags)
  */
 int nq_event_loop(lsquic_engine_t *engine, struct nq_socket *sock, const int *done);
 
-int nq_run_client(const struct nq_args *args);
+/* Runs one connection (see nq_run_connections). */
+int nq_run_client(const struct nq_args *args, struct nq_load *load);
 int nq_run_server(const struct nq_args *args);
 
 #endif

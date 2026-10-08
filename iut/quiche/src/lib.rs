@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use tokio::sync::{mpsc, oneshot};
 use tokio_quiche::{
     metrics::Metrics,
@@ -16,8 +16,8 @@ mod server;
 pub use client::Client;
 pub use server::Server;
 
-/// A request for a stream and the channel reporting the received bytes.
-type PendingRequest = (u64, Request, oneshot::Sender<usize>);
+/// A request and the channel reporting the received bytes.
+type PendingRequest = (Request, oneshot::Sender<usize>);
 
 fn settings() -> QuicSettings {
     let mut settings = QuicSettings::default();
@@ -37,7 +37,10 @@ struct Benchmark {
     /// Also the GSO send buffer: tokio-quiche batches at most this many bytes.
     buf: Vec<u8>,
     reqs: mpsc::UnboundedReceiver<PendingRequest>,
-    next_req: Option<PendingRequest>,
+    /// Client: requests not yet written, and the bytes written of the first.
+    queued: VecDeque<PendingRequest>,
+    queued_sent: usize,
+    next_stream: u64,
     /// Client: received bytes and the waiter per stream.
     pending_req: HashMap<u64, (usize, oneshot::Sender<usize>)>,
     /// Server: leading request bytes per stream.
@@ -53,7 +56,9 @@ impl Benchmark {
         let benchmark = Benchmark {
             buf: vec![0u8; u16::MAX as usize],
             reqs: req_rx,
-            next_req: None,
+            queued: VecDeque::new(),
+            queued_sent: 0,
+            next_stream: 0,
             pending_req: HashMap::new(),
             requests: HashMap::new(),
             pending_res: HashMap::new(),
@@ -83,7 +88,7 @@ impl ApplicationOverQuic for Benchmark {
 
     async fn wait_for_data(&mut self, _: &mut QuicheConnection) -> QuicResult<()> {
         match self.reqs.recv().await {
-            Some(req) => self.next_req = Some(req),
+            Some(req) => self.queued.push_back(req),
             // Servers have no request sender: only packets drive them.
             None => std::future::pending().await,
         }
@@ -122,10 +127,26 @@ impl ApplicationOverQuic for Benchmark {
     }
 
     fn process_writes(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
-        if let Some((stream, req, res)) = self.next_req.take() {
-            trace!("Writing request");
-            qconn.stream_send(stream, &req.to_bytes(), true)?;
-            self.pending_req.insert(stream, (0, res));
+        while let Ok(req) = self.reqs.try_recv() {
+            self.queued.push_back(req);
+        }
+        while let Some((req, _)) = self.queued.front() {
+            let req = req.to_bytes();
+            match qconn.stream_send(self.next_stream, &req[self.queued_sent..], true) {
+                Ok(sent) => self.queued_sent += sent,
+                // Out of stream or send credit: retried after the next packet.
+                Err(quiche::Error::StreamLimit | quiche::Error::Done) => break,
+                Err(e) => return Err(e.into()),
+            }
+            if self.queued_sent < req.len() {
+                break;
+            }
+            let Some((_, res)) = self.queued.pop_front() else {
+                break;
+            };
+            self.pending_req.insert(self.next_stream, (0, res));
+            self.queued_sent = 0;
+            self.next_stream += 4;
         }
 
         self.pending_res.retain(|stream, remaining| loop {

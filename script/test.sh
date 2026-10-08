@@ -2,7 +2,8 @@
 #
 # Connectivity smoke test for a QUIC IUT, mirroring `test::connectivity`
 # (iut/common/src/test.rs): start the server container, wait until it becomes
-# reachable, then run the client container and assert the transfer succeeds.
+# reachable, then run the client container (2 connections with 4 concurrent
+# requests each, repeated for 1s) and assert the transfers succeed.
 #
 # It also asserts that libnesquic.so sees the IUT's packets through its crypto
 # hooks: the client must report QUIC packet counts, TTFB and request latency,
@@ -92,7 +93,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
     rm -f "${QLOG_DIR}/client.qlog"
     if client_log="$(timeout -k 5 "${TIMEOUT}" docker run --rm --network=host \
             -v "${QLOG_DIR}:/qlog" -e NQ_QLOG=/qlog/client.qlog "${IMAGE}" \
-            client "${URL}" --cert "${CERT}" --blob "${BLOB}" 2>&1)"; then
+            client "${URL}" --cert "${CERT}" --blob "${BLOB}" -c 2 -s 4 -d 1 2>&1)"; then
         healthy=true
         break
     fi

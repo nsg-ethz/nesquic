@@ -30,6 +30,7 @@ impl TryFrom<String> for Request {
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(10);
 pub const STREAM_WINDOW: u32 = 8 * 1024 * 1024;
 pub const CONNECTION_WINDOW: u32 = 16 * 1024 * 1024;
+pub const MAX_STREAMS: u64 = 100;
 /// Requested SO_RCVBUF/SO_SNDBUF; the kernel clamps it to net.core.{r,w}mem_max.
 pub const SOCKET_BUFFER: usize = 16 * 1024 * 1024;
 
