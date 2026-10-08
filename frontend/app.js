@@ -60,21 +60,23 @@ async function tagValues(tag, predicate) {
     return rows.map((r) => r._value).sort(d3.ascending);
 }
 
-/** All points of `measurement` for the selected library, run and time range. */
+/** All points of `measurement` for the selected library (or all), run and time range. */
 async function points(measurement, { library, run, range }) {
     const start = range === "all" ? EPOCH : range;
     const lines = [
         `from(bucket: ${fluxString(BUCKET)})`,
         `  |> range(start: ${start})`,
         `  |> filter(fn: (r) => r._measurement == ${fluxString(measurement)})`,
-        `  |> filter(fn: (r) => r.library == ${fluxString(library)})`,
     ];
+    if (library !== ALL) {
+        lines.push(`  |> filter(fn: (r) => r.library == ${fluxString(library)})`);
+    }
     if (run !== ALL) {
         lines.push(`  |> filter(fn: (r) => r.nesquic_run == ${fluxString(run)})`);
     }
     lines.push(
         "  |> toFloat()",
-        '  |> keep(columns: ["_time", "_field", "_value", "job", "mode", "syscall", "nesquic_run"])',
+        '  |> keep(columns: ["_time", "_field", "_value", "job", "library", "mode", "syscall", "nesquic_run"])',
         "  |> group()",
     );
     const rows = await flux(lines.join("\n"));
@@ -320,9 +322,77 @@ async function qlogFiles(library) {
     }
 }
 
+/** Per experiment, throughput of every library. */
+async function renderOverview(selection) {
+    const nesquic = await points("nesquic", selection);
+
+    charts.length = 0;
+    els.dashboard.textContent = "";
+
+    for (const exp of experiments) {
+        const rows = nesquic.filter((r) => r.job === exp.job);
+        const section = element("section", {},
+            element("h2", { textContent: exp.title }),
+            element("p", { textContent: exp.description }));
+        const grid = element("div", { className: "grid" });
+        section.append(grid);
+        panel(grid, "Throughput", "Throughput [Mbps]",
+            summarize(rows.filter((r) => r._field === "throughput"), (r) => r.library), true);
+        els.dashboard.append(section);
+    }
+}
+
+async function renderLibrary(selection) {
+    const { library } = selection;
+    const [nesquic, io, quic, qlogs] = await Promise.all([
+        points("nesquic", selection),
+        points("nesquic_io", selection),
+        points("nesquic_quic", selection),
+        qlogFiles(library),
+    ]);
+
+    charts.length = 0;
+    els.dashboard.textContent = "";
+
+    const jobs = experiments.map((e) => e.job);
+
+    const overview = element("section", {}, element("h2", { textContent: "Overview" }));
+    const ovGrid = element("div", { className: "grid" });
+    overview.append(ovGrid);
+    panel(ovGrid, "Throughput With Varying Connection Delay", "Throughput [Mbps]",
+        summarize(nesquic.filter((r) => r._field === "throughput"), (r) => r.job, jobs), true);
+    els.dashboard.append(overview);
+
+    for (const exp of experiments) {
+        const job = exp.job;
+        const section = element("section", {},
+            element("h2", { textContent: exp.title }),
+            element("p", { textContent: exp.description }));
+        const grid = element("div", { className: "grid" });
+        section.append(grid);
+
+        for (const mode of ["server", "client"]) {
+            const rows = io.filter((r) => r.job === job && r.mode === mode);
+            panel(grid, `${capitalize(mode)} I/O Syscalls`, "Invocations",
+                summarize(rows.filter((r) => r._field === "count"), (r) => r.syscall));
+            panel(grid, `${capitalize(mode)} I/O Data Volume`, "Data Volume [kB]",
+                summarize(rows.filter((r) => r._field === "volume_kb_sum"), (r) => r.syscall));
+        }
+
+        const q = quic.filter((r) => r.job === job);
+        panel(grid, "ACK Frames Sent", "ACK frames",
+            summarize(q.filter((r) => r._field === "acks_sent"), (r) => r.mode, ["server", "client"]));
+        panel(grid, "Packets Sent", "Packets",
+            summarize(q.filter((r) => r._field === "packets_sent"), (r) => r.mode, ["server", "client"]));
+
+        section.append(qlogSection(library, job, qlogs));
+        els.dashboard.append(section);
+    }
+}
+
 async function render() {
     const library = els.library.value;
-    if (!library) {
+    if (els.library.options.length < 2) {
         els.dashboard.textContent = "";
         els.status.textContent = "No libraries in InfluxDB yet.";
         return;
@@ -332,51 +402,7 @@ async function render() {
     els.refresh.disabled = true;
 
     try {
-        const [nesquic, io, quic, qlogs] = await Promise.all([
-            points("nesquic", selection),
-            points("nesquic_io", selection),
-            points("nesquic_quic", selection),
-            qlogFiles(library),
-        ]);
-
-        charts.length = 0;
-        els.dashboard.textContent = "";
-
-        const jobs = experiments.map((e) => e.job);
-
-        const overview = element("section", {}, element("h2", { textContent: "Overview" }));
-        const ovGrid = element("div", { className: "grid" });
-        overview.append(ovGrid);
-        panel(ovGrid, "Throughput With Varying Connection Delay", "Throughput [Mbps]",
-            summarize(nesquic.filter((r) => r._field === "throughput"), (r) => r.job, jobs), true);
-        els.dashboard.append(overview);
-
-        for (const exp of experiments) {
-            const job = exp.job;
-            const section = element("section", {},
-                element("h2", { textContent: exp.title }),
-                element("p", { textContent: exp.description }));
-            const grid = element("div", { className: "grid" });
-            section.append(grid);
-
-            for (const mode of ["server", "client"]) {
-                const rows = io.filter((r) => r.job === job && r.mode === mode);
-                panel(grid, `${capitalize(mode)} I/O Syscalls`, "Invocations",
-                    summarize(rows.filter((r) => r._field === "count"), (r) => r.syscall));
-                panel(grid, `${capitalize(mode)} I/O Data Volume`, "Data Volume [kB]",
-                    summarize(rows.filter((r) => r._field === "volume_kb_sum"), (r) => r.syscall));
-            }
-
-            const q = quic.filter((r) => r.job === job);
-            panel(grid, "ACK Frames Sent", "ACK frames",
-                summarize(q.filter((r) => r._field === "acks_sent"), (r) => r.mode, ["server", "client"]));
-            panel(grid, "Packets Sent", "Packets",
-                summarize(q.filter((r) => r._field === "packets_sent"), (r) => r.mode, ["server", "client"]));
-
-            section.append(qlogSection(library, job, qlogs));
-            els.dashboard.append(section);
-        }
-
+        await (library === ALL ? renderOverview : renderLibrary)(selection);
         redraw();
         els.status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
     } catch (err) {
@@ -413,9 +439,8 @@ function writeHash() {
 
 async function loadRuns() {
     const library = els.library.value;
-    const runs = library
-        ? await tagValues("nesquic_run", `(r) => r.library == ${fluxString(library)}`)
-        : [];
+    const runs = await tagValues("nesquic_run",
+        library === ALL ? null : `(r) => r.library == ${fluxString(library)}`);
     fillSelect(els.run, runs, true, "All");
 }
 
@@ -426,7 +451,7 @@ async function init() {
         experiments = yaml.load(await res.text()) || [];
 
         const wanted = readHash();
-        fillSelect(els.library, await tagValues("library"), false);
+        fillSelect(els.library, await tagValues("library"), false, "Overview");
         if (wanted.library) els.library.value = wanted.library;
         if (wanted.range) els.range.value = wanted.range;
         await loadRuns();

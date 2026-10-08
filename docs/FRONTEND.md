@@ -1,15 +1,16 @@
 # Frontend
 
-`docker compose -f docker/backend.yml up -d` (also done by `script/run.sh`)
+`docker compose -f docker/service.yml up -d` (also done by `script/run.sh`)
 starts InfluxDB and the frontend at <http://localhost:3000>.
 
 The frontend (`frontend/`, served by nginx, see `docker/Dockerfile.frontend`)
 queries InfluxDB directly, so new results show up on refresh; there is no
-dashboard to regenerate. Pick a library, a run (`nesquic_run` label, or all
-runs) and a time range. Every bar is the mean over all matching
+dashboard to regenerate. Pick a library (or "Overview", the default, to
+compare all of them), a run (`nesquic_run` label, or all runs) and a time
+range. Every bar is the mean over all matching
 measurements; the error bar spans one standard deviation.
 
-Panels:
+The overview shows, per experiment, client throughput of every library. Panels of a single library:
 
 - **Overview**: client throughput per experiment.
 - **Per experiment** (from `res/experiments.yaml`): syscall count and data
@@ -33,5 +34,5 @@ cd frontend && bun install && bun run build   # writes frontend/dist
 After changing the frontend, rebuild the image:
 
 ```sh
-docker compose -f docker/backend.yml up -d --build frontend
+docker compose -f docker/service.yml up -d --build frontend
 ```
