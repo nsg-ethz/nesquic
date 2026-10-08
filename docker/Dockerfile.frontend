@@ -1,14 +1,5 @@
-# Serves the results frontend (frontend/), a self-hosted qvis build under
-# /qvis/, and proxies Flux queries to InfluxDB (see docker/frontend/).
-FROM node:16-alpine AS qvis
-
-ARG QVIS_COMMIT=3db6acf239a1ab668afe67ea5cf84e6efbd35810
-
-ADD https://github.com/quiclog/qvis.git#${QVIS_COMMIT} /qvis
-
-WORKDIR /qvis/visualizations
-RUN npm ci && npm run build
-
+# Serves the results frontend (frontend/) and proxies Flux queries to InfluxDB
+# (see docker/frontend/).
 FROM oven/bun:1-alpine AS site
 
 WORKDIR /frontend
@@ -23,6 +14,5 @@ FROM nginx:alpine
 # umask denies "other" (e.g. 0007).
 RUN sed -i 's/^user .*/user root;/' /etc/nginx/nginx.conf
 
-COPY --from=qvis /qvis/visualizations/dist /usr/share/nginx/html/qvis
 COPY docker/frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=site /frontend/dist /usr/share/nginx/html

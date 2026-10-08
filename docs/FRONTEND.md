@@ -16,9 +16,11 @@ The overview shows, per experiment, client throughput of every library. Panels o
 - **Per experiment** (from `res/experiments.yaml`): syscall count and data
   volume per I/O syscall, for server and client; ACK frames and packets sent
   per side (only for libraries with QUIC counters, see [metrics](METRICS.md)).
-- **qlog**: if `res/qlog/<library>/<job>.qlog` exists (`NQ_QLOG=1
-  script/run.sh`), it can be opened in [qvis](https://github.com/quiclog/qvis),
-  which is built into the image and served under `/qvis/`.
+- **qlog**: if `res/qlog/<library>/<job>.<server|client>.qlog`
+  exists, `script/qlog.sh [library...]` (called by `script/run.sh`) renders it
+  with [qvis](https://github.com/larseggert/qvis) (needs `uvx`) to a
+  self-contained `.html` page next to it, which the frontend embeds below the
+  charts.
 
 nginx forwards `POST /api/query` to InfluxDB's `/api/v2/query` with the
 token from `INFLUX_TOKEN`; there is no authentication in front of it.

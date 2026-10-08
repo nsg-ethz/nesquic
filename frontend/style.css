@@ -147,8 +147,11 @@ section > p { margin: 4px 0 12px; color: var(--text-secondary); }
     margin-top: 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--uchu-yang);
+    /* An unloaded iframe paints white regardless of the theme: keep it
+       invisible until the page, which follows the theme itself, is there. */
+    opacity: 0;
 }
+.qlog iframe.loaded { opacity: 1; }
 
 .tooltip {
     position: fixed;

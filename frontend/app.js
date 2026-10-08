@@ -52,12 +52,19 @@ async function flux(query) {
 }
 
 async function tagValues(tag, predicate) {
-    const rows = await flux([
-        'import "influxdata/influxdb/schema"',
-        `schema.tagValues(bucket: ${fluxString(BUCKET)}, tag: ${fluxString(tag)}, ` +
-            `start: ${EPOCH}${predicate ? `, predicate: ${predicate}` : ""})`,
-    ].join("\n"));
-    return rows.map((r) => r._value).sort(d3.ascending);
+    // Not schema.tagValues(): InfluxDB's index keeps listing values whose
+    // points were all deleted (script/run.sh deletes earlier results).
+    // first() forces a read of the data itself.
+    const lines = [`from(bucket: ${fluxString(BUCKET)})`, `  |> range(start: ${EPOCH})`];
+    if (predicate) lines.push(`  |> filter(fn: ${predicate})`);
+    lines.push(
+        "  |> first()",
+        `  |> keep(columns: [${fluxString(tag)}])`,
+        "  |> group()",
+        `  |> distinct(column: ${fluxString(tag)})`,
+    );
+    const rows = await flux(lines.join("\n"));
+    return rows.map((r) => r._value).filter(Boolean).sort(d3.ascending);
 }
 
 /** All points of `measurement` for the selected library (or all), run and time range. */
@@ -264,50 +271,28 @@ function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function qvisUrl(view, file) {
-    return `qvis/#/${view}?file=${encodeURIComponent(new URL(file, location.href).href)}`;
-}
-
-function qlogSection(library, job, available) {
-    const file = `qlog/${encodeURIComponent(library)}/${encodeURIComponent(job)}.qlog`;
-    const head = element("div", { className: "head" }, element("h3", { textContent: "qlog" }));
+function qlogSection(library, job, side, available) {
+    const dir = `qlog/${encodeURIComponent(library)}/`;
+    const stem = `${job}.${side}`;
+    const head = element("div", { className: "head" },
+        element("h3", { textContent: `${capitalize(side)} qlog` }));
     const box = element("div", { className: "qlog" }, head);
 
-    if (!available.has(`${job}.qlog`)) {
+    if (!available.has(`${stem}.html`)) {
         head.append(element("span", {
             className: "muted",
-            textContent: `No trace at res/qlog/${library}/${job}.qlog (run with NQ_QLOG=1).`,
+            textContent: `No rendered trace at res/qlog/${library}/${stem}.html.`,
         }));
         return box;
     }
 
-    let frame = null;
-    const view = element("select", {},
-        ...["sequence", "congestion", "packetization", "multiplexing", "stats"].map((v) =>
-            element("option", { value: v, textContent: capitalize(v) })));
-    const toggle = element("button", { type: "button", textContent: "Show in qvis" });
-    const open = element("a", { href: qvisUrl("sequence", file), target: "_blank", textContent: "Open in new tab" });
-    const raw = element("a", { href: file, download: "", textContent: "Download" });
-
-    const load = () => {
-        open.href = qvisUrl(view.value, file);
-        if (frame) frame.src = open.href;
-    };
-    view.addEventListener("change", load);
-    toggle.addEventListener("click", () => {
-        if (frame) {
-            frame.remove();
-            frame = null;
-            toggle.textContent = "Show in qvis";
-            return;
-        }
-        frame = element("iframe", { title: `qvis: ${library} ${job}`, loading: "lazy" });
-        box.append(frame);
-        toggle.textContent = "Hide";
-        load();
-    });
-
-    head.append(view, toggle, open, raw);
+    const page = dir + encodeURIComponent(`${stem}.html`);
+    head.append(
+        element("a", { href: page, target: "_blank", textContent: "Open in new tab" }),
+        element("a", { href: dir + encodeURIComponent(`${stem}.qlog`), download: "", textContent: "Download qlog" }));
+    const frame = element("iframe", { src: page, title: `qvis: ${library} ${job} ${side}`, loading: "lazy" });
+    frame.addEventListener("load", () => frame.classList.add("loaded"));
+    box.append(frame);
     return box;
 }
 
@@ -385,7 +370,9 @@ async function renderLibrary(selection) {
         panel(grid, "Packets Sent", "Packets",
             summarize(q.filter((r) => r._field === "packets_sent"), (r) => r.mode, ["server", "client"]));
 
-        section.append(qlogSection(library, job, qlogs));
+        for (const side of ["server", "client"]) {
+            section.append(qlogSection(library, job, side, qlogs));
+        }
         els.dashboard.append(section);
     }
 }

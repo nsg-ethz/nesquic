@@ -3,6 +3,8 @@
 server {
     listen 80;
     root /usr/share/nginx/html;
+    # Directory redirects must keep the published port.
+    absolute_redirect off;
 
     location / {
         try_files $uri $uri/ =404;
@@ -23,7 +25,8 @@ server {
         add_header Cache-Control no-cache;
     }
 
-    # res/qlog/<library>/<job>.qlog, listed as JSON for the frontend.
+    # res/qlog/<library>/: traces and their rendered pages, listed as JSON for
+    # the frontend.
     location /qlog/ {
         alias /srv/qlog/;
         autoindex on;

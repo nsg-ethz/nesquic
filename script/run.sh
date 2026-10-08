@@ -19,9 +19,9 @@ RES_DIR="${WORKSPACE}/res"
 NQ_RUN_LABEL="${NQ_RUN_LABEL:-default}"
 NQ_INVOCATION=$(date +%s)
 
-NQ_REPETITIONS="${NQ_REPETITIONS:-1}"
-if [[ ! ${NQ_REPETITIONS} =~ ^[1-9][0-9]*$ ]]; then
-    echo -e "${COLOR_RED}error: NQ_REPETITIONS must be a positive integer${COLOR_OFF}" >&2
+NQ_REPS="${NQ_REPS:-1}"
+if [[ ! ${NQ_REPS} =~ ^[1-9][0-9]*$ ]]; then
+    echo -e "${COLOR_RED}error: NQ_REPS must be a positive integer${COLOR_OFF}" >&2
     exit 1
 fi
 
@@ -235,7 +235,7 @@ function run_experiment {
     # qlog: only writes qlog traces, which slows down the monitored library.
     for EXP_MODE in detached attached qlog; do
         # Every repetition overwrites the same qlog trace.
-        local reps=${NQ_REPETITIONS}
+        local reps=${NQ_REPS}
         if [[ ${EXP_MODE} == qlog ]]; then
             reps=1
         fi
@@ -287,4 +287,6 @@ fi
 for LIB in "${LIBS[@]}"; do
     ${WORKSPACE}/script/build.sh ${LIB}
     run_library_experiments ${LIB}
+    ${WORKSPACE}/script/qlog.sh ${LIB} > /dev/null \
+        || echo -e "${COLOR_RED}Could not render the qlog traces of ${LIB}${COLOR_OFF}"
 done
