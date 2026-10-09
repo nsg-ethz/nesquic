@@ -122,28 +122,32 @@ const LATENCY_PARTS = ["Crypto", "I/O", "Other"];
 
 /**
  * One row per client process with its mean request latency as `_value`, split
- * into `parts` (see LATENCY_PARTS): the time the process spends in crypto and
- * in I/O while a request is outstanding, and the rest of the latency.
- *
- * That is the process' duration per request, times the number of requests
- * outstanding at once: they overlap, so the same crypto or I/O time is part
- * of the latency of each of them.
+ * into `parts` (see LATENCY_PARTS): the crypto and I/O durations per request
+ * of the client and of its server, and the rest of the latency.
  */
 function latencyParts(rows) {
     // A process reports all its fields in one point.
-    const processes = d3.group(rows, (r) => [r.library, r.job, r.nesquic_run, r._time].join("\0"));
+    const processes = d3.groups(rows, (r) => [r.library, r.job, r.nesquic_run, r.mode, r._time].join("\0"))
+        .map(([, fields]) => ({
+            ...fields[0],
+            f: Object.fromEntries(fields.map((r) => [r._field, r._value])),
+        }));
     const out = [];
-    for (const fields of processes.values()) {
-        const f = Object.fromEntries(fields.map((r) => [r._field, r._value]));
-        if (!(f.requests > 0) || f.request_latency_ms === undefined) continue;
-        const latency = f.request_latency_ms;
-        // Mean number of outstanding requests; 1 for a single request.
-        const concurrent = f.request_window_ms > 0 ? f.requests * latency / f.request_window_ms : 1;
-        const perRequest = (duration) => (duration || 0) / f.requests * concurrent;
-        // Durations of several threads, or with the handshake, may exceed the latency.
-        const crypto = Math.min(latency, perRequest(f.crypto_duration_ms));
-        const io = Math.min(latency - crypto, perRequest(f.io_duration_ms));
-        out.push({ ...fields[0], _value: latency, parts: [crypto, io, latency - crypto - io] });
+    // script/run.sh starts a server per client run and stops it afterwards, so
+    // a client's server is the one that reports next, before the next client.
+    for (const run of d3.group(processes, (p) => [p.library, p.job, p.nesquic_run].join("\0")).values()) {
+        run.sort((a, b) => Date.parse(a._time) - Date.parse(b._time));
+        run.forEach((client, i) => {
+            const { f } = client;
+            if (client.mode !== "client" || !(f.requests > 0) || f.request_latency_ms === undefined) return;
+            const server = run[i + 1]?.mode === "server" ? run[i + 1].f : {};
+            const latency = f.request_latency_ms;
+            const perRequest = (field) => ((f[field] || 0) + (server[field] || 0)) / f.requests;
+            // Durations of several threads, or with the handshake, may exceed the latency.
+            const crypto = Math.min(latency, perRequest("crypto_duration_ms"));
+            const io = Math.min(latency - crypto, perRequest("io_duration_ms"));
+            out.push({ ...client, _value: latency, parts: [crypto, io, latency - crypto - io] });
+        });
     }
     return out;
 }

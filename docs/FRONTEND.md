@@ -10,7 +10,7 @@ compare all of them), a run (`nesquic_run` label, or all runs) and a time
 range. Every bar is the mean over all matching
 measurements; the error bar spans one standard deviation.
 
-The overview shows, per experiment, client throughput and mean request latency of every library. The latency bars are stacked: the time the client spends in crypto and in I/O while a request is outstanding (its durations per request, times the number of requests outstanding at once, see [metrics](METRICS.md)), and the rest of the latency ("Other": the network, the server, and everything else the client does). Panels of a single library:
+The overview shows, per experiment, client throughput and mean request latency of every library. The latency bars are stacked: the crypto and I/O durations per request of client and server together (see [metrics](METRICS.md)), and the rest of the latency ("Other"). A client is paired with the server that reports right after it, as in `script/run.sh`. Panels of a single library:
 
 - **Overview**: client throughput and mean request latency per experiment.
 - **Per experiment** (from `res/experiments.yaml`): syscall count and data

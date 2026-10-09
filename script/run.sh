@@ -179,7 +179,7 @@ function teardown {
 function setup {
     # Created here so the frontend's bind mount is not owned by root.
     mkdir -p ${RES_DIR}/qlog
-    docker compose -f ${WORKSPACE}/docker/service.yml up -d
+    docker compose -f ${WORKSPACE}/docker/service.yml up -d --build frontend
 
     kill_nesquic KILL
     may_fail sudo ip link del ${VETH_MM}

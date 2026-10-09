@@ -379,8 +379,8 @@ impl Metrics {
     /// - `nesquic_latency`: `ttfb_ms`, the mean `request_latency_ms` and the
     ///   `requests` it is the mean of, for clients whose library's crypto
     ///   was hooked (see [`super::crypto`]), the `request_window_ms` from
-    ///   the first request to the last response, and the total
-    ///   `crypto_duration_ms` and `io_duration_ms` of the process
+    ///   the first request to the last response; for clients and servers,
+    ///   the total `crypto_duration_ms` and `io_duration_ms` of the process
     /// - `nesquic_io`: per-syscall `count` and `volume_kb_sum`
     /// - `nesquic_quic`: packets and ACK frames sent and received, if the
     ///   library's crypto was hooked (see [`super::crypto`])
@@ -388,6 +388,7 @@ impl Metrics {
         let tags = tag_str(tags);
         let mut lines = String::new();
 
+        let mut latency = Vec::new();
         if tags.contains(",mode=client") {
             if let Some(throughput) = self.throughput() {
                 let _ = writeln!(
@@ -396,7 +397,6 @@ impl Metrics {
                 );
             }
 
-            let mut latency = Vec::new();
             if let Some(ttfb) = self.ttfb_ms() {
                 latency.push(format!("ttfb_ms={ttfb}"));
             }
@@ -405,22 +405,22 @@ impl Metrics {
                 latency.push(format!("requests={requests}i"));
                 latency.push(format!("request_window_ms={window}"));
             }
-            for (name, ns) in [
-                ("crypto_duration_ms", &self.crypto_ns),
-                ("io_duration_ms", &self.io_ns),
-            ] {
-                let ns = ns.load(Relaxed);
-                if ns > 0 {
-                    latency.push(format!("{name}={}", ns as f64 / 1e6));
-                }
+        }
+        for (name, ns) in [
+            ("crypto_duration_ms", &self.crypto_ns),
+            ("io_duration_ms", &self.io_ns),
+        ] {
+            let ns = ns.load(Relaxed);
+            if ns > 0 {
+                latency.push(format!("{name}={}", ns as f64 / 1e6));
             }
-            if !latency.is_empty() {
-                let _ = writeln!(
-                    lines,
-                    "nesquic_latency{tags} {} {timestamp_ns}",
-                    latency.join(",")
-                );
-            }
+        }
+        if !latency.is_empty() {
+            let _ = writeln!(
+                lines,
+                "nesquic_latency{tags} {} {timestamp_ns}",
+                latency.join(",")
+            );
         }
 
         for syscall in Syscall::ALL {
@@ -643,8 +643,11 @@ mod tests {
             "nesquic_latency,mode=client ttfb_ms=3,request_latency_ms=7,requests=2i,request_window_ms=9,\
              crypto_duration_ms=2.5,io_duration_ms={io} 1\n"
         )));
+        // Servers only report their durations.
         let server = m.line_protocol(&tags(&[("mode", "server")]), 1);
-        assert!(!server.contains("nesquic_latency"));
+        assert!(server.contains(&format!(
+            "nesquic_latency,mode=server crypto_duration_ms=2.5,io_duration_ms={io} 1\n"
+        )));
     }
 
     #[test]
