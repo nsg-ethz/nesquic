@@ -18,9 +18,21 @@ use qlog::{Configuration, TraceSeq, VantagePoint, VantagePointType, QLOG_VERSION
 
 use super::context::Context;
 use super::frame::Frame;
+use super::handshake;
 use super::{QuicHeader, QuicPacketType};
 
 static QLOG: OnceLock<Option<Mutex<QlogStreamer>>> = OnceLock::new();
+/// Whether the monitored process is the client; `None` if its mode is
+/// unknown.
+static IS_CLIENT: OnceLock<Option<bool>> = OnceLock::new();
+
+fn is_client() -> Option<bool> {
+    *IS_CLIENT.get_or_init(|| match Context::current().mode.as_deref() {
+        Some("client") => Some(true),
+        Some("server") => Some(false),
+        _ => None,
+    })
+}
 
 fn init_streamer() -> Option<Mutex<QlogStreamer>> {
     let path = std::env::var("NQ_QLOG").ok()?;
@@ -31,10 +43,10 @@ fn init_streamer() -> Option<Mutex<QlogStreamer>> {
         .ok()?;
 
     // Viewers need the vantage point to tell which packets went which way.
-    let ty = match Context::current().mode.as_deref() {
-        Some("client") => VantagePointType::Client,
-        Some("server") => VantagePointType::Server,
-        _ => VantagePointType::Unknown,
+    let ty = match is_client() {
+        Some(true) => VantagePointType::Client,
+        Some(false) => VantagePointType::Server,
+        None => VantagePointType::Unknown,
     };
     let trace = TraceSeq::new(
         VantagePoint {
@@ -77,12 +89,16 @@ fn packet_type(ty: QuicPacketType) -> PacketType {
     }
 }
 
-/// The qlog form of `frame`; `None` for frames that are not logged.
-pub(crate) fn frame(frame: &Frame) -> Option<QuicFrame> {
+/// The qlog form of `frame`, `sent` by the monitored process or received by
+/// it; `None` for frames that are not logged.
+pub(crate) fn frame(frame: &Frame, sent: bool) -> Option<QuicFrame> {
     Some(match frame {
         Frame::Ack(ack) => QuicFrame::Ack {
-            // Unknown: see `AckFrame::delay`.
-            ack_delay: None,
+            ack_delay: is_client().map(|client| {
+                // Scaled by the exponent of the endpoint that sent the ACK.
+                let exponent = handshake::ack_delay_exponent(client == sent);
+                ack.delay as f32 * (1u32 << exponent) as f32 / 1000.0
+            }),
             // qlog lists ranges in ascending order.
             acked_ranges: Some(AckedRanges::Double(
                 ack.ranges().collect::<Vec<_>>().into_iter().rev().collect(),
@@ -99,6 +115,10 @@ pub(crate) fn frame(frame: &Frame) -> Option<QuicFrame> {
             length: stream.len,
             fin: Some(stream.fin),
             raw: None,
+        },
+        Frame::Crypto { offset, data } => QuicFrame::Crypto {
+            offset: *offset,
+            length: data.len() as u64,
         },
         Frame::Other => return None,
         &Frame::Unknown(ty) => QuicFrame::Unknown {
@@ -172,7 +192,7 @@ mod tests {
     fn qlog_frames(payload: &[u8]) -> Vec<String> {
         let mut frames = Vec::new();
         frame::summarize(payload, |f| {
-            frames.extend(frame(f).map(|f| serde_json::to_string(&f).unwrap()))
+            frames.extend(frame(f, true).map(|f| serde_json::to_string(&f).unwrap()))
         });
         frames
     }

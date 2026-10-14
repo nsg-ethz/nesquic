@@ -6,7 +6,7 @@
 //! skipped: the walk ends there.
 
 /// Reads a QUIC variable-length integer (RFC 9000 section 16).
-fn varint(buf: &mut &[u8]) -> Option<u64> {
+pub(crate) fn varint(buf: &mut &[u8]) -> Option<u64> {
     let first = *buf.first()?;
     let len = 1usize << (first >> 6);
     let bytes = buf.get(..len)?;
@@ -103,7 +103,9 @@ pub(crate) struct StreamFrame {
 pub(crate) enum Frame<'a> {
     Ack(AckFrame<'a>),
     Stream(StreamFrame),
-    /// A known frame that is neither ACK nor STREAM.
+    /// A CRYPTO frame and its data.
+    Crypto { offset: u64, data: &'a [u8] },
+    /// A known frame that is neither ACK, STREAM nor CRYPTO.
     Other,
     /// A frame of unknown type, with which the walk ends.
     Unknown(u64),
@@ -131,7 +133,7 @@ pub(crate) fn summarize<'a>(
                 summary.stream_bytes += stream.len;
                 summary.stream_fin |= stream.fin;
             }
-            Frame::Other => {}
+            Frame::Crypto { .. } | Frame::Other => {}
             Frame::Unknown(_) => break,
         }
     }
@@ -175,8 +177,11 @@ fn next_frame<'a>(buf: &mut &'a [u8]) -> Option<Frame<'a>> {
         0x05 => skip_varints(buf, 2)?,
         // CRYPTO
         0x06 => {
-            varint(buf)?;
-            skip_prefixed(buf)?;
+            let offset = varint(buf)?;
+            let len = usize::try_from(varint(buf)?).ok()?;
+            let data = buf.get(..len)?;
+            *buf = &buf[len..];
+            return Some(Frame::Crypto { offset, data });
         }
         // NEW_TOKEN
         0x07 => skip_prefixed(buf)?,
@@ -368,6 +373,24 @@ mod tests {
         // Ranges below packet number 0 are malformed and dropped.
         let payload = [0x02, 0x03, 0x00, 0x01, 0x01, 0x05, 0x00];
         assert_eq!(acks(&payload), [(vec![(2, 3)], None)]);
+    }
+
+    #[test]
+    fn reports_crypto_frames() {
+        let mut frames = Vec::new();
+        super::summarize(&[0x06, 0x40, 0x10, 0x02, 0xaa, 0xbb, 0x01], |frame| {
+            frames.push(*frame)
+        });
+        assert_eq!(
+            frames,
+            [
+                Frame::Crypto {
+                    offset: 16,
+                    data: &[0xaa, 0xbb]
+                },
+                Frame::Other
+            ]
+        );
     }
 
     #[test]

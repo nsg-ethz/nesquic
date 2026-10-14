@@ -23,6 +23,7 @@ use quinn_proto::{ConnectionId, ConnectionIdParser, LongType, PacketDecodeError,
 mod context;
 mod crypto;
 mod frame;
+mod handshake;
 mod influx;
 mod io;
 mod metrics;

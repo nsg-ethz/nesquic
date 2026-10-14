@@ -14,7 +14,7 @@
 //! go through the PLT and can be interposed.
 
 use super::metrics::METRICS;
-use super::{frame, parse_quic_header, qlog};
+use super::{frame, handshake, parse_quic_header, qlog};
 
 mod boringssl;
 mod evp;
@@ -51,25 +51,32 @@ fn observe(ad: &[u8], payload: &[u8], sent: bool) {
         return;
     }
 
-    let qlog = qlog::enabled();
+    let header = qlog::enabled().then(|| parse_quic_header(ad)).flatten();
     let mut frames = Vec::new();
     let summary = frame::summarize(payload, |frame| {
-        if let frame::Frame::Stream(stream) = frame {
+        match frame {
             // Only 1-RTT packets carry the requests and responses.
-            if let Some(dcid) = short_dcid(ad) {
-                METRICS.record_stream(sent, dcid, stream);
+            frame::Frame::Stream(stream) => {
+                if let Some(dcid) = short_dcid(ad) {
+                    METRICS.record_stream(sent, dcid, stream);
+                }
             }
+            // The transport parameters are only needed for qlog.
+            &frame::Frame::Crypto { offset, data } => {
+                if let Some(header) = &header {
+                    handshake::record_crypto(header.packet_type, sent, offset, data);
+                }
+            }
+            _ => {}
         }
-        if qlog {
-            frames.extend(qlog::frame(frame));
+        if header.is_some() {
+            frames.extend(qlog::frame(frame, sent));
         }
     });
     METRICS.record_packet(sent, &summary);
 
-    if qlog {
-        if let Some(header) = parse_quic_header(ad) {
-            qlog::emit_packet(&header, payload.len(), frames, sent);
-        }
+    if let Some(header) = header {
+        qlog::emit_packet(&header, payload.len(), frames, sent);
     }
 }
 

@@ -77,10 +77,11 @@ counts, TTFB and request latency, and that both sides write a qlog trace with se
 
 `NQ_QLOG=<path>` additionally writes a qlog trace (JSON-SEQ) of all observed
 packets: their headers, STREAM frames (stream ID, offset, length, FIN) and ACK
-frames (ranges and ECN counts, but no ACK delay, whose exponent is not known),
-so that qvis can show how streams are multiplexed. Frames of unknown type are
+frames (ranges, ECN counts and ACK delay) and CRYPTO frames, so that qvis can show how streams are multiplexed. Frames of unknown type are
 logged as `unknown`; as QUIC frames have no generic length, the rest of such a
-packet is not parsed. The vantage point is the IUT's
+packet is not parsed. The ACK delay is scaled by the `ack_delay_exponent`
+transport parameter of the ACK's sender, read from the first ClientHello and
+EncryptedExtensions observed (3 until then, e.g. for the server's first ACK). The vantage point is the IUT's
 mode (`client` or `server`). This takes a global lock per packet and slows the library
 down, so it is off by default. `script/run.sh` enables it in a separate run of
 every experiment and writes `<job>.client.qlog` and `<job>.server.qlog` to
