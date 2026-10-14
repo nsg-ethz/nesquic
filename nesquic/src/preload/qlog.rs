@@ -1,5 +1,5 @@
-//! Emits a qlog trace of observed QUIC packets: their headers and STREAM
-//! frames, so that viewers can show how streams are multiplexed.
+//! Emits a qlog trace of observed QUIC packets: their headers and ACK and
+//! STREAM frames, so that viewers can show how streams are multiplexed.
 //!
 //! Enabled by setting `NQ_QLOG` to an output path; if unset, no qlog file
 //! is written. This is meant for debugging only: every packet goes through a
@@ -9,13 +9,15 @@ use std::fs::OpenOptions;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-use qlog::events::quic::{PacketHeader, PacketReceived, PacketSent, PacketType, QuicFrame};
+use qlog::events::quic::{
+    AckedRanges, PacketHeader, PacketReceived, PacketSent, PacketType, QuicFrame,
+};
 use qlog::events::{Event, EventData, EventImportance};
 use qlog::streamer::QlogStreamer;
 use qlog::{Configuration, TraceSeq, VantagePoint, VantagePointType, QLOG_VERSION};
 
 use super::context::Context;
-use super::frame::StreamFrame;
+use super::frame::Frame;
 use super::{QuicHeader, QuicPacketType};
 
 static QLOG: OnceLock<Option<Mutex<QlogStreamer>>> = OnceLock::new();
@@ -75,14 +77,36 @@ fn packet_type(ty: QuicPacketType) -> PacketType {
     }
 }
 
-fn stream_frame(frame: &StreamFrame) -> QuicFrame {
-    QuicFrame::Stream {
-        stream_id: frame.id,
-        offset: frame.offset,
-        length: frame.len,
-        fin: Some(frame.fin),
-        raw: None,
-    }
+/// The qlog form of `frame`; `None` for frames that are not logged.
+pub(crate) fn frame(frame: &Frame) -> Option<QuicFrame> {
+    Some(match frame {
+        Frame::Ack(ack) => QuicFrame::Ack {
+            // Unknown: see `AckFrame::delay`.
+            ack_delay: None,
+            // qlog lists ranges in ascending order.
+            acked_ranges: Some(AckedRanges::Double(
+                ack.ranges().collect::<Vec<_>>().into_iter().rev().collect(),
+            )),
+            ect0: ack.ecn.map(|ecn| ecn[0]),
+            ect1: ack.ecn.map(|ecn| ecn[1]),
+            ce: ack.ecn.map(|ecn| ecn[2]),
+            length: None,
+            payload_length: None,
+        },
+        Frame::Stream(stream) => QuicFrame::Stream {
+            stream_id: stream.id,
+            offset: stream.offset,
+            length: stream.len,
+            fin: Some(stream.fin),
+            raw: None,
+        },
+        Frame::Other => return None,
+        &Frame::Unknown(ty) => QuicFrame::Unknown {
+            raw_frame_type: ty,
+            frame_type_value: None,
+            raw: None,
+        },
+    })
 }
 
 /// Whether `NQ_QLOG` is set and the qlog file could be opened.
@@ -100,10 +124,10 @@ pub(crate) fn finish() {
 }
 
 /// Records `header` as a `packet_sent` (if `sent`) or `packet_received` qlog
-/// event with the packet's `streams` frames, grouped by its destination
+/// event with the packet's qlog `frames`, grouped by its destination
 /// connection ID. `len` is the packet's payload length, as observed by the
 /// crypto hooks.
-pub(crate) fn emit_packet(header: &QuicHeader, len: usize, streams: &[StreamFrame], sent: bool) {
+pub(crate) fn emit_packet(header: &QuicHeader, len: usize, frames: Vec<QuicFrame>, sent: bool) {
     let Some(streamer) = QLOG.get_or_init(init_streamer) else {
         return;
     };
@@ -119,17 +143,16 @@ pub(crate) fn emit_packet(header: &QuicHeader, len: usize, streams: &[StreamFram
         Some(&header.dcid),
     );
 
-    let frames = streams.iter().map(stream_frame);
     let event_data = if sent {
         EventData::PacketSent(PacketSent {
             header: qlog_header,
-            frames: Some(frames.collect()),
+            frames: Some(frames.into_iter().collect()),
             ..Default::default()
         })
     } else {
         EventData::PacketReceived(PacketReceived {
             header: qlog_header,
-            frames: Some(frames.collect()),
+            frames: Some(frames),
             ..Default::default()
         })
     };
@@ -144,20 +167,31 @@ pub(crate) fn emit_packet(header: &QuicHeader, len: usize, streams: &[StreamFram
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::preload::frame;
+
+    fn qlog_frames(payload: &[u8]) -> Vec<String> {
+        let mut frames = Vec::new();
+        frame::summarize(payload, |f| {
+            frames.extend(frame(f).map(|f| serde_json::to_string(&f).unwrap()))
+        });
+        frames
+    }
 
     #[test]
-    fn serializes_stream_frames() {
-        let frame = StreamFrame {
-            id: 4,
-            offset: 9,
-            len: 3,
-            fin: true,
-        };
-        let json = serde_json::to_string(&stream_frame(&frame)).unwrap();
-        assert!(json.contains(r#""frame_type":"stream""#), "{json}");
-        assert!(json.contains(r#""stream_id":4"#), "{json}");
-        assert!(json.contains(r#""offset":9"#), "{json}");
-        assert!(json.contains(r#""length":3"#), "{json}");
-        assert!(json.contains(r#""fin":true"#), "{json}");
+    fn serializes_frames() {
+        let payload = [
+            0x03, 20, 0x05, 0x01, 0x02, 0x01, 0x03, 0x03, 0x04, 0x05, // ACK_ECN
+            0x01, // PING: not logged
+            0x0f, 0x04, 0x09, 0x03, 0xaa, 0xbb, 0xcc, // STREAM 4, OFF 9, LEN 3, FIN
+            0x21, // unknown
+        ];
+        assert_eq!(
+            qlog_frames(&payload),
+            [
+                r#"{"frame_type":"ack","acked_ranges":[[12,15],[18,20]],"ect1":4,"ect0":3,"ce":5}"#,
+                r#"{"frame_type":"stream","stream_id":4,"offset":9,"length":3,"fin":true}"#,
+                r#"{"frame_type":"unknown","raw_frame_type":33}"#,
+            ]
+        );
     }
 }

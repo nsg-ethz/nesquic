@@ -1,6 +1,9 @@
 //! A minimal QUIC frame walker (RFC 9000 section 19, plus the ACK
-//! frequency extension), just enough to find the ACK and STREAM frames in a
-//! decrypted packet payload.
+//! frequency, reliable reset and datagram extensions), just enough to find
+//! the ACK and STREAM frames in a decrypted packet payload.
+//!
+//! QUIC frames carry no generic length, so a frame of unknown type cannot be
+//! skipped: the walk ends there.
 
 /// Reads a QUIC variable-length integer (RFC 9000 section 16).
 fn varint(buf: &mut &[u8]) -> Option<u64> {
@@ -44,6 +47,49 @@ pub(crate) struct Summary {
     pub stream_fin: bool,
 }
 
+/// An ACK or ACK_ECN frame. The additional ACK ranges are kept encoded and
+/// only decoded by [`AckFrame::ranges`], so that counting ACKs never
+/// allocates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AckFrame<'a> {
+    pub largest: u64,
+    /// The encoded ACK delay; scaling it needs the peer's
+    /// `ack_delay_exponent` transport parameter, which is not known here.
+    pub delay: u64,
+    first_range: u64,
+    range_count: u64,
+    /// The `range_count` (gap, ACK range length) varint pairs.
+    ranges: &'a [u8],
+    /// ECT0, ECT1 and ECN-CE counts of an ACK_ECN frame.
+    pub ecn: Option<[u64; 3]>,
+}
+
+impl AckFrame<'_> {
+    /// The acknowledged packet numbers as inclusive `(smallest, largest)`
+    /// ranges, in descending order. Stops at the first malformed range.
+    pub fn ranges(&self) -> impl Iterator<Item = (u64, u64)> + '_ {
+        let mut buf = self.ranges;
+        let mut remaining = self.range_count;
+        let mut next = self
+            .largest
+            .checked_sub(self.first_range)
+            .map(|smallest| (smallest, self.largest));
+        std::iter::from_fn(move || {
+            let current = next.take()?;
+            if remaining > 0 {
+                remaining -= 1;
+                let gap = varint(&mut buf);
+                let len = varint(&mut buf);
+                next = gap.zip(len).and_then(|(gap, len)| {
+                    let largest = current.0.checked_sub(gap)?.checked_sub(2)?;
+                    Some((largest.checked_sub(len)?, largest))
+                });
+            }
+            Some(current)
+        })
+    }
+}
+
 /// A STREAM frame, without its data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct StreamFrame {
@@ -53,53 +99,75 @@ pub(crate) struct StreamFrame {
     pub fin: bool,
 }
 
-enum Frame {
-    Ack,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Frame<'a> {
+    Ack(AckFrame<'a>),
     Stream(StreamFrame),
+    /// A known frame that is neither ACK nor STREAM.
     Other,
+    /// A frame of unknown type, with which the walk ends.
+    Unknown(u64),
 }
 
 /// Summarizes the frames in a decrypted packet `payload`, calling
-/// `on_stream` for every STREAM frame.
+/// `on_frame` for every frame.
 ///
-/// Frames are walked in order; parsing stops at the first unknown or
-/// malformed frame, in which case only the frames before it are counted.
-pub(crate) fn summarize(mut payload: &[u8], mut on_stream: impl FnMut(StreamFrame)) -> Summary {
+/// Frames are walked in order; the walk ends at the first unknown frame
+/// (still passed to `on_frame`) or malformed frame (not passed), in which
+/// case only the frames before it are counted.
+pub(crate) fn summarize<'a>(
+    mut payload: &'a [u8],
+    mut on_frame: impl FnMut(&Frame<'a>),
+) -> Summary {
     let mut summary = Summary::default();
     while !payload.is_empty() {
-        match next_frame(&mut payload) {
-            Some(Frame::Ack) => summary.acks += 1,
-            Some(Frame::Stream(frame)) => {
-                summary.stream_bytes += frame.len;
-                summary.stream_fin |= frame.fin;
-                on_stream(frame);
+        let Some(frame) = next_frame(&mut payload) else {
+            break;
+        };
+        on_frame(&frame);
+        match frame {
+            Frame::Ack(_) => summary.acks += 1,
+            Frame::Stream(stream) => {
+                summary.stream_bytes += stream.len;
+                summary.stream_fin |= stream.fin;
             }
-            Some(Frame::Other) => {}
-            None => break,
+            Frame::Other => {}
+            Frame::Unknown(_) => break,
         }
     }
     summary
 }
 
 /// Advances `buf` past one frame and returns what it was.
-fn next_frame(buf: &mut &[u8]) -> Option<Frame> {
+fn next_frame<'a>(buf: &mut &'a [u8]) -> Option<Frame<'a>> {
     let ty = varint(buf)?;
     match ty {
         // PADDING, PING, HANDSHAKE_DONE, IMMEDIATE_ACK
         0x00 | 0x01 | 0x1e | 0x1f => {}
         // ACK, ACK_ECN
         0x02 | 0x03 => {
-            varint(buf)?; // largest acknowledged
-            varint(buf)?; // ack delay
-            let ranges = varint(buf)?;
-            varint(buf)?; // first ack range
-            for _ in 0..ranges {
+            let largest = varint(buf)?;
+            let delay = varint(buf)?;
+            let range_count = varint(buf)?;
+            let first_range = varint(buf)?;
+            let start = *buf;
+            for _ in 0..range_count {
                 skip_varints(buf, 2)?; // gap, ack range length
             }
-            if ty == 0x03 {
-                skip_varints(buf, 3)?; // ECT0, ECT1, ECN-CE counts
-            }
-            return Some(Frame::Ack);
+            let ranges = &start[..start.len() - buf.len()];
+            let ecn = if ty == 0x03 {
+                Some([varint(buf)?, varint(buf)?, varint(buf)?])
+            } else {
+                None
+            };
+            return Some(Frame::Ack(AckFrame {
+                largest,
+                delay,
+                first_range,
+                range_count,
+                ranges,
+                ecn,
+            }));
         }
         // RESET_STREAM
         0x04 => skip_varints(buf, 3)?,
@@ -154,9 +222,11 @@ fn next_frame(buf: &mut &[u8]) -> Option<Frame> {
         // DATAGRAM
         0x30 => *buf = &[],
         0x31 => skip_prefixed(buf)?,
+        // RESET_STREAM_AT
+        0x24 => skip_varints(buf, 4)?,
         // ACK_FREQUENCY
         0xaf => skip_varints(buf, 4)?,
-        _ => return None,
+        _ => return Some(Frame::Unknown(ty)),
     }
     Some(Frame::Other)
 }
@@ -176,7 +246,11 @@ mod tests {
             0x0b, 0x08, 0x02, 0xdd, 0xee, // STREAM 8, LEN 2, FIN
         ];
         let mut frames = Vec::new();
-        super::summarize(&payload, |frame| frames.push(frame));
+        super::summarize(&payload, |frame| {
+            if let Frame::Stream(stream) = frame {
+                frames.push(*stream);
+            }
+        });
         assert_eq!(
             frames,
             [
@@ -264,5 +338,41 @@ mod tests {
     fn stops_at_unknown_or_truncated_frames() {
         assert_eq!(count_acks(&[0x02, 0x00, 0x00, 0x00, 0x00, 0x21, 0x02]), 1);
         assert_eq!(count_acks(&[0x02, 0x00, 0x00]), 0);
+
+        let mut frames = Vec::new();
+        super::summarize(&[0x01, 0x21, 0x02, 0x00, 0x00, 0x00, 0x00], |frame| {
+            frames.push(*frame)
+        });
+        assert_eq!(frames, [Frame::Other, Frame::Unknown(0x21)]);
+    }
+
+    fn acks(payload: &[u8]) -> Vec<(Vec<(u64, u64)>, Option<[u64; 3]>)> {
+        let mut acks = Vec::new();
+        super::summarize(payload, |frame| {
+            if let Frame::Ack(ack) = frame {
+                acks.push((ack.ranges().collect(), ack.ecn));
+            }
+        });
+        acks
+    }
+
+    #[test]
+    fn decodes_ack_ranges() {
+        // Largest 20, first range 2 (18-20), gap 1 + range 3 (12-15), gap 0 +
+        // range 0 (10).
+        let payload = [0x02, 20, 0x05, 0x02, 0x02, 0x01, 0x03, 0x00, 0x00];
+        assert_eq!(acks(&payload), [(vec![(18, 20), (12, 15), (10, 10)], None)]);
+        // ACK_ECN with a single range.
+        let payload = [0x03, 0x07, 0x00, 0x00, 0x07, 0x01, 0x02, 0x03];
+        assert_eq!(acks(&payload), [(vec![(0, 7)], Some([1, 2, 3]))]);
+        // Ranges below packet number 0 are malformed and dropped.
+        let payload = [0x02, 0x03, 0x00, 0x01, 0x01, 0x05, 0x00];
+        assert_eq!(acks(&payload), [(vec![(2, 3)], None)]);
+    }
+
+    #[test]
+    fn skips_reset_stream_at() {
+        let payload = [0x24, 0x04, 0x00, 0x08, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00];
+        assert_eq!(count_acks(&payload), 1);
     }
 }
