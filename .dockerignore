@@ -4,3 +4,4 @@
 target/
 frontend/node_modules
 frontend/dist
+res/qlog
