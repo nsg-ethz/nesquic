@@ -51,17 +51,22 @@ fn observe(ad: &[u8], payload: &[u8], sent: bool) {
         return;
     }
 
+    let qlog = qlog::enabled();
+    let mut streams = Vec::new();
     let summary = frame::summarize(payload, |frame| {
         // Only 1-RTT packets carry the requests and responses.
         if let Some(dcid) = short_dcid(ad) {
             METRICS.record_stream(sent, dcid, &frame);
         }
+        if qlog {
+            streams.push(frame);
+        }
     });
     METRICS.record_packet(sent, &summary);
 
-    if qlog::enabled() {
+    if qlog {
         if let Some(header) = parse_quic_header(ad) {
-            qlog::emit_packet(&header, payload.len(), sent);
+            qlog::emit_packet(&header, payload.len(), &streams, sent);
         }
     }
 }

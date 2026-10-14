@@ -2183,6 +2183,7 @@ dependencies = [
  "qlog 0.15.2",
  "quinn-proto",
  "redhook",
+ "serde_json",
  "ureq",
 ]
 

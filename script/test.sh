@@ -8,7 +8,7 @@
 # It also asserts that libnesquic.so sees the IUT's packets through its crypto
 # hooks: the client must report QUIC packet counts, TTFB and request latency,
 # and both sides must write a qlog trace (NQ_QLOG) with sent and received
-# packets.
+# packets and STREAM frames.
 #
 # Runs the IUT inside its docker image (nesquic/<library>) so the test is
 # language independent and exercises the same artifact CI ships. The MM_* knobs
@@ -125,10 +125,11 @@ if [[ "${healthy}" == true ]]; then
         qlog="${QLOG_DIR}/${side}.qlog"
         sent="$(grep -c 'packet_sent' "${qlog}" 2>/dev/null)"
         received="$(grep -c 'packet_received' "${qlog}" 2>/dev/null)"
-        if [[ "${sent:-0}" -gt 0 && "${received:-0}" -gt 0 ]]; then
-            echo -e "${COLOR_GREEN}ok: ${LIB} ${side} qlog: ${sent} packets sent, ${received} received${COLOR_OFF}"
+        streams="$(grep -c '"frame_type":"stream"' "${qlog}" 2>/dev/null)"
+        if [[ "${sent:-0}" -gt 0 && "${received:-0}" -gt 0 && "${streams:-0}" -gt 0 ]]; then
+            echo -e "${COLOR_GREEN}ok: ${LIB} ${side} qlog: ${sent} packets sent, ${received} received, ${streams} with STREAM frames${COLOR_OFF}"
         else
-            echo -e "${COLOR_RED}fail: ${LIB} ${side} qlog lacks sent/received packets${COLOR_OFF}" >&2
+            echo -e "${COLOR_RED}fail: ${LIB} ${side} qlog lacks sent/received packets or STREAM frames${COLOR_OFF}" >&2
             failed=true
         fi
     done

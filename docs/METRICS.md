@@ -71,12 +71,14 @@ plaintext the frames. This needs the crypto library to be linked dynamically.
 | NSS | `SSL_AeadEncrypt`, `SSL_AeadDecrypt` (via `SSL_GetExperimentalAPI`) | neqo |
 
 `script/test.sh` checks for every library that the client reports packet
-counts, TTFB and request latency, and that both sides write a qlog trace with sent and received packets.
+counts, TTFB and request latency, and that both sides write a qlog trace with sent and received packets and STREAM frames.
 
 ## Debugging
 
 `NQ_QLOG=<path>` additionally writes a qlog trace (JSON-SEQ) of all observed
-packet headers. This takes a global lock per packet and slows the library
+packets: their headers and STREAM frames (stream ID, offset, length, FIN), so
+that qvis can show how streams are multiplexed. The vantage point is the IUT's
+mode (`client` or `server`). This takes a global lock per packet and slows the library
 down, so it is off by default. `script/run.sh` enables it in a separate run of
 every experiment and writes `<job>.client.qlog` and `<job>.server.qlog` to
 `res/qlog/<library>/`.
