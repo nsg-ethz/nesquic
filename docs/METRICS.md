@@ -76,7 +76,30 @@ counts, TTFB and request latency, and that both sides write a qlog trace with se
 ## Debugging
 
 `NQ_QLOG=<path>` additionally writes a qlog trace (JSON-SEQ) of all observed
-packet headers. This takes a global lock per packet and slows the library
+packets. This takes a global lock per packet and slows the library
 down, so it is off by default. `script/run.sh` enables it in a separate run of
 every experiment and writes `<job>.client.qlog` and `<job>.server.qlog` to
 `res/qlog/<library>/`.
+
+Frames are decoded with `s2n-quic-core`; QUIC v1 and v2 are supported. Events are grouped by connection:
+connection IDs are paired from the long headers and NEW_CONNECTION_ID frames.
+The trace holds:
+
+| Event | Content |
+|-------|---------|
+| `transport:packet_sent`, `transport:packet_received` | Header with the full packet number and the unprotected first byte (`flags`: spin and key phase bits), the packet size (`raw`), all frames. |
+| `transport:parameters_set` | Cipher suite (ServerHello) and the transport parameters of both sides (ClientHello, EncryptedExtensions), from the CRYPTO frames. Besides the RFC 9000 parameters, it names `version_information`, `max_datagram_frame_size`, `grease_quic_bit`, `min_ack_delay` (µs), `loss_bits` and `timestamps`; other IDs are in `unknown_parameters`. |
+| `recovery:metrics_updated` | RTT estimates (RFC 9002) from received ACKs and the send times of the acknowledged packets; bytes and packets in flight. |
+| `recovery:packet_lost` | Sent packets that the RFC 9002 packet and time thresholds declare lost when an ACK arrives. The library's own loss detection can decide differently. |
+| `security:key_updated` | 1-RTT key updates, from the key phase bit. |
+
+Congestion window, PTO count and other library state is not on the wire and
+is not in the trace.
+
+Clients of msquic and mvfst use zero-length connection IDs, so their packets
+are attributed by UDP 4-tuple: the I/O hooks note the socket and peer of each
+datagram. A received packet is in the buffer of its datagram, and a sent one
+is in the buffer that is sent, or is copied there (found by the start of its
+ciphertext). A sent packet that only its 4-tuple can attribute is written to
+the trace when its datagram is sent. Packets whose connection is still not
+known have no `group_id` and no derived events.

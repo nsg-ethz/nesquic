@@ -13,8 +13,8 @@
 //! AWS-LC is built with `AWS_LC_SYS_NO_PREFIX` so it exports the plain
 //! BoringSSL names (see docker/Dockerfile.quinn).
 
-use super::observe_raw;
 use super::METRICS;
+use super::{observe_raw, sealed_raw};
 use libc::{c_int, c_void};
 
 redhook::hook! {
@@ -26,12 +26,16 @@ redhook::hook! {
     ) -> c_int => hook_seal_scatter {
         // The plaintext is only intact before sealing (which may happen in
         // place), so observe it first.
-        observe_raw(ad, ad_len, inp, in_len, true);
+        observe_raw(ad, ad_len, inp, in_len, true, out);
 
-        METRICS.time_crypto(|| redhook::real!(EVP_AEAD_CTX_seal_scatter)(
+        let ret = METRICS.time_crypto(|| redhook::real!(EVP_AEAD_CTX_seal_scatter)(
             ctx, out, out_tag, out_tag_len, max_out_tag_len, nonce, nonce_len,
             inp, in_len, extra_in, extra_in_len, ad, ad_len
-        ))
+        ));
+        if ret == 1 {
+            sealed_raw(out, in_len);
+        }
+        ret
     }
 }
 
@@ -41,11 +45,15 @@ redhook::hook! {
         nonce: *const u8, nonce_len: usize, inp: *const u8, in_len: usize,
         ad: *const u8, ad_len: usize
     ) -> c_int => hook_seal {
-        observe_raw(ad, ad_len, inp, in_len, true);
+        observe_raw(ad, ad_len, inp, in_len, true, out);
 
-        METRICS.time_crypto(|| redhook::real!(EVP_AEAD_CTX_seal)(
+        let ret = METRICS.time_crypto(|| redhook::real!(EVP_AEAD_CTX_seal)(
             ctx, out, out_len, max_out_len, nonce, nonce_len, inp, in_len, ad, ad_len
-        ))
+        ));
+        if ret == 1 && !out_len.is_null() {
+            sealed_raw(out, *out_len);
+        }
+        ret
     }
 }
 
@@ -61,7 +69,7 @@ redhook::hook! {
 
         // The plaintext exists only once the packet was opened successfully.
         if ret == 1 && !out_len.is_null() {
-            observe_raw(ad, ad_len, out, *out_len, false);
+            observe_raw(ad, ad_len, out, *out_len, false, inp);
         }
 
         ret

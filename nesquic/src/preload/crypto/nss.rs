@@ -11,8 +11,8 @@ use std::sync::atomic::{AtomicPtr, Ordering::Relaxed};
 
 use libc::{c_char, c_int, c_uint, c_void};
 
-use super::observe_raw;
 use super::METRICS;
+use super::{observe_raw, sealed_raw};
 
 /// `SSL_AeadEncrypt` and `SSL_AeadDecrypt`, which share a signature.
 type AeadFn = unsafe extern "C" fn(
@@ -57,12 +57,23 @@ unsafe extern "C" fn aead_encrypt(
         return SEC_FAILURE;
     };
     // Encryption may happen in place: observe the plaintext first.
-    observe_raw(aad, aad_len as usize, input, input_len as usize, true);
-    METRICS.time_crypto(|| {
+    observe_raw(
+        aad,
+        aad_len as usize,
+        input,
+        input_len as usize,
+        true,
+        output,
+    );
+    let ret = METRICS.time_crypto(|| {
         f(
             ctx, counter, aad, aad_len, input, input_len, output, output_len, max_output,
         )
-    })
+    });
+    if ret == SEC_SUCCESS && !output_len.is_null() {
+        sealed_raw(output, *output_len as usize);
+    }
+    ret
 }
 
 unsafe extern "C" fn aead_decrypt(
@@ -85,7 +96,14 @@ unsafe extern "C" fn aead_decrypt(
         )
     });
     if ret == SEC_SUCCESS && !output_len.is_null() {
-        observe_raw(aad, aad_len as usize, output, *output_len as usize, false);
+        observe_raw(
+            aad,
+            aad_len as usize,
+            output,
+            *output_len as usize,
+            false,
+            input,
+        );
     }
     ret
 }

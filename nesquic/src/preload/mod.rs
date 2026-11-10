@@ -27,6 +27,7 @@ mod influx;
 mod io;
 mod metrics;
 mod qlog;
+mod tls;
 
 static ENABLED: AtomicBool = AtomicBool::new(false);
 
@@ -119,6 +120,9 @@ pub(crate) struct QuicHeader {
 /// enforced before calling `ConnectionId::from_buf`.
 const MAX_CID_LEN: usize = 20;
 
+/// The version number of QUIC v2 (RFC 9369).
+const QUIC_V2: u32 = 0x6b33_43cf;
+
 /// A [`ConnectionIdParser`] for short headers, which don't encode the DCID
 /// length on the wire. Since `buf` (see [`parse_quic_header`]) is known to
 /// be exactly the unprotected header with no trailing payload, the DCID is
@@ -160,7 +164,13 @@ pub(crate) fn parse_quic_header(buf: &[u8]) -> Option<QuicHeader> {
     };
     let supported_versions = [version.unwrap_or(0)];
 
-    let mut cursor = Cursor::new(BytesMut::from(buf));
+    let mut bytes = BytesMut::from(buf);
+    // QUIC v2 (RFC 9369 section 3.2) rotates the long header type bits;
+    // `decode` only knows v1's.
+    if version == Some(QUIC_V2) {
+        bytes[0] = (first & !0x30) | ((first & 0x30).wrapping_sub(0x10) & 0x30);
+    }
+    let mut cursor = Cursor::new(bytes);
     let cid_parser = RemainderConnectionIdParser { pn_len };
     // `grease_quic_bit: true` skips the fixed-bit check, matching the
     // previous hand-rolled parser, which didn't enforce it either.
@@ -218,4 +228,38 @@ fn read_packet_number(buf: &[u8]) -> u64 {
 
 pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A long header with type bits `ty`, version `version`, 1-byte CIDs
+    /// and a 1-byte packet number 7.
+    fn long_header(ty: u8, version: u32) -> Vec<u8> {
+        let mut buf = vec![0xc0 | ty << 4];
+        buf.extend(version.to_be_bytes());
+        buf.extend([1, 0xaa, 1, 0xbb]);
+        if ty == 0b01 && version == QUIC_V2 || ty == 0b00 && version == 1 {
+            buf.push(0); // token length
+        }
+        buf.extend([0x01, 7]); // length, packet number
+        buf
+    }
+
+    #[test]
+    fn maps_v2_packet_types() {
+        for (v1, v2, ty) in [
+            (0b00, 0b01, QuicPacketType::Initial),
+            (0b01, 0b10, QuicPacketType::ZeroRtt),
+            (0b10, 0b11, QuicPacketType::Handshake),
+        ] {
+            for (bits, version) in [(v1, 1), (v2, QUIC_V2)] {
+                let header = parse_quic_header(&long_header(bits, version)).unwrap();
+                assert_eq!(header.packet_type, ty);
+                assert_eq!(header.packet_number, Some(7));
+                assert_eq!(header.scid.as_deref(), Some(&[0xbb][..]));
+            }
+        }
+    }
 }

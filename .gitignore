@@ -4,5 +4,5 @@
 .clangd
 __pycache__
 res/qlog
-graft
-.claude/worktrees
+.trail
+.claude

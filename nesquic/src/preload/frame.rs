@@ -1,36 +1,23 @@
-//! A minimal QUIC frame walker (RFC 9000 section 19, plus the ACK
-//! frequency extension), just enough to find the ACK and STREAM frames in a
-//! decrypted packet payload.
+//! Walks the frames of a decrypted packet payload with the frame codec of
+//! `s2n-quic-core` (RFC 9000 section 19 and DATAGRAM), plus the ACK frequency
+//! extension frames, which it does not know.
 
-/// Reads a QUIC variable-length integer (RFC 9000 section 16).
-fn varint(buf: &mut &[u8]) -> Option<u64> {
-    let first = *buf.first()?;
-    let len = 1usize << (first >> 6);
-    let bytes = buf.get(..len)?;
-    let value = bytes[1..]
-        .iter()
-        .fold((first & 0x3f) as u64, |acc, &b| (acc << 8) | b as u64);
-    *buf = &buf[len..];
-    Some(value)
-}
+use std::cell::RefCell;
 
-fn skip(buf: &mut &[u8], n: u64) -> Option<()> {
-    let n = usize::try_from(n).ok()?;
-    *buf = buf.get(n..)?;
-    Some(())
-}
+use s2n_codec::{DecoderBuffer, DecoderBufferMut};
+use s2n_quic_core::frame::FrameRef;
+use s2n_quic_core::varint::VarInt;
 
-fn skip_varints(buf: &mut &[u8], n: usize) -> Option<()> {
-    for _ in 0..n {
-        varint(buf)?;
-    }
-    Some(())
-}
+/// IMMEDIATE_ACK (draft-ietf-quic-ack-frequency).
+pub(crate) const IMMEDIATE_ACK: u64 = 0x1f;
+/// ACK_FREQUENCY (draft-ietf-quic-ack-frequency).
+pub(crate) const ACK_FREQUENCY: u64 = 0xaf;
 
-/// Skips a varint length followed by that many bytes.
-fn skip_prefixed(buf: &mut &[u8]) -> Option<()> {
-    let len = varint(buf)?;
-    skip(buf, len)
+/// A frame of a decrypted packet payload.
+pub(crate) enum Frame<'a> {
+    Quic(FrameRef<'a>),
+    /// An extension frame that `s2n-quic-core` does not know, by type.
+    Extension(u64),
 }
 
 /// What a decrypted packet payload carries.
@@ -53,112 +40,77 @@ pub(crate) struct StreamFrame {
     pub fin: bool,
 }
 
-enum Frame {
-    Ack,
-    Stream(StreamFrame),
-    Other,
+thread_local! {
+    /// The codec decodes from a mutable buffer, but the hooks only get the
+    /// plaintext as `&[u8]`: payloads are copied here first.
+    static SCRATCH: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The length of the ACK frequency extension frame at the start of `buf`,
+/// and its type.
+fn extension_frame(buf: DecoderBuffer) -> Option<(usize, u64)> {
+    let len = buf.len();
+    let (ty, buf) = buf.decode::<VarInt>().ok()?;
+    let fields = match ty.as_u64() {
+        IMMEDIATE_ACK => 0,
+        // Sequence number, ack-eliciting threshold, requested max ACK delay
+        // and reordering threshold.
+        ACK_FREQUENCY => 4,
+        _ => return None,
+    };
+    let mut buf = buf;
+    for _ in 0..fields {
+        buf = buf.decode::<VarInt>().ok()?.1;
+    }
+    Some((len - buf.len(), ty.as_u64()))
+}
+
+/// Calls `on_frame` for every frame in the decrypted packet `payload`, in
+/// order. Walking stops at the first unknown or malformed frame.
+pub(crate) fn walk(payload: &[u8], mut on_frame: impl FnMut(Frame<'_>)) {
+    SCRATCH.with_borrow_mut(|scratch| {
+        scratch.clear();
+        scratch.extend_from_slice(payload);
+        let mut buf = DecoderBufferMut::new(scratch);
+        while !buf.is_empty() {
+            if let Some((len, ty)) = extension_frame(buf.peek()) {
+                let Ok(rest) = buf.skip(len) else {
+                    return;
+                };
+                on_frame(Frame::Extension(ty));
+                buf = rest;
+                continue;
+            }
+            let Ok((frame, rest)) = buf.decode::<FrameRef>() else {
+                return;
+            };
+            on_frame(Frame::Quic(frame));
+            buf = rest;
+        }
+    });
 }
 
 /// Summarizes the frames in a decrypted packet `payload`, calling
-/// `on_stream` for every STREAM frame.
-///
-/// Frames are walked in order; parsing stops at the first unknown or
-/// malformed frame, in which case only the frames before it are counted.
-pub(crate) fn summarize(mut payload: &[u8], mut on_stream: impl FnMut(StreamFrame)) -> Summary {
+/// `on_stream` for every STREAM frame. Only the frames before the first
+/// unknown or malformed one are counted.
+pub(crate) fn summarize(payload: &[u8], mut on_stream: impl FnMut(StreamFrame)) -> Summary {
     let mut summary = Summary::default();
-    while !payload.is_empty() {
-        match next_frame(&mut payload) {
-            Some(Frame::Ack) => summary.acks += 1,
-            Some(Frame::Stream(frame)) => {
-                summary.stream_bytes += frame.len;
-                summary.stream_fin |= frame.fin;
-                on_stream(frame);
-            }
-            Some(Frame::Other) => {}
-            None => break,
-        }
-    }
-    summary
-}
-
-/// Advances `buf` past one frame and returns what it was.
-fn next_frame(buf: &mut &[u8]) -> Option<Frame> {
-    let ty = varint(buf)?;
-    match ty {
-        // PADDING, PING, HANDSHAKE_DONE, IMMEDIATE_ACK
-        0x00 | 0x01 | 0x1e | 0x1f => {}
-        // ACK, ACK_ECN
-        0x02 | 0x03 => {
-            varint(buf)?; // largest acknowledged
-            varint(buf)?; // ack delay
-            let ranges = varint(buf)?;
-            varint(buf)?; // first ack range
-            for _ in 0..ranges {
-                skip_varints(buf, 2)?; // gap, ack range length
-            }
-            if ty == 0x03 {
-                skip_varints(buf, 3)?; // ECT0, ECT1, ECN-CE counts
-            }
-            return Some(Frame::Ack);
-        }
-        // RESET_STREAM
-        0x04 => skip_varints(buf, 3)?,
-        // STOP_SENDING
-        0x05 => skip_varints(buf, 2)?,
-        // CRYPTO
-        0x06 => {
-            varint(buf)?;
-            skip_prefixed(buf)?;
-        }
-        // NEW_TOKEN
-        0x07 => skip_prefixed(buf)?,
-        // STREAM
-        0x08..=0x0f => {
-            let id = varint(buf)?;
-            let offset = if ty & 0x04 != 0 { varint(buf)? } else { 0 };
-            let len = if ty & 0x02 != 0 {
-                let len = varint(buf)?;
-                skip(buf, len)?;
-                len
-            } else {
-                // Without LEN, the data runs to the end of the packet.
-                let len = buf.len() as u64;
-                *buf = &[];
-                len
+    walk(payload, |frame| match frame {
+        Frame::Quic(FrameRef::Ack(_)) => summary.acks += 1,
+        Frame::Quic(FrameRef::Stream(stream)) => {
+            let frame = StreamFrame {
+                id: stream.stream_id.as_u64(),
+                offset: stream.offset.as_u64(),
+                len: stream.data.len() as u64,
+                fin: stream.is_fin,
             };
-            return Some(Frame::Stream(StreamFrame {
-                id,
-                offset,
-                len,
-                fin: ty & 0x01 != 0,
-            }));
+            summary.stream_bytes += frame.len;
+            summary.stream_fin |= frame.fin;
+            on_stream(frame);
         }
-        // MAX_DATA, MAX_STREAMS, DATA_BLOCKED, STREAMS_BLOCKED,
-        // RETIRE_CONNECTION_ID
-        0x10 | 0x12 | 0x13 | 0x14 | 0x16 | 0x17 | 0x19 => skip_varints(buf, 1)?,
-        // MAX_STREAM_DATA, STREAM_DATA_BLOCKED
-        0x11 | 0x15 => skip_varints(buf, 2)?,
-        // NEW_CONNECTION_ID
-        0x18 => {
-            skip_varints(buf, 2)?;
-            let cid_len = *buf.first()?;
-            skip(buf, 1 + cid_len as u64 + 16)?;
-        }
-        // PATH_CHALLENGE, PATH_RESPONSE
-        0x1a | 0x1b => skip(buf, 8)?,
-        // CONNECTION_CLOSE (transport, application)
-        0x1c | 0x1d => {
-            skip_varints(buf, if ty == 0x1c { 2 } else { 1 })?;
-            skip_prefixed(buf)?;
-        }
-        // DATAGRAM
-        0x30 => *buf = &[],
-        0x31 => skip_prefixed(buf)?,
-        // ACK_FREQUENCY
-        0xaf => skip_varints(buf, 4)?,
-        _ => return None,
-    }
-    Some(Frame::Other)
+        _ => {}
+    });
+    summary
 }
 
 #[cfg(test)]
@@ -180,29 +132,20 @@ mod tests {
         assert_eq!(
             frames,
             [
-                StreamFrame { id: 4, offset: 9, len: 3, fin: false },
-                StreamFrame { id: 8, offset: 0, len: 2, fin: true },
+                StreamFrame {
+                    id: 4,
+                    offset: 9,
+                    len: 3,
+                    fin: false
+                },
+                StreamFrame {
+                    id: 8,
+                    offset: 0,
+                    len: 2,
+                    fin: true
+                },
             ]
         );
-    }
-
-    #[test]
-    fn reads_varints() {
-        // Examples from RFC 9000 appendix A.1.
-        for (bytes, value) in [
-            (&[0x25][..], 37),
-            (&[0x7b, 0xbd], 15293),
-            (&[0x9d, 0x7f, 0x3e, 0x7d], 494878333),
-            (
-                &[0xc2, 0x19, 0x7c, 0x5e, 0xff, 0x14, 0xe8, 0x8c],
-                151288809941952652,
-            ),
-        ] {
-            let mut buf = bytes;
-            assert_eq!(varint(&mut buf), Some(value));
-            assert!(buf.is_empty());
-        }
-        assert_eq!(varint(&mut &[0x40][..]), None);
     }
 
     fn count_acks(payload: &[u8]) -> u64 {
@@ -212,7 +155,7 @@ mod tests {
     #[test]
     fn counts_acks() {
         let payload = [
-            0x02, 0x05, 0x00, 0x01, 0x03, 0x00, 0x01, // ACK, one extra range
+            0x02, 0x05, 0x00, 0x01, 0x03, 0x00, 0x00, // ACK 5-2, 0
             0x01, // PING
             0x03, 0x09, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, // ACK_ECN
             0x0e, 0x00, 0x04, 0x03, 0xaa, 0xbb, 0xcc, // STREAM with LEN

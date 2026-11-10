@@ -14,7 +14,7 @@
 //! go through the PLT and can be interposed.
 
 use super::metrics::METRICS;
-use super::{frame, parse_quic_header, qlog};
+use super::{frame, qlog};
 
 mod boringssl;
 mod evp;
@@ -45,8 +45,9 @@ fn short_dcid(ad: &[u8]) -> Option<&[u8]> {
 }
 
 /// Records a packet with header `ad` and plaintext `payload`, `sent` by the
-/// monitored process or received by it.
-fn observe(ad: &[u8], payload: &[u8], sent: bool) {
+/// monitored process or received by it. `wire` is the address of its
+/// ciphertext, which links it to the datagram that carries it.
+fn observe(ad: &[u8], payload: &[u8], sent: bool, wire: usize) {
     if !super::enabled() || !is_quic_header(ad) {
         return;
     }
@@ -60,14 +61,34 @@ fn observe(ad: &[u8], payload: &[u8], sent: bool) {
     METRICS.record_packet(sent, &summary);
 
     if qlog::enabled() {
-        if let Some(header) = parse_quic_header(ad) {
-            qlog::emit_packet(&header, payload.len(), sent);
-        }
+        qlog::emit_packet(ad, payload, sent, wire);
+    }
+}
+
+/// Records the start of the ciphertext of the packet just sealed at `wire`,
+/// which finds its datagram also if the library sends a copy.
+fn sealed(wire: usize, ciphertext: &[u8]) {
+    if super::enabled() && qlog::enabled() && !ciphertext.is_empty() {
+        qlog::sealed(wire, &ciphertext[..ciphertext.len().min(16)]);
+    }
+}
+
+/// [`sealed`] for a raw pointer to `len` bytes of ciphertext.
+unsafe fn sealed_raw(wire: *const u8, len: usize) {
+    if !wire.is_null() {
+        sealed(wire as usize, std::slice::from_raw_parts(wire, len.min(16)));
     }
 }
 
 /// [`observe`] for raw pointers as passed to the hooked C functions.
-unsafe fn observe_raw(ad: *const u8, ad_len: usize, payload: *const u8, len: usize, sent: bool) {
+unsafe fn observe_raw(
+    ad: *const u8,
+    ad_len: usize,
+    payload: *const u8,
+    len: usize,
+    sent: bool,
+    wire: *const u8,
+) {
     if ad.is_null() || payload.is_null() {
         return;
     }
@@ -75,6 +96,7 @@ unsafe fn observe_raw(ad: *const u8, ad_len: usize, payload: *const u8, len: usi
         std::slice::from_raw_parts(ad, ad_len),
         std::slice::from_raw_parts(payload, len),
         sent,
+        wire as usize,
     );
 }
 
@@ -93,7 +115,10 @@ mod tests {
 
     #[test]
     fn finds_short_header_dcid() {
-        assert_eq!(short_dcid(&[0x41, 0xaa, 0xbb, 0x01, 0x02]), Some(&[0xaa, 0xbb][..]));
+        assert_eq!(
+            short_dcid(&[0x41, 0xaa, 0xbb, 0x01, 0x02]),
+            Some(&[0xaa, 0xbb][..])
+        );
         assert_eq!(short_dcid(&[0x40, 0x01]), Some(&[][..]));
         assert_eq!(short_dcid(&[0xc0, 0, 0, 0, 1, 0, 0]), None);
         assert_eq!(short_dcid(&[0x43, 0x01]), None);

@@ -25,9 +25,10 @@ use std::collections::HashMap;
 
 use libc::{c_int, c_uchar, c_void};
 
-use super::observe;
 use super::METRICS;
+use super::{observe, sealed};
 use crate::preload::metrics::now_ns;
+use crate::preload::qlog;
 
 /// Associated data beyond this is not a QUIC header (a long header with two
 /// 20-byte CIDs and a large token is still well below).
@@ -44,6 +45,10 @@ struct Op {
     in_payload: bool,
     /// Whether the operation exceeded the limits and is not a QUIC packet.
     oversized: bool,
+    /// The address of the ciphertext.
+    wire: usize,
+    /// The start of the ciphertext, once encrypted.
+    ciphertext: Vec<u8>,
 }
 
 thread_local! {
@@ -65,10 +70,10 @@ fn reset(ctx: *mut c_void) {
 }
 
 /// Handles an `Update` call on `ctx` with input `data`: associated data if
-/// `out` is null, payload otherwise. Payload bytes are only collected for
-/// operations that started with associated data. Returns whether the call
-/// belongs to such an operation.
-fn update(ctx: *mut c_void, out: *mut c_uchar, data: &[u8]) -> bool {
+/// `out` is null, payload otherwise, whose ciphertext is at `wire`. Payload
+/// bytes are only collected for operations that started with associated
+/// data. Returns whether the call belongs to such an operation.
+fn update(ctx: *mut c_void, out: *mut c_uchar, data: &[u8], wire: *const c_uchar) -> bool {
     with_ops(|ops| {
         let key = ctx as usize;
         if out.is_null() {
@@ -82,6 +87,9 @@ fn update(ctx: *mut c_void, out: *mut c_uchar, data: &[u8]) -> bool {
             }
             true
         } else if let Some(op) = ops.get_mut(&key) {
+            if !op.in_payload {
+                op.wire = wire as usize;
+            }
             op.in_payload = true;
             op.oversized |= op.payload.len() + data.len() > MAX_PAYLOAD;
             if !op.oversized {
@@ -102,7 +110,10 @@ fn finish(ctx: *mut c_void, ok: bool, sent: bool, start: u64) {
     if let Some(Some(op)) = with_ops(|ops| ops.remove(&(ctx as usize))) {
         METRICS.add_crypto(now_ns() - start);
         if ok && !op.oversized {
-            observe(&op.ad, &op.payload, sent);
+            observe(&op.ad, &op.payload, sent, op.wire);
+            if sent {
+                sealed(op.wire, &op.ciphertext);
+            }
         }
     }
 }
@@ -150,10 +161,22 @@ redhook::hook! {
         inp: *const c_uchar, in_len: c_int
     ) -> c_int => hook_encrypt_update {
         // Encryption may happen in place: collect the plaintext first.
-        if !super::super::enabled() || !update(ctx, out, slice(inp, in_len)) {
+        if !super::super::enabled() || !update(ctx, out, slice(inp, in_len), out) {
             return redhook::real!(EVP_EncryptUpdate)(ctx, out, out_len, inp, in_len);
         }
-        METRICS.time_crypto(|| redhook::real!(EVP_EncryptUpdate)(ctx, out, out_len, inp, in_len))
+        let ret = METRICS.time_crypto(|| {
+            redhook::real!(EVP_EncryptUpdate)(ctx, out, out_len, inp, in_len)
+        });
+        if ret == 1 && qlog::enabled() && !out.is_null() && !out_len.is_null() {
+            let ciphertext = slice(out, *out_len);
+            with_ops(|ops| {
+                let op = ops.get_mut(&(ctx as usize));
+                if let Some(op) = op.filter(|op| op.ciphertext.is_empty()) {
+                    op.ciphertext = ciphertext[..ciphertext.len().min(16)].to_vec();
+                }
+            });
+        }
+        ret
     }
 }
 
@@ -165,14 +188,14 @@ redhook::hook! {
         if !super::super::enabled() {
             return redhook::real!(EVP_DecryptUpdate)(ctx, out, out_len, inp, in_len);
         }
-        let mut tracked = out.is_null() && update(ctx, out, slice(inp, in_len));
+        let mut tracked = out.is_null() && update(ctx, out, slice(inp, in_len), inp);
         let start = now_ns();
         let ret = redhook::real!(EVP_DecryptUpdate)(ctx, out, out_len, inp, in_len);
         let end = now_ns();
         // The plaintext is only there after decryption; it is authenticated
         // by `Final`.
         if ret == 1 && !out.is_null() && !out_len.is_null() {
-            tracked = update(ctx, out, slice(out, *out_len));
+            tracked = update(ctx, out, slice(out, *out_len), inp);
         }
         if tracked {
             METRICS.add_crypto(end - start);
@@ -224,10 +247,10 @@ mod tests {
     #[test]
     fn collects_ad_and_payload_chunks() {
         let out = [0u8; 1].as_ptr() as *mut c_uchar;
-        update(ctx(1), std::ptr::null_mut(), &HEADER[..2]);
-        update(ctx(1), std::ptr::null_mut(), &HEADER[2..]);
-        update(ctx(1), out, &[1, 2]);
-        update(ctx(1), out, &[3]);
+        update(ctx(1), std::ptr::null_mut(), &HEADER[..2], std::ptr::null());
+        update(ctx(1), std::ptr::null_mut(), &HEADER[2..], std::ptr::null());
+        update(ctx(1), out, &[1, 2], std::ptr::null());
+        update(ctx(1), out, &[3], std::ptr::null());
         let op = take(1).unwrap();
         assert_eq!(op.ad, HEADER);
         assert_eq!(op.payload, [1, 2, 3]);
@@ -238,16 +261,16 @@ mod tests {
     fn ignores_payload_without_ad() {
         // e.g. header protection: an ECB context without associated data.
         let out = [0u8; 1].as_ptr() as *mut c_uchar;
-        update(ctx(2), out, &[1, 2, 3]);
+        update(ctx(2), out, &[1, 2, 3], std::ptr::null());
         assert!(take(2).is_none());
     }
 
     #[test]
     fn new_ad_after_payload_restarts() {
         let out = [0u8; 1].as_ptr() as *mut c_uchar;
-        update(ctx(3), std::ptr::null_mut(), &[0xff; 8]);
-        update(ctx(3), out, &[1]);
-        update(ctx(3), std::ptr::null_mut(), &HEADER);
+        update(ctx(3), std::ptr::null_mut(), &[0xff; 8], std::ptr::null());
+        update(ctx(3), out, &[1], std::ptr::null());
+        update(ctx(3), std::ptr::null_mut(), &HEADER, std::ptr::null());
         let op = take(3).unwrap();
         assert_eq!(op.ad, HEADER);
         assert!(op.payload.is_empty());
@@ -256,8 +279,8 @@ mod tests {
     #[test]
     fn flags_oversized_operations() {
         let out = [0u8; 1].as_ptr() as *mut c_uchar;
-        update(ctx(4), std::ptr::null_mut(), &HEADER);
-        update(ctx(4), out, &vec![0; MAX_PAYLOAD + 1]);
+        update(ctx(4), std::ptr::null_mut(), &HEADER, std::ptr::null());
+        update(ctx(4), out, &vec![0; MAX_PAYLOAD + 1], std::ptr::null());
         assert!(take(4).unwrap().oversized);
     }
 }
